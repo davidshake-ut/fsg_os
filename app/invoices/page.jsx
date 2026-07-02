@@ -13,6 +13,7 @@ import { useSession } from '@/components/SessionProvider';
 import { useInvoices } from '@/hooks/useInvoices';
 import { cn } from '@/lib/utils';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 
 // ── Status config ─────────────────────────────────────────────────────────
 const STATUS = {
@@ -430,7 +431,7 @@ const STATUS_TABS = ['all', 'draft', 'sent', 'paid', 'overdue', 'void'];
 
 function InvoicesContent() {
   const { session, company, user } = useSession();
-  const { invoices, loading, createInvoice, updateInvoice, deleteInvoice } =
+  const { invoices, loading, loadError, hasMore, totalCount, loadMore, refresh, createInvoice, updateInvoice, deleteInvoice } =
     useInvoices(session, company, user);
 
   const [statusFilter,  setStatusFilter]  = useState('all');
@@ -460,6 +461,7 @@ function InvoicesContent() {
 
   return (
     <div className="p-6 space-y-5">
+      <ErrorBanner error={loadError} onRetry={refresh} />
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -540,6 +542,19 @@ function InvoicesContent() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {hasMore && (
+        <div className="flex justify-center pt-1">
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={loading}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+          >
+            {loading ? 'Loading…' : `Load more (${invoices.length} of ${totalCount})`}
+          </button>
         </div>
       )}
 

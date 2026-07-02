@@ -18,6 +18,7 @@ import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useTemplates } from '@/hooks/useTemplates';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 import { Card, Button, Field, TextInput, Select } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TECHNOLOGIES } from '@/lib/templates/index';
@@ -343,6 +344,8 @@ function TemplatesContent() {
     systemTemplates,
     companyTemplates,
     loading,
+    loadError,
+    refresh,
     createTemplate,
     updateTemplate,
     deleteTemplate,
@@ -407,6 +410,7 @@ function TemplatesContent() {
 
   return (
     <div className="p-6 space-y-5">
+      <ErrorBanner error={loadError} onRetry={refresh} />
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

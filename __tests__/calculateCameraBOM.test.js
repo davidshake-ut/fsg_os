@@ -93,10 +93,16 @@ describe('camera BOM — storage by retention (1 HDD per NVR)', () => {
 describe('camera BOM — pricing', () => {
   it('uses dealer cost / MSRP price, 7% hardware shipping, grand total = hw + shipping', () => {
     const bom = run({ cam4mpBullet: 1 }); // 1 cam + 1 NVR + 1 8TB HDD
-    // hardware price = 299 (cam) + 469 (NVR) + 279 (8TB) = 1047
-    expect(bom.totalHardwarePrice).toBeCloseTo(1047, 2);
-    expect(bom.totalHardwareCost).toBeCloseTo(545, 2); // 119 + 190 + 236
-    expect(bom.shippingPrice).toBeCloseTo(1047 * 0.07, 2); // shipping is on hardware only
+    // Derive expectations from the catalog so price updates don't break this
+    // test — it verifies the math, not the price list.
+    const priceOf = (sku) => BASE_PRODUCTS.find((p) => p.sku === sku).price;
+    const costOf  = (sku) => BASE_PRODUCTS.find((p) => p.sku === sku).cost;
+    const skus = ['IPC2124SR-ADF28KM-H', 'NVR501-08B-LP8', 'WD85PURZ'];
+    const expectedPrice = skus.reduce((s, sku) => s + priceOf(sku), 0);
+    const expectedCost  = skus.reduce((s, sku) => s + costOf(sku), 0);
+    expect(bom.totalHardwarePrice).toBeCloseTo(expectedPrice, 2);
+    expect(bom.totalHardwareCost).toBeCloseTo(expectedCost, 2);
+    expect(bom.shippingPrice).toBeCloseTo(expectedPrice * 0.07, 2); // shipping is on hardware only
     expect(bom.totalServicesPrice).toBe(0); // labor moved to the project rate card
     expect(bom.grandTotalPrice).toBeCloseTo(bom.totalHardwarePrice + bom.shippingPrice, 2);
     expect(bom.overallMargin).toBeGreaterThan(0);

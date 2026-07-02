@@ -20,7 +20,7 @@ describe('parseCatalogCSV — canonical template', () => {
     const { products, errors } = parseCatalogCSV(csv);
     expect(errors).toEqual([]);
     expect(products).toEqual([
-      { sku: 'CAM-X', description: 'Test Cam', category: 'Camera', cost: 100, price: 250 },
+      { sku: 'CAM-X', description: 'Test Cam', category: 'Camera', cost: 100, price: 250, vendor: '', preferred_vendor: '' },
     ]);
   });
 });

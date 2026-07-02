@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getSupportSnapshot, getSupportServerSnapshot, subscribeSupport, writeSupport, newSupportId } from '@/lib/supportLocalStore';
 
+const PAGE_SIZE = 100;
+
 export function useSupportTickets(session, company, user) {
   const supabase = getSupabase();
   const localData = useSyncExternalStore(subscribeSupport, getSupportSnapshot, getSupportServerSnapshot);
@@ -12,18 +14,29 @@ export function useSupportTickets(session, company, user) {
 
   const [remoteTickets, setRemoteTickets] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [totalCount, setTotalCount] = useState(0);
 
   const refresh = useCallback(async () => {
     if (!supabase || !companyId) return;
     setLoading(true);
-    const { data } = await supabase
+    const { data, error, count } = await supabase
       .from('support_tickets')
-      .select('*, crm_accounts(name)')
+      .select('*, crm_accounts(name)', { count: 'exact' })
       .eq('company_id', companyId)
-      .order('created_at', { ascending: false });
-    setRemoteTickets(data ?? []);
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1);
+    setLoadError(error?.message ?? null);
+    if (!error) {
+      setRemoteTickets(data ?? []);
+      setTotalCount(count ?? 0);
+    }
     setLoading(false);
-  }, [supabase, companyId]);
+  }, [supabase, companyId, limit]);
+
+  const loadMore = useCallback(() => setLimit((l) => l + PAGE_SIZE), []);
+  const hasMore = !!supabase && totalCount > limit;
 
   useEffect(() => {
     if (!supabase || !session || !companyId) return;
@@ -74,5 +87,5 @@ export function useSupportTickets(session, company, user) {
     await refresh();
   }, [supabase, refresh]);
 
-  return { tickets, loading, refresh, createTicket, updateTicket, deleteTicket };
+  return { tickets, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, updateTicket, deleteTicket };
 }

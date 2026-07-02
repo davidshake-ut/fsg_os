@@ -41,7 +41,7 @@ export function useTenant() {
         const authId = activeSession.user.id;
         const { data: profile, error: pErr } = await supabase
           .from('users')
-          .select('id, email, full_name, role, company_id')
+          .select('*')
           .eq('id', authId)
           .single();
         if (pErr) throw pErr;

@@ -57,6 +57,7 @@ export function useResources(session, company, user) {
 
   const [remoteResources, setRemoteResources] = useState([]);
   const [loading,         setLoading]         = useState(false);
+  const [loadError,       setLoadError]       = useState(null);
   const [uploads,         setUploads]         = useState({});
 
   const [searchQuery,   setSearchQuery]   = useState('');
@@ -67,13 +68,14 @@ export function useResources(session, company, user) {
   const refresh = useCallback(async () => {
     if (!supabase || !companyId) return;
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('resources')
       .select('*')
       .eq('company_id', companyId)
       .order('category')
       .order('title');
-    setRemoteResources(data ?? []);
+    setLoadError(error?.message ?? null);
+    if (!error) setRemoteResources(data ?? []);
     setLoading(false);
   }, [supabase, companyId]);
 
@@ -259,7 +261,7 @@ export function useResources(session, company, user) {
   }, [supabase, remoteResources, refresh, search, searchQuery]);
 
   return {
-    resources, loading, refresh,
+    resources, loading, loadError, refresh,
     uploads,
     searchQuery, searchResults, searchLoading,
     search,

@@ -14,6 +14,7 @@ import { useResources } from '@/hooks/useResources';
 import { cn } from '@/lib/utils';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 
 // ── File-type metadata (for uploaded/created files) ───────────────────────
 const FILE_META = {
@@ -742,7 +743,7 @@ function AddLinkModal({ existingCategories, onSave, onClose }) {
 function ResourcesContent() {
   const { session, company, user } = useSession();
   const {
-    resources, loading, uploads,
+    resources, loading, loadError, refresh, uploads,
     searchQuery, searchResults, searchLoading,
     search, uploadDocuments, createDocument, createResource,
     updateResource, deleteResource, getSignedUrl,
@@ -831,6 +832,14 @@ function ResourcesContent() {
         const files = Array.from(e.dataTransfer.files);
         if (files.length) uploadDocuments(files, { category: activeCategory || 'General' });
       }}>
+
+      {loadError && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-40 flex justify-center px-4">
+          <div className="pointer-events-auto w-full max-w-lg shadow-lg">
+            <ErrorBanner error={loadError} onRetry={refresh} />
+          </div>
+        </div>
+      )}
 
       {isResizing && <div className="fixed inset-0 z-50 cursor-col-resize" />}
 

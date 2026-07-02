@@ -11,6 +11,7 @@ import NewAccountModal from '@/components/crm/NewAccountModal';
 import { Card, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 import { cn } from '@/lib/utils';
 
 const TYPE_LABELS = {
@@ -27,7 +28,7 @@ const STATUS_STYLES = {
 
 function CRMContent() {
   const { session, company, user } = useSession();
-  const { accounts, loading, createAccount, deleteAccount } = useCRMAccounts(session, company, user);
+  const { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, deleteAccount } = useCRMAccounts(session, company, user);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
@@ -54,6 +55,7 @@ function CRMContent() {
 
   return (
     <div className="p-6 space-y-5">
+      <ErrorBanner error={loadError} onRetry={refresh} />
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">CRM</h1>
@@ -119,6 +121,14 @@ function CRMContent() {
               </button>
             </Card>
           ))}
+        </div>
+      )}
+
+      {hasMore && (
+        <div className="flex justify-center pt-1">
+          <Button variant="outline" size="sm" onClick={loadMore} disabled={loading}>
+            {loading ? 'Loading…' : `Load more (${accounts.length} of ${totalCount})`}
+          </Button>
         </div>
       )}
 

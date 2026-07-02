@@ -13,16 +13,18 @@ export function useTemplates(session, company, user) {
 
   const [companyTemplates, setCompanyTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!supabase || !companyId) return;
     setLoading(true);
-    const { data: templates } = await supabase
+    const { data: templates, error } = await supabase
       .from('project_templates')
       .select('*, template_phases(*, template_tasks(*))')
       .eq('company_id', companyId)
       .order('name');
-    setCompanyTemplates(templates ?? []);
+    setLoadError(error?.message ?? null);
+    if (!error) setCompanyTemplates(templates ?? []);
     setLoading(false);
   }, [supabase, companyId]);
 
@@ -114,28 +116,54 @@ export function useTemplates(session, company, user) {
   }, [supabase, refresh]);
 
   // Clone a system template into company-owned DB rows so it can be edited.
+  // Phases and tasks are batch-inserted (3 requests total) rather than one
+  // insert-plus-refresh per row.
   const cloneSystemTemplate = useCallback(async (systemTemplate) => {
     if (!supabase) return;
-    const tmpl = await createTemplate({
-      name: `${systemTemplate.name} (Copy)`,
-      description: systemTemplate.description,
-      technology: systemTemplate.technology,
-    });
-    for (const phase of systemTemplate.phases) {
-      const ph = await addPhase(tmpl.id, { name: phase.name, order_index: phase.order });
-      for (const task of phase.tasks) {
-        await addTask(ph.id, tmpl.id, {
-          name: task.name,
-          description: task.description,
-          duration_days: task.duration_days,
-          role: task.role,
-          order_index: task.order,
-        });
-      }
+    const { data: tmpl, error } = await supabase
+      .from('project_templates')
+      .insert({
+        company_id: companyId,
+        created_by: userId,
+        name: `${systemTemplate.name} (Copy)`,
+        description: systemTemplate.description,
+        technology: systemTemplate.technology,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+
+    const { data: phases, error: phErr } = await supabase
+      .from('template_phases')
+      .insert(systemTemplate.phases.map((p) => ({
+        template_id: tmpl.id,
+        company_id: companyId,
+        name: p.name,
+        order_index: p.order,
+      })))
+      .select();
+    if (phErr) throw phErr;
+
+    const phaseIdByOrder = new Map(phases.map((ph) => [ph.order_index, ph.id]));
+    const taskRows = systemTemplate.phases.flatMap((p) =>
+      p.tasks.map((t) => ({
+        phase_id: phaseIdByOrder.get(p.order),
+        template_id: tmpl.id,
+        company_id: companyId,
+        name: t.name,
+        description: t.description,
+        duration_days: t.duration_days,
+        role: t.role,
+        order_index: t.order,
+      }))
+    );
+    if (taskRows.length) {
+      const { error: tErr } = await supabase.from('template_tasks').insert(taskRows);
+      if (tErr) throw tErr;
     }
     await refresh();
     return tmpl;
-  }, [supabase, createTemplate, addPhase, addTask, refresh]);
+  }, [supabase, companyId, userId, refresh]);
 
   // Normalise a system template or a DB template into the same shape for rendering.
   function normalise(t) {
@@ -165,6 +193,7 @@ export function useTemplates(session, company, user) {
     systemTemplates: SYSTEM_TEMPLATES,
     companyTemplates: companyTemplates.map(normalise),
     loading,
+    loadError,
     refresh,
     createTemplate,
     updateTemplate,

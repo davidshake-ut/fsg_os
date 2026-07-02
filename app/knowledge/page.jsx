@@ -13,6 +13,7 @@ import { useSession } from '@/components/SessionProvider';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import { cn } from '@/lib/utils';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 
 // ── Color system ─────────────────────────────────────────────────────────────
 // All class strings are literals so Tailwind JIT scans them correctly.
@@ -878,7 +879,7 @@ function UploadZone({ groups, onUpload, onClose }) {
 function KnowledgeContent() {
   const { session, company } = useSession();
   const {
-    groups, documents, loading, uploads,
+    groups, documents, loading, loadError, refresh, uploads,
     searchQuery, searchResults, searchLoading,
     search, uploadDocuments, createDocument,
     createGroup, updateGroup, deleteGroup,
@@ -996,6 +997,14 @@ function KnowledgeContent() {
         if (files.length) uploadDocuments(files, activeGroup);
       }}
     >
+      {loadError && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-40 flex justify-center px-4">
+          <div className="pointer-events-auto w-full max-w-lg shadow-lg">
+            <ErrorBanner error={loadError} onRetry={refresh} />
+          </div>
+        </div>
+      )}
+
       {/* Drag-capture overlay — sits above iframes during panel resize */}
       {isResizing && <div className="fixed inset-0 z-50 cursor-col-resize" />}
 

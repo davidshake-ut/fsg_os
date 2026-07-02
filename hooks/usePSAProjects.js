@@ -16,6 +16,7 @@ export function usePSAProjects(session, company, user) {
   const localData = useSyncExternalStore(subscribePsa, getPsaSnapshot, getPsaServerSnapshot);
   const [remoteProjects, setRemoteProjects] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const companyId = company?.id;
   const projects = supabase ? remoteProjects : localData.projects;
@@ -23,12 +24,13 @@ export function usePSAProjects(session, company, user) {
   const refresh = useCallback(async () => {
     if (!supabase || !companyId) return;
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('psa_projects')
       .select('*, saved_projects(project_name)')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
-    setRemoteProjects(data || []);
+    setLoadError(error?.message ?? null);
+    if (!error) setRemoteProjects(data || []);
     setLoading(false);
   }, [supabase, companyId]);
 
@@ -130,5 +132,5 @@ export function usePSAProjects(session, company, user) {
     [supabase, refresh]
   );
 
-  return { projects, loading, refresh, createProject, updateProject, deleteProject };
+  return { projects, loading, loadError, refresh, createProject, updateProject, deleteProject };
 }

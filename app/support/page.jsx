@@ -13,6 +13,7 @@ import TicketPriorityBadge, { TicketStatusBadge, STATUS_CONFIG } from '@/compone
 import { Card, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 import { cn } from '@/lib/utils';
 
 const ALL_STATUSES = Object.keys(STATUS_CONFIG);
@@ -29,7 +30,7 @@ function timeAgo(iso) {
 
 function SupportContent() {
   const { session, company, user } = useSession();
-  const { tickets, loading, createTicket, deleteTicket } = useSupportTickets(session, company, user);
+  const { tickets, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, deleteTicket } = useSupportTickets(session, company, user);
   const { accounts } = useCRMAccounts(session, company, user);
   const [statusFilter, setStatusFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
@@ -63,6 +64,7 @@ function SupportContent() {
 
   return (
     <div className="p-6 space-y-5">
+      <ErrorBanner error={loadError} onRetry={refresh} />
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Customer Support</h1>
@@ -132,6 +134,14 @@ function SupportContent() {
               </button>
             </Card>
           ))}
+        </div>
+      )}
+
+      {hasMore && (
+        <div className="flex justify-center pt-1">
+          <Button variant="outline" size="sm" onClick={loadMore} disabled={loading}>
+            {loading ? 'Loading…' : `Load more (${tickets.length} of ${totalCount})`}
+          </Button>
         </div>
       )}
 

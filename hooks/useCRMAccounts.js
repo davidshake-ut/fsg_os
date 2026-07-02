@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getCrmSnapshot, getCrmServerSnapshot, subscribeCrm, writeCrm, newCrmId } from '@/lib/crmLocalStore';
 
+const PAGE_SIZE = 100;
+
 export function useCRMAccounts(session, company, user) {
   const supabase = getSupabase();
   const localData = useSyncExternalStore(subscribeCrm, getCrmSnapshot, getCrmServerSnapshot);
@@ -12,18 +14,29 @@ export function useCRMAccounts(session, company, user) {
 
   const [remoteAccounts, setRemoteAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [totalCount, setTotalCount] = useState(0);
 
   const refresh = useCallback(async () => {
     if (!supabase || !companyId) return;
     setLoading(true);
-    const { data } = await supabase
+    const { data, error, count } = await supabase
       .from('crm_accounts')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('company_id', companyId)
-      .order('name');
-    setRemoteAccounts(data ?? []);
+      .order('name')
+      .range(0, limit - 1);
+    setLoadError(error?.message ?? null);
+    if (!error) {
+      setRemoteAccounts(data ?? []);
+      setTotalCount(count ?? 0);
+    }
     setLoading(false);
-  }, [supabase, companyId]);
+  }, [supabase, companyId, limit]);
+
+  const loadMore = useCallback(() => setLimit((l) => l + PAGE_SIZE), []);
+  const hasMore = !!supabase && totalCount > limit;
 
   useEffect(() => {
     if (!supabase || !session || !companyId) return;
@@ -74,5 +87,5 @@ export function useCRMAccounts(session, company, user) {
     await refresh();
   }, [supabase, refresh]);
 
-  return { accounts, loading, refresh, createAccount, updateAccount, deleteAccount };
+  return { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, updateAccount, deleteAccount };
 }

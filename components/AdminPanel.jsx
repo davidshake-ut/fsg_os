@@ -8,6 +8,7 @@ import { useBranding } from '@/hooks/useBranding';
 import { Card, Button, Field, TextInput, Select, Badge, Toggle, NumberInput } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ModulesPanel from '@/components/ModulesPanel';
+import { resolveBuilderDefaults, BUILDER_DEFAULTS_KEY } from '@/lib/builderDefaults';
 import { cn } from '@/lib/utils';
 
 // ── Tab definitions ────────────────────────────────────────────────────────
@@ -286,29 +287,56 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign
 
 // ── Builder defaults ──────────────────────────────────────────────────────
 
-const BUILDER_DEFAULTS_KEY = 'fsg_builder_defaults';
-
 function BuilderDefaultsForm() {
-  const [form, setForm] = useState({ includeWifi: true, includeCameras: true, includeShipping: true, shippingPercent: 7 });
-  const [saved, setSaved] = useState(false);
+  const supabase = getSupabase();
+  const { user, company, isAdmin, refresh: refreshSession } = useSession();
+  // Admins edit the team-wide default; regular users edit a personal override.
+  const teamScope = isAdmin && !!company;
 
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(BUILDER_DEFAULTS_KEY) || 'null');
-      if (stored) setForm((f) => ({ ...f, ...stored }));
-    } catch {}
-  }, []);
+  const [form, setForm] = useState(() =>
+    resolveBuilderDefaults({ user, company, configured: isSupabaseConfigured })
+  );
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState(null);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const save = () => {
-    localStorage.setItem(BUILDER_DEFAULTS_KEY, JSON.stringify(form));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const save = async () => {
+    setSaving(true);
+    setErr(null);
+    try {
+      if (!supabase) {
+        localStorage.setItem(BUILDER_DEFAULTS_KEY, JSON.stringify(form));
+      } else if (teamScope) {
+        const settings = { ...(company.settings ?? {}), builderDefaults: form };
+        const { error } = await supabase.from('companies').update({ settings }).eq('id', company.id);
+        if (error) throw error;
+      } else {
+        const preferences = { ...(user?.preferences ?? {}), builderDefaults: form };
+        const { error } = await supabase.rpc('set_own_preferences', { prefs: preferences });
+        if (error) throw error;
+      }
+      await refreshSession?.().catch(() => {});
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="space-y-5">
+      {err && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>
+      )}
+      <p className="text-xs text-slate-400">
+        {teamScope
+          ? 'These defaults apply to everyone on your team when starting a new project.'
+          : 'These defaults apply to you when starting a new project (they override your team defaults).'}
+      </p>
       <div>
         <h3 className="mb-0.5 text-sm font-semibold text-slate-800">Technologies</h3>
         <p className="text-xs text-slate-400">Which systems are enabled by default when starting a new project.</p>
@@ -330,7 +358,9 @@ function BuilderDefaultsForm() {
         )}
       </div>
       <div className="flex items-center gap-3">
-        <Button type="button" onClick={save}>Save Defaults</Button>
+        <Button type="button" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save Defaults'}
+        </Button>
         {saved && <span className="text-sm text-emerald-600">Saved!</span>}
       </div>
     </div>

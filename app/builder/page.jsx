@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { FileDown, FileText, Sheet, Save, FolderKanban, CheckCircle2, X, Loader2 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
@@ -29,6 +29,7 @@ import { useProjects } from '@/hooks/useProjects';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import { DEFAULT_INPUTS, DEFAULT_CAMERA_INPUTS, DEFAULT_LABOR_ROLES } from '@/lib/defaults';
+import { resolveBuilderDefaults } from '@/lib/builderDefaults';
 import { getTerminology } from '@/lib/terminology';
 import { exportPDF, wifiKpis, cameraKpis } from '@/lib/exportPDF';
 import { exportProposalPDF } from '@/lib/exportProposal';
@@ -75,19 +76,23 @@ function Calculator() {
     })();
   }, [isSuperAdmin, session]);
 
+  // Apply team/user builder defaults once, when the session resolves (or
+  // immediately in local mode). Never re-applies over a loaded project.
+  const defaultsApplied = useRef(false);
   useEffect(() => {
-    try {
-      const defaults = JSON.parse(localStorage.getItem('fsg_builder_defaults') || 'null');
-      if (!defaults) return;
-      setInputs((prev) => ({
-        ...prev,
-        includeWifi:     defaults.includeWifi     ?? prev.includeWifi,
-        includeCameras:  defaults.includeCameras  ?? prev.includeCameras,
-        includeShipping: defaults.includeShipping ?? prev.includeShipping,
-        shippingPercent: defaults.shippingPercent ?? prev.shippingPercent,
-      }));
-    } catch {}
-  }, []);
+    if (defaultsApplied.current) return;
+    if (configured && !user && !company) return; // session still resolving
+    defaultsApplied.current = true;
+    if (currentProjectId) return;
+    const d = resolveBuilderDefaults({ user, company, configured });
+    setInputs((prev) => ({
+      ...prev,
+      includeWifi:     d.includeWifi,
+      includeCameras:  d.includeCameras,
+      includeShipping: d.includeShipping,
+      shippingPercent: d.shippingPercent,
+    }));
+  }, [configured, user, company, currentProjectId]);
 
   const { branding, setBranding } = useBranding({ configured, company, onSaved: refresh });
   const { accounts: crmAccounts, createAccount: createCrmAccount } = useCRMAccounts(session, company, user);
@@ -210,14 +215,7 @@ function Calculator() {
   const selectProject = (id) => {
     setNewPsaProjectId(null);
     if (!id) {
-      const storedDefaults = (() => { try { return JSON.parse(localStorage.getItem('fsg_builder_defaults') || 'null'); } catch { return null; } })();
-      const techDefaults = storedDefaults ? {
-        includeWifi:     storedDefaults.includeWifi     ?? true,
-        includeCameras:  storedDefaults.includeCameras  ?? true,
-        includeShipping: storedDefaults.includeShipping ?? true,
-        shippingPercent: storedDefaults.shippingPercent ?? 7,
-      } : {};
-      setInputs({ ...DEFAULT_INPUTS, ...techDefaults });
+      setInputs({ ...DEFAULT_INPUTS, ...resolveBuilderDefaults({ user, company, configured }) });
       setCameraInputs(DEFAULT_CAMERA_INPUTS);
       setPriceOverrides({});
       setServiceOverrides({});

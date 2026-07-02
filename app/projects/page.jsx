@@ -26,6 +26,7 @@ import NewProjectModal from '@/components/projects/NewProjectModal';
 import { Card, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 import { cn } from '@/lib/utils';
 
 const ALL_STATUSES = Object.keys(STATUS_CONFIG);
@@ -145,7 +146,7 @@ function CreateInvoiceModal({ project, onSave, onClose }) {
 
 function ProjectsContent() {
   const { session, company, user } = useSession();
-  const { projects, loading, createProject, deleteProject } = usePSAProjects(session, company, user);
+  const { projects, loading, loadError, refresh, createProject, deleteProject } = usePSAProjects(session, company, user);
   const { projects: quotes } = useProjects(session, company, user);
   const { createInvoice } = useInvoices(session, company, user);
 
@@ -178,6 +179,7 @@ function ProjectsContent() {
 
   return (
     <div className="p-6 space-y-5">
+      <ErrorBanner error={loadError} onRetry={refresh} />
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

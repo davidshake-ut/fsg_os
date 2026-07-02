@@ -54,6 +54,7 @@ export function useKnowledgeBase(session, company) {
   const [groups,    setGroups]    = useState([]);
   const [documents, setDocuments] = useState([]);
   const [loading,   setLoading]   = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [uploads,   setUploads]   = useState({});
 
   const [searchQuery,   setSearchQuery]   = useState('');
@@ -72,8 +73,9 @@ export function useKnowledgeBase(session, company) {
         .eq('company_id', companyId)
         .order('created_at', { ascending: false }),
     ]);
-    setGroups(gr.data ?? []);
-    setDocuments(dr.data ?? []);
+    setLoadError(gr.error?.message ?? dr.error?.message ?? null);
+    if (!gr.error) setGroups(gr.data ?? []);
+    if (!dr.error) setDocuments(dr.data ?? []);
     setLoading(false);
   }, [supabase, company?.id]);
 
@@ -246,7 +248,7 @@ export function useKnowledgeBase(session, company) {
   }, [supabase, documents, refresh, search, searchQuery]);
 
   return {
-    groups, documents, loading,
+    groups, documents, loading, loadError,
     uploads,
     searchQuery, searchResults, searchLoading,
     search, refresh,
