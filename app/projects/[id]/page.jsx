@@ -18,6 +18,7 @@ import GanttChart from '@/components/projects/GanttChart';
 import TimeLog from '@/components/projects/TimeLog';
 import ProjectBudget from '@/components/projects/ProjectBudget';
 import ApplyTemplateModal from '@/components/projects/ApplyTemplateModal';
+import ChangeOrderSection from '@/components/projects/ChangeOrderSection';
 import { Select, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TECHNOLOGIES } from '@/lib/templates/index';
@@ -25,11 +26,12 @@ import { cn } from '@/lib/utils';
 import { useRoleColors } from '@/hooks/useRoleColors';
 
 const TABS = [
-  { id: 'tasks',    label: 'Tasks'    },
-  { id: 'gantt',   label: 'Gantt'    },
-  { id: 'time',     label: 'Time Log' },
-  { id: 'budget',   label: 'Budget'   },
-  { id: 'overview', label: 'Overview' },
+  { id: 'tasks',    label: 'Tasks'         },
+  { id: 'gantt',   label: 'Gantt'         },
+  { id: 'time',     label: 'Time Log'      },
+  { id: 'budget',   label: 'Budget'        },
+  { id: 'changes',  label: 'Change Orders' },
+  { id: 'overview', label: 'Overview'      },
 ];
 
 function fmtDate(iso) {
@@ -451,6 +453,11 @@ function ProjectDetail() {
           <div className="max-w-lg">
             <ProjectBudget project={project} tasks={tasks} timeEntries={timeEntries} />
           </div>
+        )}
+
+        {/* ── Change Orders ── */}
+        {tab === 'changes' && (
+          <ChangeOrderSection project={project} />
         )}
 
         {/* ── Overview ── */}

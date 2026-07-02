@@ -120,7 +120,19 @@ export function useProjects(session, company, user) {
       customLineItems,
       laborRoles,
       crmAccountId = null,
+      totalPrice = null,
+      totalCost = null,
+      version,
+      parentQuoteId,
     }) => {
+      // Lifecycle fields only sent when provided so plain saves never clobber
+      // an existing status/version.
+      const lifecycle = {
+        ...(totalPrice != null ? { total_price: totalPrice } : {}),
+        ...(totalCost != null ? { total_cost: totalCost } : {}),
+        ...(version != null ? { version } : {}),
+        ...(parentQuoteId !== undefined ? { parent_quote_id: parentQuoteId } : {}),
+      };
       if (!supabase) {
         const now = new Date().toISOString();
         const list = readLocalArray();
@@ -138,6 +150,7 @@ export function useProjects(session, company, user) {
             custom_line_items: customLineItems,
             labor_roles: laborRoles,
             crm_account_id: crmAccountId,
+            ...lifecycle,
             updated_at: now,
           };
           if (idx >= 0) list[idx] = saved;
@@ -153,6 +166,9 @@ export function useProjects(session, company, user) {
             custom_line_items: customLineItems,
             labor_roles: laborRoles,
             crm_account_id: crmAccountId,
+            status: 'draft',
+            version: 1,
+            ...lifecycle,
             created_at: now,
             updated_at: now,
           };
@@ -172,6 +188,7 @@ export function useProjects(session, company, user) {
         labor_roles: laborRoles,
         crm_account_id: crmAccountId,
         company_id: company?.id ?? null,
+        ...lifecycle,
         updated_at: new Date().toISOString(),
       };
       let result;
@@ -191,6 +208,32 @@ export function useProjects(session, company, user) {
     [supabase, company, user, refresh]
   );
 
+  // Quote lifecycle transition. Stamps the matching timestamp so reporting
+  // can measure sent→accepted cycle time later.
+  const setQuoteStatus = useCallback(
+    async (id, status) => {
+      const now = new Date().toISOString();
+      const stamp =
+        status === 'sent' ? { sent_at: now }
+        : status === 'accepted' ? { accepted_at: now }
+        : status === 'declined' ? { declined_at: now }
+        : {};
+      if (!supabase) {
+        writeLocal(readLocalArray().map((p) =>
+          p.id === id ? { ...p, status, ...stamp, updated_at: now } : p
+        ));
+        return;
+      }
+      const { error } = await supabase
+        .from('saved_projects')
+        .update({ status, ...stamp, updated_at: now })
+        .eq('id', id);
+      if (error) throw error;
+      await refresh();
+    },
+    [supabase, refresh]
+  );
+
   const deleteProject = useCallback(
     async (id) => {
       if (!supabase) {
@@ -203,5 +246,5 @@ export function useProjects(session, company, user) {
     [supabase, refresh]
   );
 
-  return { projects, refresh, loadProject, saveProject, deleteProject };
+  return { projects, refresh, loadProject, saveProject, setQuoteStatus, deleteProject };
 }

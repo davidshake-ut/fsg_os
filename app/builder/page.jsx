@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
-import { FileDown, FileText, Sheet, Save, FolderKanban, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { FileDown, FileText, Sheet, Save, FolderKanban, CheckCircle2, X, Loader2, Send, Ban, Undo2, GitBranch, ChevronDown } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -19,6 +19,7 @@ import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
 import { Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import AppToast from '@/components/ui/AppToast';
 import { calculateBOM } from '@/lib/calculateBOM';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
@@ -44,6 +45,68 @@ const TABS = [
   { id: 'summary', label: 'Summary' },
   { id: 'products', label: 'Product Database' },
 ];
+
+// Status badge + dropdown of the transitions valid from the current status.
+function QuoteLifecycleMenu({ quote, onTransition, onRevision }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const status = quote.status ?? 'draft';
+  const nextVersion = (quote.version ?? 1) + 1;
+  const items = [];
+  if (status === 'draft') {
+    items.push({ label: 'Mark as Sent', Icon: Send, run: () => onTransition('sent') });
+  }
+  if (status === 'sent') {
+    items.push({ label: 'Mark Accepted', Icon: CheckCircle2, run: () => onTransition('accepted') });
+    items.push({ label: 'Mark Declined', Icon: Ban, run: () => onTransition('declined') });
+    items.push({ label: 'Reopen as Draft', Icon: Undo2, run: () => onTransition('draft') });
+  }
+  if (status === 'declined' || status === 'expired') {
+    items.push({ label: 'Reopen as Draft', Icon: Undo2, run: () => onTransition('draft') });
+  }
+  if (status !== 'draft') {
+    items.push({ label: `New Revision (v${nextVersion})`, Icon: GitBranch, run: onRevision });
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Quote status actions"
+        className="flex items-center gap-0.5 rounded-full hover:opacity-80"
+      >
+        <QuoteStatusBadge status={status} version={quote.version} />
+        <ChevronDown size={12} className={cn('text-slate-400 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1.5 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10">
+          {items.map(({ label, Icon, run }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => { setOpen(false); run(); }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
+            >
+              <Icon size={14} className="shrink-0 text-slate-400" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Calculator() {
   const { configured, session, company, user, isSuperAdmin, isAdmin, role, refresh } =
@@ -100,7 +163,7 @@ function Calculator() {
     session,
     { teamFilter: catalogTeamId }
   );
-  const { projects, loadProject, saveProject, deleteProject } = useProjects(session, company, user);
+  const { projects, loadProject, saveProject, setQuoteStatus, deleteProject } = useProjects(session, company, user);
   const { projects: psaProjects, createProject: createPSAProject } = usePSAProjects(session, company, user);
 
   const [toProjectOpen,  setToProjectOpen]  = useState(false);
@@ -240,33 +303,82 @@ function Calculator() {
     setSavedSnapshot(loaded);
   };
 
+  const currentQuote = projects.find((p) => p.id === currentProjectId) ?? null;
+  const quoteStatus = currentQuote?.status ?? 'draft';
+  const quoteLocked = !!currentQuote && quoteStatus !== 'draft';
+
+  const round2 = (n) => Math.round(n * 100) / 100;
+  const buildStatePayload = () => ({
+    projectName: inputs.propertyName,
+    inputs,
+    cameraInputs,
+    priceOverrides,
+    serviceOverrides,
+    customLineItems,
+    laborRoles,
+    crmAccountId: currentCrmAccountId,
+    totalPrice: round2((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0)),
+    totalCost:  round2((bom.grandTotalCost ?? 0) + (cameraBom.grandTotalCost ?? 0)),
+  });
+
+  const snapshotCurrent = () =>
+    setSavedSnapshot({ inputs, cameraInputs, priceOverrides, serviceOverrides, customLineItems, laborRoles });
+
+  const handleCreateRevision = async () => {
+    if (!currentQuote) return;
+    setBusy(true);
+    try {
+      const saved = await saveProject({
+        id: null,
+        ...buildStatePayload(),
+        version: (currentQuote.version ?? 1) + 1,
+        parentQuoteId: currentQuote.parent_quote_id ?? currentQuote.id,
+      });
+      setCurrentProjectId(saved.id);
+      snapshotCurrent();
+      setToast({ type: 'success', message: `Revision v${saved.version ?? (currentQuote.version ?? 1) + 1} created — you are now editing the new draft.` });
+    } catch (e) {
+      setToast({ type: 'error', message: `Could not create revision: ${e.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleQuoteStatus = async (status) => {
+    if (!currentQuote) return;
+    try {
+      await setQuoteStatus(currentQuote.id, status);
+      setToast({ type: 'success', message: status === 'draft' ? 'Quote reopened as draft.' : `Quote marked ${status}.` });
+    } catch (e) {
+      setToast({ type: 'error', message: `Could not update status: ${e.message}` });
+    }
+  };
+
   const handleSave = async () => {
     if (!inputs.propertyName.trim()) {
       setToast({ type: 'error', message: 'Enter a project / property name before saving.' });
+      return;
+    }
+    // Sent/accepted quotes are locked — edits become a new revision so the
+    // customer-facing version stays exactly as it was sent.
+    if (quoteLocked) {
+      setConfirmState({
+        title: `Quote is ${quoteStatus}`,
+        message: `Version ${currentQuote.version ?? 1} was marked ${quoteStatus} and is locked. Save your changes as revision v${(currentQuote.version ?? 1) + 1}?`,
+        confirmLabel: 'Create Revision',
+        variant: 'default',
+        onConfirm: handleCreateRevision,
+      });
       return;
     }
     setBusy(true);
     try {
       const saved = await saveProject({
         id: currentProjectId,
-        projectName: inputs.propertyName,
-        inputs,
-        cameraInputs,
-        priceOverrides,
-        serviceOverrides,
-        customLineItems,
-        laborRoles,
-        crmAccountId: currentCrmAccountId,
+        ...buildStatePayload(),
       });
       setCurrentProjectId(saved.id);
-      setSavedSnapshot({
-        inputs,
-        cameraInputs,
-        priceOverrides,
-        serviceOverrides,
-        customLineItems,
-        laborRoles,
-      });
+      snapshotCurrent();
       setToast({ type: 'success', message: 'Project saved.' });
     } catch (e) {
       setToast({ type: 'error', message: `Save failed: ${e.message}` });
@@ -342,9 +454,18 @@ function Calculator() {
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-wide text-slate-400">System Builder</p>
-            <h1 className="truncate text-sm font-semibold text-slate-900">
-              {inputs.propertyName || branding.companyName || 'Untitled Project'}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-sm font-semibold text-slate-900">
+                {inputs.propertyName || branding.companyName || 'Untitled Project'}
+              </h1>
+              {currentQuote && (
+                <QuoteLifecycleMenu
+                  quote={currentQuote}
+                  onTransition={handleQuoteStatus}
+                  onRevision={handleCreateRevision}
+                />
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -354,7 +475,7 @@ function Calculator() {
               title={configured && !company ? 'Join a team to save projects' : undefined}
               onClick={handleSave}
             >
-              <Save size={14} /> {currentProjectId ? 'Update Project' : 'Save Project'}
+              <Save size={14} /> {quoteLocked ? 'Save as Revision' : currentProjectId ? 'Update Project' : 'Save Project'}
             </Button>
             {currentProjectId && (() => {
               const linkedProject = newPsaProjectId
@@ -601,6 +722,8 @@ function Calculator() {
         open={!!confirmState}
         title={confirmState?.title}
         message={confirmState?.message}
+        confirmLabel={confirmState?.confirmLabel}
+        variant={confirmState?.variant}
         onConfirm={() => { confirmState?.onConfirm(); setConfirmState(null); }}
         onCancel={() => setConfirmState(null)}
       />

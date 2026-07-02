@@ -12,6 +12,7 @@ import {
   Toggle,
 } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 
 function Section({ title, children }) {
   return (
@@ -97,6 +98,12 @@ function ProjectNameField({ value, onChange, projects, currentProjectId, onSelec
                 >
                   <FolderOpen size={15} className="shrink-0 text-slate-400" />
                   <span className="truncate">{p.project_name}</span>
+                  {(p.version ?? 1) > 1 && (
+                    <span className="shrink-0 text-[10px] font-medium text-slate-400">v{p.version}</span>
+                  )}
+                  {p.status && p.status !== 'draft' && (
+                    <QuoteStatusBadge status={p.status} className="ml-auto shrink-0" />
+                  )}
                 </button>
               ))}
             </>
