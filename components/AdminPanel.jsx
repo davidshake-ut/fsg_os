@@ -1,14 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, SlidersHorizontal } from 'lucide-react';
+import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, SlidersHorizontal, DollarSign } from 'lucide-react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { useBranding } from '@/hooks/useBranding';
+import { useProducts } from '@/hooks/useProducts';
 import { Card, Button, Field, TextInput, Select, Badge, Toggle, NumberInput } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ModulesPanel from '@/components/ModulesPanel';
 import { resolveBuilderDefaults, BUILDER_DEFAULTS_KEY } from '@/lib/builderDefaults';
+import { costFromDiscount, DEFAULT_PRODUCT_LINE_DISCOUNTS } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 
 // ── Tab definitions ────────────────────────────────────────────────────────
@@ -17,6 +19,7 @@ const SA_TABS = [
   { key: 'teams',    label: 'Teams',           Icon: Building2          },
   { key: 'modules',  label: 'Module Settings', Icon: Puzzle             },
   { key: 'branding', label: 'Team Branding',   Icon: Palette            },
+  { key: 'pricing',  label: 'Pricing',         Icon: DollarSign         },
   { key: 'members',  label: 'Members',         Icon: Users              },
   { key: 'builder',  label: 'Builder',         Icon: SlidersHorizontal  },
 ];
@@ -24,6 +27,7 @@ const SA_TABS = [
 const CA_TABS = [
   { key: 'branding', label: 'Branding', Icon: Palette           },
   { key: 'modules',  label: 'Modules',  Icon: Puzzle            },
+  { key: 'pricing',  label: 'Pricing',  Icon: DollarSign        },
   { key: 'members',  label: 'Members',  Icon: Users             },
   { key: 'builder',  label: 'Builder',  Icon: SlidersHorizontal },
 ];
@@ -362,6 +366,174 @@ function BuilderDefaultsForm() {
           {saving ? 'Saving…' : 'Save Defaults'}
         </Button>
         {saved && <span className="text-sm text-emerald-600">Saved!</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Pricing / product-line discounts ───────────────────────────────────────
+
+// Cost is derived, never entered directly: cost = price × (1 − discount%) for
+// any catalog product tagged with a matching Product Line. Editing a discount
+// here recomputes cost immediately across the catalog — but locked quotes
+// (sent/accepted/declined) read from their own frozen catalog_snapshot, so
+// this never silently reprices a quote that's already gone to a customer.
+function PricingDiscountsForm() {
+  const supabase = getSupabase();
+  const { session, company, refresh: refreshSession } = useSession();
+  const { allProducts, bulkUpdateProducts } = useProducts(session, { teamFilter: company?.id ?? 'all' });
+
+  const initialRows = () => {
+    const stored = company?.settings?.productLineDiscounts;
+    const map = stored && Object.keys(stored).length ? stored : DEFAULT_PRODUCT_LINE_DISCOUNTS;
+    return Object.entries(map).map(([line, pct]) => ({ id: `${line}-${Math.random().toString(36).slice(2)}`, line, pct }));
+  };
+
+  const [rows, setRows] = useState(initialRows);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState(null);
+  const [recomputedCount, setRecomputedCount] = useState(null);
+
+  useEffect(() => {
+    setRows(initialRows());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company?.id, JSON.stringify(company?.settings?.productLineDiscounts)]);
+
+  const setRow = (id, patch) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const removeRow = (id) => setRows((rs) => rs.filter((r) => r.id !== id));
+  const addRow = () => setRows((rs) => [...rs, { id: `new-${Date.now()}`, line: '', pct: 0 }]);
+
+  const save = async () => {
+    if (!supabase || !company) return;
+    setSaving(true);
+    setErr(null);
+    setRecomputedCount(null);
+    try {
+      const discountMap = Object.fromEntries(
+        rows
+          .map((r) => [r.line.trim(), Number(r.pct) || 0])
+          .filter(([line]) => line)
+      );
+
+      const settings = { ...(company.settings ?? {}), productLineDiscounts: discountMap };
+      const { error } = await supabase.from('companies').update({ settings }).eq('id', company.id);
+      if (error) throw error;
+
+      // Recompute cost for every catalog product tagged with a line that's in
+      // the new table — only rows whose cost actually changes are written.
+      const changed = [];
+      for (const p of allProducts) {
+        if (!p.product_line || !(p.product_line in discountMap)) continue;
+        const newCost = costFromDiscount(p.price, discountMap[p.product_line]);
+        if (newCost !== p.cost) {
+          changed.push({
+            sku: p.sku,
+            description: p.desc,
+            category: p.category,
+            cost: newCost,
+            price: p.price,
+            vendor: p.vendor,
+            preferred_vendor: p.preferred_vendor,
+            product_line: p.product_line,
+          });
+        }
+      }
+      if (changed.length) await bulkUpdateProducts(changed);
+      setRecomputedCount(changed.length);
+
+      await refreshSession?.().catch(() => {});
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!company) {
+    return <p className="text-sm text-slate-400">Join a team to manage pricing.</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {err && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>
+      )}
+      <div>
+        <h3 className="text-sm font-semibold text-slate-800">Product Line Discounts</h3>
+        <p className="mt-0.5 text-xs text-slate-400">
+          Cost = Price × (1 − Discount) for any catalog product tagged with a matching Product Line
+          (set per-product in the Product Database). Changing a discount recomputes Cost immediately
+          — quotes already Sent/Accepted/Declined keep their original cost and are never affected.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-400">
+              <th className="px-3 py-2 font-medium">Product Line</th>
+              <th className="px-3 py-2 text-right font-medium">Discount %</th>
+              <th className="w-10 px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-slate-50 last:border-0">
+                <td className="px-3 py-1.5">
+                  <input
+                    value={r.line}
+                    onChange={(e) => setRow(r.id, { line: e.target.value })}
+                    placeholder="e.g. cnWave"
+                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+                  />
+                </td>
+                <td className="px-3 py-1.5">
+                  <input
+                    type="number" min="0" max="100" step="1"
+                    value={r.pct}
+                    onChange={(e) => setRow(r.id, { pct: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-right text-sm tabular-nums outline-none focus:border-blue-400"
+                  />
+                </td>
+                <td className="px-3 py-1.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => removeRow(r.id)}
+                    aria-label={`Remove ${r.line || 'product line'}`}
+                    className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <X size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={3} className="px-3 py-6 text-center text-sm text-slate-400">
+                  No product lines yet — add one below.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <button type="button" onClick={addRow} className="text-xs font-medium text-blue-600 hover:text-blue-700">
+        + Add Product Line
+      </button>
+
+      <div className="flex items-center gap-3 pt-1">
+        <Button type="button" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save & Recompute Cost'}
+        </Button>
+        {saved && (
+          <span className="text-sm text-emerald-600">
+            Saved!{recomputedCount ? ` Recomputed cost for ${recomputedCount} product(s).` : ''}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -821,6 +993,11 @@ export default function AdminPanel() {
                 />
               </div>
             </div>
+          )}
+
+          {/* ── PRICING ────────────────────────────────────────────── */}
+          {activeTab === 'pricing' && (
+            <PricingDiscountsForm />
           )}
 
           {/* ── BUILDER DEFAULTS ───────────────────────────────────── */}

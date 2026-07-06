@@ -159,12 +159,20 @@ function Calculator() {
 
   const { branding, setBranding } = useBranding({ configured, company, onSaved: refresh });
   const { accounts: crmAccounts, createAccount: createCrmAccount } = useCRMAccounts(session, company, user);
-  const { allProducts, addProduct, editProduct, deleteProduct, importProducts } = useProducts(
+  const { allProducts, addProduct, editProduct, deleteProduct, importProducts, bulkUpdateProducts } = useProducts(
     session,
     { teamFilter: catalogTeamId }
   );
   const { projects, loadProject, saveProject, setQuoteStatus, deleteProject } = useProjects(session, company, user);
   const { projects: psaProjects, createProject: createPSAProject } = usePSAProjects(session, company, user);
+
+  // A locked quote (sent/accepted/declined) freezes its own catalog snapshot
+  // (see setQuoteStatus) so later catalog/discount changes never reprice it —
+  // computed early since bom/cameraBom below need it.
+  const currentQuote = projects.find((p) => p.id === currentProjectId) ?? null;
+  const quoteStatus = currentQuote?.status ?? 'draft';
+  const quoteLocked = !!currentQuote && quoteStatus !== 'draft';
+  const catalogSnapshot = quoteLocked ? (currentQuote.catalog_snapshot ?? null) : null;
 
   const [toProjectOpen,  setToProjectOpen]  = useState(false);
   const [newPsaProjectId, setNewPsaProjectId] = useState(null);
@@ -186,9 +194,10 @@ function Calculator() {
         priceOverrides,
         serviceOverrides,
         allProducts,
-        customLineItems.filter((c) => c.system === 'wifi')
+        customLineItems.filter((c) => c.system === 'wifi'),
+        catalogSnapshot
       ),
-    [inputs, priceOverrides, serviceOverrides, allProducts, customLineItems]
+    [inputs, priceOverrides, serviceOverrides, allProducts, customLineItems, catalogSnapshot]
   );
 
   const wifiEnabled = inputs.includeWifi !== false;
@@ -204,7 +213,7 @@ function Calculator() {
         serviceOverrides,
         allProducts,
         camerasEnabled ? customLineItems.filter((c) => c.system === 'camera') : [],
-        { includeShipping, shippingPercent }
+        { includeShipping, shippingPercent, catalogSnapshot }
       ),
     [
       camerasEnabled,
@@ -215,6 +224,7 @@ function Calculator() {
       customLineItems,
       includeShipping,
       shippingPercent,
+      catalogSnapshot,
     ]
   );
 
@@ -303,10 +313,6 @@ function Calculator() {
     setSavedSnapshot(loaded);
   };
 
-  const currentQuote = projects.find((p) => p.id === currentProjectId) ?? null;
-  const quoteStatus = currentQuote?.status ?? 'draft';
-  const quoteLocked = !!currentQuote && quoteStatus !== 'draft';
-
   const round2 = (n) => Math.round(n * 100) / 100;
   const buildStatePayload = () => ({
     projectName: inputs.propertyName,
@@ -323,6 +329,30 @@ function Calculator() {
 
   const snapshotCurrent = () =>
     setSavedSnapshot({ inputs, cameraInputs, priceOverrides, serviceOverrides, customLineItems, laborRoles });
+
+  // Freezes every catalog SKU used by the current (live) bom/cameraBom, right
+  // before a quote is first locked (marked Sent). Persisted as catalog_snapshot
+  // so a later catalog/discount change never silently reprices this quote.
+  const buildCatalogSnapshot = () => {
+    const skus = new Set([...bom.items, ...cameraBom.items].map((i) => i.sku).filter(Boolean));
+    const snapshot = {};
+    for (const sku of skus) {
+      const p = allProducts.find((prod) => prod.sku === sku);
+      if (p) {
+        snapshot[sku] = {
+          sku: p.sku,
+          desc: p.desc,
+          category: p.category,
+          cost: p.cost,
+          price: p.price,
+          vendor: p.vendor,
+          preferred_vendor: p.preferred_vendor,
+          product_line: p.product_line,
+        };
+      }
+    }
+    return snapshot;
+  };
 
   const handleCreateRevision = async () => {
     if (!currentQuote) return;
@@ -347,7 +377,8 @@ function Calculator() {
   const handleQuoteStatus = async (status) => {
     if (!currentQuote) return;
     try {
-      await setQuoteStatus(currentQuote.id, status);
+      const snapshot = status === 'sent' ? buildCatalogSnapshot() : undefined;
+      await setQuoteStatus(currentQuote.id, status, snapshot);
       setToast({ type: 'success', message: status === 'draft' ? 'Quote reopened as draft.' : `Quote marked ${status}.` });
     } catch (e) {
       setToast({ type: 'error', message: `Could not update status: ${e.message}` });
@@ -630,6 +661,8 @@ function Calculator() {
               }
               onDelete={removeCatalog}
               onImport={importProducts}
+              onBulkUpdate={canManageCatalog ? bulkUpdateProducts : undefined}
+              productLineDiscounts={company?.settings?.productLineDiscounts ?? {}}
             />
           )}
         </main>

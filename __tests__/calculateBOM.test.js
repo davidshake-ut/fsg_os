@@ -257,3 +257,47 @@ describe('camera-only quote (includeWifi = false)', () => {
     expect(bom.totalHardwarePrice).toBe(20);
   });
 });
+
+describe('catalogSnapshot (locked-quote pricing freeze)', () => {
+  // A locked quote (sent/accepted/declined) passes its own frozen snapshot so
+  // a later catalog/discount change never silently reprices it.
+  it('a snapshot entry overrides the live catalog for that SKU', () => {
+    const live = run(); // live pricing, no snapshot
+    const liveAp = live.items.find((i) => i.sku === 'XV2-21X');
+    expect(liveAp.unitCost).toBeCloseTo(98.94, 2);
+
+    const snapshot = { 'XV2-21X': { sku: 'XV2-21X', desc: 'Frozen AP', category: 'Access Point', cost: 40, price: 60 } };
+    const frozen = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, [], snapshot);
+    const frozenAp = frozen.items.find((i) => i.sku === 'XV2-21X');
+    expect(frozenAp.unitCost).toBe(40);
+    expect(frozenAp.unitPrice).toBe(60);
+  });
+
+  it('SKUs not in the snapshot still fall back to the live catalog', () => {
+    const snapshot = { 'XV2-21X': { sku: 'XV2-21X', desc: 'Frozen AP', category: 'Access Point', cost: 40, price: 60 } };
+    const frozen = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, [], snapshot);
+    const gateway = frozen.items.find((i) => i.sku === 'NSE3000');
+    expect(gateway.unitCost).toBeCloseTo(1295.0, 2); // live BASE_PRODUCTS price, untouched
+  });
+
+  it('a project-level priceOverride still wins over a frozen snapshot entry', () => {
+    const snapshot = { 'XV2-21X': { sku: 'XV2-21X', desc: 'Frozen AP', category: 'Access Point', cost: 40, price: 60 } };
+    const frozen = calculateBOM(
+      DEFAULT_INPUTS,
+      { 'XV2-21X': { cost: 5, price: 10 } },
+      {},
+      BASE_PRODUCTS,
+      [],
+      snapshot
+    );
+    const ap = frozen.items.find((i) => i.sku === 'XV2-21X');
+    expect(ap.unitCost).toBe(5);
+    expect(ap.unitPrice).toBe(10);
+  });
+
+  it('no snapshot (draft/new revision) reads live catalog pricing', () => {
+    const bom = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, [], null);
+    const ap = bom.items.find((i) => i.sku === 'XV2-21X');
+    expect(ap.unitCost).toBeCloseTo(98.94, 2);
+  });
+});

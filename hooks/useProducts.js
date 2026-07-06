@@ -112,7 +112,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
   );
 
   // --- local-mode mutations (mirror the API handlers) ---
-  const addLocal = ({ sku, description, category, cost, price, vendor = '', preferred_vendor = '' }) => {
+  const addLocal = ({ sku, description, category, cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
     if (!sku || !description || !category) throw new Error('Missing fields');
     const rows = readLocalArray();
     const existing = rows.find((r) => r.sku === sku);
@@ -123,16 +123,16 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     }
     writeLocal([
       ...rows.filter((r) => r.sku !== sku),
-      { sku, description, category, cost: Number(cost), price: Number(price), vendor, preferred_vendor, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
     ]);
   };
 
-  const editLocal = ({ sku, description, category, cost, price, vendor = '', preferred_vendor = '' }) => {
+  const editLocal = ({ sku, description, category, cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
     if (!sku) throw new Error('Missing sku');
     const isBase = baseSkus.has(sku);
     writeLocal([
       ...readLocalArray().filter((r) => r.sku !== sku),
-      { sku, description, category, cost: Number(cost), price: Number(price), vendor, preferred_vendor, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
     ]);
   };
 
@@ -165,6 +165,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         price: Number(r.price),
         vendor: r.vendor ?? '',
         preferred_vendor: r.preferred_vendor ?? '',
+        product_line: r.product_line ?? (bySku.get(r.sku)?.product_line ?? ''),
         is_custom: !isBase,
         is_deleted: false,
       });
@@ -173,9 +174,38 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     return { added, updated };
   };
 
+  // Bulk upsert used by (1) discount-% change recompute and (2) vendor price
+  // import — both already have full row data (sourced from allProducts), so
+  // this is a straight write-through, no add/update counting needed.
+  const bulkUpdateLocal = (rows) => {
+    const list = readLocalArray();
+    const bySku = new Map(list.map((r) => [r.sku, r]));
+    for (const r of rows) {
+      const isBase = baseSkus.has(r.sku);
+      bySku.set(r.sku, {
+        ...(bySku.get(r.sku) || {}),
+        sku: r.sku,
+        description: r.description,
+        category: r.category,
+        cost: Number(r.cost),
+        price: Number(r.price),
+        vendor: r.vendor ?? '',
+        preferred_vendor: r.preferred_vendor ?? '',
+        product_line: r.product_line ?? '',
+        is_custom: !isBase,
+        is_deleted: false,
+      });
+    }
+    writeLocal([...bySku.values()]);
+    return { updated: rows.length, errors: [] };
+  };
+
   const importProducts = async (rows) => {
     if (!supabase) return importLocal(rows);
     // Configured backend: upsert each row through the privileged route handler.
+    // product_line is omitted unless the CSV supplied one, so a general
+    // catalog re-import never blanks out product lines assigned via the
+    // vendor price importer.
     let added = 0;
     let updated = 0;
     for (const r of rows) {
@@ -187,11 +217,32 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         price: Number(r.price),
         vendor: r.vendor ?? '',
         preferred_vendor: r.preferred_vendor ?? '',
+        ...(r.product_line ? { product_line: r.product_line } : {}),
       });
       if (baseSkus.has(r.sku)) updated++;
       else added++;
     }
     return { added, updated };
+  };
+
+  // Full-row upsert used by (1) discount-% change recompute and (2) vendor
+  // price import. Always sends complete rows sourced from allProducts, so no
+  // add/update counting is needed — just report how many were written.
+  const bulkUpdateProducts = async (rows) => {
+    if (!supabase) return bulkUpdateLocal(rows);
+    if (!session) throw new Error('Not authenticated');
+    const res = await fetch('/api/products/bulk', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ rows }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.error || `Request failed (${res.status})`);
+    await refresh();
+    return payload;
   };
 
   return {
@@ -201,5 +252,6 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     editProduct: async (p) => (supabase ? callApi('PATCH', p) : editLocal(p)),
     deleteProduct: async (sku) => (supabase ? callApi('DELETE', { sku }) : deleteLocal(sku)),
     importProducts,
+    bulkUpdateProducts,
   };
 }

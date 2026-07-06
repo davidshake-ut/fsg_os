@@ -141,3 +141,26 @@ describe('camera BOM — spare cameras', () => {
     expect(qtyOf(bom, 'IPC3614SR-ADF28KM-H')).toBe(21); // 20 + ceil(20*0.05)=1
   });
 });
+
+describe('camera BOM — catalogSnapshot (locked-quote pricing freeze)', () => {
+  it('a snapshot entry (passed via shipping.catalogSnapshot) overrides the live catalog', () => {
+    const snapshot = { 'IPC2124SR-ADF28KM-H': { sku: 'IPC2124SR-ADF28KM-H', desc: 'Frozen Cam', category: 'Camera', cost: 50, price: 80 } };
+    const frozen = calculateCameraBOM(
+      { ...DEFAULT_CAMERA_INPUTS, cam4mpBullet: 1 },
+      {},
+      {},
+      BASE_PRODUCTS,
+      [],
+      { catalogSnapshot: snapshot }
+    );
+    const cam = frozen.items.find((i) => i.sku === 'IPC2124SR-ADF28KM-H');
+    expect(cam.unitCost).toBe(50);
+    expect(cam.unitPrice).toBe(80);
+  });
+
+  it('no catalogSnapshot reads live catalog pricing', () => {
+    const bom = run({ cam4mpBullet: 1 });
+    const cam = bom.items.find((i) => i.sku === 'IPC2124SR-ADF28KM-H');
+    expect(cam.unitCost).toBe(119.0);
+  });
+});

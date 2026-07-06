@@ -33,7 +33,7 @@ export async function POST(request) {
   const { error, svc, companyId } = await requireManager(request);
   if (error) return error;
   const body = await request.json();
-  const { sku, description, category, cost, price, vendor = '', preferred_vendor = '' } = body;
+  const { sku, description, category, cost, price, vendor = '', preferred_vendor = '', product_line = '' } = body;
   if (!sku || !description || !category) return json({ error: 'Missing fields' }, 400);
 
   // Reject only SKUs that are currently live for this team. A base product is
@@ -55,7 +55,7 @@ export async function POST(request) {
   const { data, error: dbErr } = await svc
     .from('custom_products')
     .upsert(
-      { company_id: companyId, sku, description, category, cost, price, vendor, preferred_vendor, is_custom: !isBase, is_deleted: false },
+      { company_id: companyId, sku, description, category, cost, price, vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
       { onConflict: 'company_id,sku' }
     )
     .select()
@@ -72,7 +72,10 @@ export async function PATCH(request) {
   if (!sku) return json({ error: 'Missing sku' }, 400);
 
   // Upsert per (company_id, sku): editing a base product writes/updates an
-  // override row for this team only.
+  // override row for this team only. product_line is included only when the
+  // caller explicitly sent it — Postgres leaves omitted columns untouched on
+  // conflict, so a general catalog re-import (no product_line column) never
+  // blanks out a product_line assigned via the vendor price importer.
   const isBase = baseSkus.has(sku);
   const { data, error: dbErr } = await svc
     .from('custom_products')
@@ -86,6 +89,7 @@ export async function PATCH(request) {
         price,
         vendor,
         preferred_vendor,
+        ...('product_line' in body ? { product_line: body.product_line } : {}),
         is_custom: !isBase,
         is_deleted: false,
       },

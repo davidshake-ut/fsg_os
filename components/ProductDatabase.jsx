@@ -17,6 +17,7 @@ import { CORE_SKUS, CATEGORY_ORDER } from '@/lib/catalog';
 import { parseCatalogCSV } from '@/lib/csv';
 import { exportCatalogCSV } from '@/lib/exportCSV';
 import { currency } from '@/lib/format';
+import VendorPriceImportModal from '@/components/VendorPriceImportModal';
 
 export default function ProductDatabase({
   allProducts,
@@ -25,6 +26,8 @@ export default function ProductDatabase({
   onClone,
   onDelete,
   onImport,
+  onBulkUpdate,
+  productLineDiscounts = {},
   canManageCatalog = false,
   teams = null, // super-admin only: [{ id, name }] to enable the team filter
   teamFilter = 'all',
@@ -36,6 +39,7 @@ export default function ProductDatabase({
   const [sortDir, setSortDir] = useState('asc');
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState(null); // { type: 'error'|'success', message: string }
+  const [vendorImportOpen, setVendorImportOpen] = useState(false);
   const fileRef = useRef(null);
 
   const toggleSort = (key) => {
@@ -186,6 +190,11 @@ export default function ProductDatabase({
               >
                 <Upload size={14} /> {importing ? 'Importing…' : 'Import CSV'}
               </Button>
+              {onBulkUpdate && (
+                <Button variant="outline" size="sm" onClick={() => setVendorImportOpen(true)}>
+                  <Upload size={14} /> Update Prices from Vendor List
+                </Button>
+              )}
               <Button size="sm" onClick={onAdd}>
                 Add Product
               </Button>
@@ -207,6 +216,7 @@ export default function ProductDatabase({
               {sortHeader('sku', 'SKU')}
               {sortHeader('desc', 'Description')}
               {sortHeader('category', 'Category')}
+              <th className="px-4 py-2 text-left font-medium">Product Line</th>
               <th className="px-4 py-2 text-right font-medium">Cost</th>
               <th className="px-4 py-2 text-right font-medium">Price</th>
               <th className="px-4 py-2 text-right font-medium">Actions</th>
@@ -215,7 +225,7 @@ export default function ProductDatabase({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
                   No products match the current search/filter.
                 </td>
               </tr>
@@ -238,6 +248,7 @@ export default function ProductDatabase({
                 <td className="px-4 py-2">
                   <Badge className="border-slate-200 bg-slate-50 text-slate-500">{p.category}</Badge>
                 </td>
+                <td className="px-4 py-2 text-slate-500">{p.product_line || <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.cost)}</td>
                 <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.price)}</td>
                 <td className="px-4 py-2">
@@ -285,6 +296,15 @@ export default function ProductDatabase({
         <strong>one project only</strong>, use <strong>Edit Prices</strong> on the Managed Wi-Fi or
         Camera Systems BOM — those edits don&apos;t change the catalog.
       </p>
+
+      {vendorImportOpen && (
+        <VendorPriceImportModal
+          allProducts={allProducts}
+          productLineDiscounts={productLineDiscounts}
+          onApply={onBulkUpdate}
+          onClose={() => setVendorImportOpen(false)}
+        />
+      )}
     </Card>
   );
 }

@@ -209,24 +209,29 @@ export function useProjects(session, company, user) {
   );
 
   // Quote lifecycle transition. Stamps the matching timestamp so reporting
-  // can measure sent→accepted cycle time later.
+  // can measure sent→accepted cycle time later. When the caller passes a
+  // catalogSnapshot (built from the live BOM at the moment a quote is first
+  // marked Sent), it's persisted so later catalog/discount changes never
+  // reprice an already-sent/accepted/declined quote — only drafts and new
+  // revisions read live catalog pricing.
   const setQuoteStatus = useCallback(
-    async (id, status) => {
+    async (id, status, catalogSnapshot) => {
       const now = new Date().toISOString();
       const stamp =
         status === 'sent' ? { sent_at: now }
         : status === 'accepted' ? { accepted_at: now }
         : status === 'declined' ? { declined_at: now }
         : {};
+      const snapshotPatch = catalogSnapshot ? { catalog_snapshot: catalogSnapshot } : {};
       if (!supabase) {
         writeLocal(readLocalArray().map((p) =>
-          p.id === id ? { ...p, status, ...stamp, updated_at: now } : p
+          p.id === id ? { ...p, status, ...stamp, ...snapshotPatch, updated_at: now } : p
         ));
         return;
       }
       const { error } = await supabase
         .from('saved_projects')
-        .update({ status, ...stamp, updated_at: now })
+        .update({ status, ...stamp, ...snapshotPatch, updated_at: now })
         .eq('id', id);
       if (error) throw error;
       await refresh();
