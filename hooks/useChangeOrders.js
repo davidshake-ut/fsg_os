@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { computeCoTotals } from '@/lib/changeOrders';
+import { logActivity } from '@/lib/activityLog';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -36,22 +37,37 @@ export function useChangeOrders(session, company, user, projectId) {
   const createChangeOrder = useCallback(async ({ title, description = '', line_items = [], schedule_impact_days = 0, quote_id = null }) => {
     if (!supabase || !companyId || !projectId) return;
     const totals = computeCoTotals(line_items);
-    const co_number = changeOrders.reduce((n, co) => Math.max(n, co.co_number), 0) + 1;
-    const { data, error } = await supabase
-      .from('change_orders')
-      .insert({
-        company_id: companyId,
-        project_id: projectId,
-        quote_id,
-        created_by: user?.id ?? null,
-        co_number,
-        title,
-        description: description || null,
-        schedule_impact_days: Number(schedule_impact_days) || 0,
-        ...totals,
-      })
-      .select()
-      .single();
+    // co_number is select-max-then-increment, which races under concurrent
+    // creates. The unique index on (project_id, co_number) turns a lost race
+    // into a 23505 here, which we retry against a freshly refreshed list.
+    let data, error, current = changeOrders;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const co_number = current.reduce((n, co) => Math.max(n, co.co_number), 0) + 1;
+      ({ data, error } = await supabase
+        .from('change_orders')
+        .insert({
+          company_id: companyId,
+          project_id: projectId,
+          quote_id,
+          created_by: user?.id ?? null,
+          co_number,
+          title,
+          description: description || null,
+          schedule_impact_days: Number(schedule_impact_days) || 0,
+          ...totals,
+        })
+        .select()
+        .single());
+      if (!error) break;
+      if (error.code !== '23505') throw error;
+      const { data: latest } = await supabase
+        .from('change_orders')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('co_number', { ascending: true });
+      current = latest ?? current;
+    }
     if (error) throw error;
     await refresh();
     return data;
@@ -75,8 +91,14 @@ export function useChangeOrders(session, company, user, projectId) {
     };
     const { error } = await supabase.from('change_orders').update(body).eq('id', id);
     if (error) throw error;
+    const coTitle = changeOrders.find((c) => c.id === id)?.title ?? 'Change order';
+    await logActivity(supabase, {
+      companyId, actorId: user?.id,
+      verb: `change_order.${status}`, entityType: 'change_order', entityId: id,
+      label: `${coTitle} ${status}`,
+    });
     await refresh();
-  }, [supabase, refresh]);
+  }, [supabase, refresh, changeOrders, companyId, user]);
 
   const deleteChangeOrder = useCallback(async (id) => {
     if (!supabase) return;

@@ -10,7 +10,9 @@ import { currency, percent, marginColor } from '@/lib/format';
 // row overrides its estimate, and the reset arrow returns it to the estimate.
 // This is the project's ONLY labor. Cost/margin columns appear with "Show Cost &
 // Margin" (mirrors the BOM/Services tables).
-export default function LaborTable({ roles, setRoles, showMargin, estimatedHours = {} }) {
+export default function LaborTable({ roles, setRoles, showMargin: showMarginProp, canViewMargin = true, estimatedHours = {} }) {
+  // canViewMargin gates cost/margin regardless of the shared showMargin toggle's state.
+  const showMargin = showMarginProp && canViewMargin;
   const setField = (key, field, value) =>
     setRoles((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
 

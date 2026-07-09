@@ -29,6 +29,7 @@ export default function ProductDatabase({
   onBulkUpdate,
   productLineDiscounts = {},
   canManageCatalog = false,
+  canViewMargin = true,
   teams = null, // super-admin only: [{ id, name }] to enable the team filter
   teamFilter = 'all',
   onTeamFilterChange,
@@ -170,7 +171,7 @@ export default function ProductDatabase({
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportCatalogCSV(allProducts)}>
+          <Button variant="outline" size="sm" onClick={() => exportCatalogCSV(allProducts, { includeCost: canViewMargin })}>
             <Download size={14} /> Export CSV
           </Button>
           {canManageCatalog && (
@@ -217,7 +218,7 @@ export default function ProductDatabase({
               {sortHeader('desc', 'Description')}
               {sortHeader('category', 'Category')}
               <th className="px-4 py-2 text-left font-medium">Product Line</th>
-              <th className="px-4 py-2 text-right font-medium">Cost</th>
+              {canViewMargin && <th className="px-4 py-2 text-right font-medium">Cost</th>}
               <th className="px-4 py-2 text-right font-medium">Price</th>
               <th className="px-4 py-2 text-right font-medium">Actions</th>
             </tr>
@@ -249,7 +250,7 @@ export default function ProductDatabase({
                   <Badge className="border-slate-200 bg-slate-50 text-slate-500">{p.category}</Badge>
                 </td>
                 <td className="px-4 py-2 text-slate-500">{p.product_line || <span className="text-slate-300">—</span>}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.cost)}</td>
+                {canViewMargin && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.cost)}</td>}
                 <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.price)}</td>
                 <td className="px-4 py-2">
                   <div className="flex items-center justify-end gap-1">

@@ -2,7 +2,7 @@
 
 import {
   TrendingUp, Users, FolderKanban, DollarSign, Clock, AlertCircle,
-  FileText, Layers,
+  FileText, Layers, FileCheck, GitPullRequest, Receipt, LifeBuoy, Inbox,
 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
@@ -14,6 +14,27 @@ import { useInvoices } from '@/hooks/useInvoices';
 import { useSupportTickets } from '@/hooks/useSupportTickets';
 import { useProjects } from '@/hooks/useProjects';
 import { useResources } from '@/hooks/useResources';
+import { useActivityLog } from '@/hooks/useActivityLog';
+
+const ACTIVITY_META = {
+  quote:        { icon: FileCheck,      cls: 'bg-blue-50 text-blue-600' },
+  change_order: { icon: GitPullRequest, cls: 'bg-amber-50 text-amber-600' },
+  invoice:      { icon: Receipt,        cls: 'bg-emerald-50 text-emerald-600' },
+  project:      { icon: FolderKanban,   cls: 'bg-violet-50 text-violet-600' },
+  ticket:       { icon: LifeBuoy,       cls: 'bg-red-50 text-red-600' },
+};
+
+function fmtRelative(iso) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 function fmtMoney(n) {
   if (!n) return '$0';
@@ -46,6 +67,7 @@ function DashboardContent() {
   const { tickets,   loading: loadingTickets  } = useSupportTickets(session, company, user);
   const { projects: savedProjects, } = useProjects(session, company, user);
   const { resources, loading: loadingResources } = useResources(session, company, user);
+  const { entries: activity, loading: loadingActivity } = useActivityLog(session, company);
 
   const activeProjects = psaProjects.filter(
     (p) => p.status === 'planning' || p.status === 'active',
@@ -139,16 +161,38 @@ function DashboardContent() {
 
       <Card className="p-5">
         <h2 className="mb-4 text-sm font-semibold text-slate-700">Recent Activity</h2>
-        <div className="space-y-3">
-          {['Project Management', 'CRM', 'Customer Support'].map((mod) => (
-            <div key={mod} className="flex items-center gap-3 rounded-lg bg-slate-50 px-4 py-3">
-              <span className="h-2 w-2 rounded-full bg-slate-300" />
-              <p className="text-sm text-slate-500">
-                <span className="font-medium text-slate-700">{mod}</span> — activity feed coming soon
-              </p>
-            </div>
-          ))}
-        </div>
+        {loadingActivity ? (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-10 animate-pulse rounded-lg bg-slate-50" />
+            ))}
+          </div>
+        ) : activity.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
+            <Inbox size={22} className="text-slate-200" />
+            <p className="text-sm">No activity yet — it'll show up here as quotes, projects, and tickets move.</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {activity.map((a) => {
+              const { icon: Icon, cls } = ACTIVITY_META[a.entity_type] ?? ACTIVITY_META.project;
+              return (
+                <div key={a.id} className="flex items-center gap-3 rounded-lg px-4 py-2.5 hover:bg-slate-50">
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${cls}`}>
+                    <Icon size={14} />
+                  </span>
+                  <p className="min-w-0 flex-1 truncate text-sm text-slate-700">
+                    {a.label}
+                    {a.users?.full_name && (
+                      <span className="text-slate-400"> · {a.users.full_name}</span>
+                    )}
+                  </p>
+                  <span className="shrink-0 text-xs text-slate-400">{fmtRelative(a.created_at)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
     </div>
   );

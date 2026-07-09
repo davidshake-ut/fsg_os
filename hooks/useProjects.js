@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { DEFAULT_INPUTS, DEFAULT_CAMERA_INPUTS, DEFAULT_LABOR_ROLES } from '@/lib/defaults';
+import { logActivity } from '@/lib/activityLog';
 
 // In local mode (no Supabase) projects are persisted to localStorage so the
 // user can still save and reopen projects. Rows use the same column shape as
@@ -75,15 +76,20 @@ export function useProjects(session, company, user) {
   const supabase = getSupabase();
   const localProjects = useSyncExternalStore(subscribeLocal, getLocalSnapshot, getLocalServerSnapshot);
   const [remoteProjects, setRemoteProjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const projects = supabase ? remoteProjects : localProjects;
 
   const refresh = useCallback(async () => {
     if (!supabase) return;
-    const { data } = await supabase
+    setLoading(true);
+    const { data, error } = await supabase
       .from('saved_projects')
       .select('*')
       .order('updated_at', { ascending: false });
-    setRemoteProjects(data || []);
+    setLoadError(error?.message ?? null);
+    if (!error) setRemoteProjects(data ?? []);
+    setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
@@ -234,9 +240,15 @@ export function useProjects(session, company, user) {
         .update({ status, ...stamp, ...snapshotPatch, updated_at: now })
         .eq('id', id);
       if (error) throw error;
+      const quoteName = projects.find((p) => p.id === id)?.project_name ?? 'Quote';
+      await logActivity(supabase, {
+        companyId: company?.id, actorId: user?.id,
+        verb: `quote.${status}`, entityType: 'quote', entityId: id,
+        label: `${quoteName} marked ${status}`,
+      });
       await refresh();
     },
-    [supabase, refresh]
+    [supabase, refresh, projects, company, user]
   );
 
   const deleteProject = useCallback(
@@ -251,5 +263,5 @@ export function useProjects(session, company, user) {
     [supabase, refresh]
   );
 
-  return { projects, refresh, loadProject, saveProject, setQuoteStatus, deleteProject };
+  return { projects, loading, loadError, refresh, loadProject, saveProject, setQuoteStatus, deleteProject };
 }

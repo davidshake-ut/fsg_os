@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getSupportSnapshot, getSupportServerSnapshot, subscribeSupport, writeSupport, newSupportId } from '@/lib/supportLocalStore';
+import { logActivity } from '@/lib/activityLog';
 
 const PAGE_SIZE = 100;
 
@@ -58,6 +59,11 @@ export function useSupportTickets(session, company, user) {
       .select('*, crm_accounts(name)')
       .single();
     if (error) throw error;
+    await logActivity(supabase, {
+      companyId, actorId: userId,
+      verb: 'ticket.created', entityType: 'ticket', entityId: t.id,
+      label: `Ticket opened: ${t.title}`,
+    });
     await refresh();
     return t;
   }, [supabase, companyId, userId, refresh]);

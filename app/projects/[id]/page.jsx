@@ -140,11 +140,12 @@ function ProjectDetail() {
   const { id } = useParams();
   const { session, company, user } = useSession();
   const {
-    project, milestones, tasks, timeEntries, technologies, loading,
+    project, milestones, tasks, timeEntries, technologies, checklistItems, members, loading,
     updateProject,
     createMilestone, updateMilestone, deleteMilestone,
     createTask, updateTask, deleteTask,
     logTime, deleteTimeEntry,
+    createChecklistItem, toggleChecklistItem, deleteChecklistItem,
     createTechnology, updateTechnology, deleteTechnology, applyTemplate,
     batchUpdateMilestones, batchUpdateTasks,
     moveMilestoneToSection, mergeTechnologies,
@@ -205,6 +206,11 @@ function ProjectDetail() {
     onCloneMilestone: cloneMilestone,
     onCloneTask: cloneTask,
     getPalette,
+    members,
+    checklistItems,
+    onCreateChecklistItem: createChecklistItem,
+    onToggleChecklistItem: toggleChecklistItem,
+    onDeleteChecklistItem: deleteChecklistItem,
   };
 
   return (

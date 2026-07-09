@@ -15,6 +15,7 @@ export default function CameraSystems({
   setPriceOverrides,
   editPrices,
   setEditPrices,
+  canViewMargin = true,
   onAddCustom,
   onUpdateCustom,
   onRemoveCustom,
@@ -42,6 +43,7 @@ export default function CameraSystems({
             setPriceOverrides={setPriceOverrides}
             editPrices={editPrices}
             setEditPrices={setEditPrices}
+            canViewMargin={canViewMargin}
             onAddCustom={onAddCustom}
             onUpdateCustom={onUpdateCustom}
             onRemoveCustom={onRemoveCustom}

@@ -27,6 +27,7 @@ import {
   Plus,
   Trash2,
   User,
+  UserCircle2,
   Calendar,
   ArrowRight,
   Copy,
@@ -194,6 +195,91 @@ function MoveMenu({ label, items, onPick }) {
   );
 }
 
+// ── TaskChecklist ────────────────────────────────────────────────────────────
+function TaskChecklist({ items, onAdd, onToggle, onDelete }) {
+  return (
+    <div className="space-y-1">
+      {items.map((item) => (
+        <div key={item.id} className="group/ci flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onToggle(item.id, !item.is_done)}
+            className="shrink-0 text-slate-300 hover:text-blue-500"
+          >
+            {item.is_done ? <CheckCircle2 size={13} className="text-green-500" /> : <Circle size={13} />}
+          </button>
+          <span className={cn('flex-1 text-xs', item.is_done ? 'text-slate-400 line-through' : 'text-slate-600')}>
+            {item.label}
+          </span>
+          <button
+            type="button"
+            onClick={() => onDelete(item.id)}
+            className="shrink-0 text-slate-200 opacity-0 transition-opacity hover:text-red-500 group-hover/ci:opacity-100"
+          >
+            <Trash2 size={11} />
+          </button>
+        </div>
+      ))}
+      <AddInline placeholder="Add checklist item" onAdd={onAdd} />
+    </div>
+  );
+}
+
+// ── AssigneeMenu ─────────────────────────────────────────────────────────────
+function initials(name, email) {
+  const n = (name || '').trim();
+  if (n) return n.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  return (email || '?')[0].toUpperCase();
+}
+
+function AssigneeMenu({ members, assigneeId, onAssign }) {
+  const [open, setOpen] = useState(false);
+  const assignee = (members ?? []).find((m) => m.id === assigneeId);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        title={assignee ? `Assigned to ${assignee.full_name || assignee.email}` : 'Unassigned — click to assign'}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold transition-colors',
+          assignee
+            ? 'bg-blue-100 text-blue-700'
+            : 'border border-dashed border-slate-300 text-slate-300 hover:border-blue-300 hover:text-blue-400'
+        )}
+      >
+        {assignee ? initials(assignee.full_name, assignee.email) : <UserCircle2 size={12} />}
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full z-30 mt-1 min-w-[170px] rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+          onMouseLeave={() => setOpen(false)}
+        >
+          <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-slate-400">Assignee</p>
+          <button
+            type="button"
+            onClick={() => { onAssign(null); setOpen(false); }}
+            className="w-full truncate rounded-lg px-2 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-50"
+          >
+            Unassigned
+          </button>
+          {(members ?? []).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => { onAssign(m.id); setOpen(false); }}
+              className="w-full truncate rounded-lg px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+            >
+              {m.full_name || m.email}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── CloneMenu ─────────────────────────────────────────────────────────────────
 // Dropdown that offers "Clone here" + optional "Clone to [destination]" entries.
 function CloneMenu({ label, onCloneHere, items = [], onCloneTo }) {
@@ -245,7 +331,10 @@ function CloneMenu({ label, onCloneHere, items = [], onCloneTo }) {
 }
 
 // ── SortableTaskRow ───────────────────────────────────────────────────────────
-function SortableTaskRow({ task, allProjectMilestones, onUpdate, onDelete, onMoveTask, onCloneTask, getPalette }) {
+function SortableTaskRow({
+  task, allProjectMilestones, onUpdate, onDelete, onMoveTask, onCloneTask, getPalette, members,
+  checklistItems, onAddChecklistItem, onToggleChecklistItem, onDeleteChecklistItem,
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: 'task', milestoneId: task.milestone_id },
@@ -253,7 +342,8 @@ function SortableTaskRow({ task, allProjectMilestones, onUpdate, onDelete, onMov
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.35 : 1 };
 
   const [expanded, setExpanded] = useState(false);
-  const hasExtra = Boolean(task.description || task.role);
+  const taskChecklist = (checklistItems ?? []).filter((c) => c.task_id === task.id);
+  const checklistDone = taskChecklist.filter((c) => c.is_done).length;
   const otherMilestones = (allProjectMilestones ?? []).filter((m) => m.id !== task.milestone_id);
 
   return (
@@ -299,15 +389,24 @@ function SortableTaskRow({ task, allProjectMilestones, onUpdate, onDelete, onMov
             {task.estimated_hours != null && (
               <span className="shrink-0 text-[10px] text-slate-400">{task.estimated_hours}h</span>
             )}
-            {hasExtra && (
-              <button
-                type="button"
-                onClick={() => setExpanded((v) => !v)}
-                className="ml-auto text-slate-300 transition-colors hover:text-slate-500"
-              >
-                {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-              </button>
+            {taskChecklist.length > 0 && (
+              <span className={cn('shrink-0 text-[10px] tabular-nums',
+                checklistDone === taskChecklist.length ? 'text-green-500' : 'text-slate-400')}>
+                ☑ {checklistDone}/{taskChecklist.length}
+              </span>
             )}
+            <AssigneeMenu
+              members={members}
+              assigneeId={task.assignee_id}
+              onAssign={(id) => onUpdate(task.id, { assignee_id: id })}
+            />
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="ml-auto text-slate-300 transition-colors hover:text-slate-500"
+            >
+              {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </button>
           </div>
 
           {/* Dates */}
@@ -327,10 +426,24 @@ function SortableTaskRow({ task, allProjectMilestones, onUpdate, onDelete, onMov
             />
           </div>
 
-          {/* Expanded description */}
-          {expanded && task.description && (
-            <div className="mt-1.5 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600">
-              <pre className="whitespace-pre-wrap font-sans">{task.description}</pre>
+          {/* Expanded description + checklist */}
+          {expanded && (
+            <div className="mt-1.5 space-y-2">
+              {task.description && (
+                <div className="rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600">
+                  <pre className="whitespace-pre-wrap font-sans">{task.description}</pre>
+                </div>
+              )}
+              {onAddChecklistItem && (
+                <div className="rounded-lg bg-slate-50 p-2.5">
+                  <TaskChecklist
+                    items={taskChecklist}
+                    onAdd={(label) => onAddChecklistItem(task.id, label)}
+                    onToggle={onToggleChecklistItem}
+                    onDelete={onDeleteChecklistItem}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -395,6 +508,11 @@ function SortableMilestoneBlock({
   onCloneMilestone,
   onCloneTask,
   getPalette,
+  members,
+  checklistItems,
+  onAddChecklistItem,
+  onToggleChecklistItem,
+  onDeleteChecklistItem,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: milestone.id,
@@ -502,6 +620,11 @@ function SortableMilestoneBlock({
                 onMoveTask={onMoveTask}
                 onCloneTask={onCloneTask}
                 getPalette={getPalette}
+                members={members}
+                checklistItems={checklistItems}
+                onAddChecklistItem={onAddChecklistItem}
+                onToggleChecklistItem={onToggleChecklistItem}
+                onDeleteChecklistItem={onDeleteChecklistItem}
               />
             ))}
           </SortableContext>
@@ -540,6 +663,11 @@ export default function TaskSection({
   onCloneMilestone,
   onCloneTask,
   getPalette,
+  members,
+  checklistItems,
+  onCreateChecklistItem,
+  onToggleChecklistItem,
+  onDeleteChecklistItem,
 }) {
   const [activeId, setActiveId] = useState(null);
   const [activeType, setActiveType] = useState(null);
@@ -651,6 +779,11 @@ export default function TaskSection({
                 onCloneMilestone={onCloneMilestone}
                 onCloneTask={onCloneTask}
                 getPalette={getPalette}
+                members={members}
+                checklistItems={checklistItems}
+                onAddChecklistItem={onCreateChecklistItem}
+                onToggleChecklistItem={onToggleChecklistItem}
+                onDeleteChecklistItem={onDeleteChecklistItem}
               />
             );
           })}
@@ -674,6 +807,11 @@ export default function TaskSection({
                   onMoveTask={handleMoveTask}
                   onCloneTask={onCloneTask}
                   getPalette={getPalette}
+                  members={members}
+                  checklistItems={checklistItems}
+                  onAddChecklistItem={onCreateChecklistItem}
+                  onToggleChecklistItem={onToggleChecklistItem}
+                  onDeleteChecklistItem={onDeleteChecklistItem}
                 />
               ))}
             </SortableContext>

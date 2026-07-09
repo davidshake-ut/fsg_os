@@ -3,14 +3,16 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Building2, Phone, Globe, MapPin, FileText, Loader2, AlertCircle, Pencil, Check, X } from 'lucide-react';
+import { ArrowLeft, Building2, Phone, Globe, MapPin, FileText, Loader2, AlertCircle, Pencil, Check, X, FolderKanban, LifeBuoy, Receipt } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useCRMAccount } from '@/hooks/useCRMAccount';
 import ContactSection from '@/components/crm/ContactSection';
+import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import { Select, Button } from '@/components/ui/primitives';
 import AppToast from '@/components/ui/AppToast';
+import { currency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const STATUS_STYLES = {
@@ -25,7 +27,56 @@ const TYPE_LABELS = {
   healthcare: 'Healthcare', other: 'Other',
 };
 
-const TABS = [{ id: 'contacts', label: 'Contacts' }, { id: 'overview', label: 'Overview' }];
+const PSA_STATUS_STYLES = {
+  planning: 'bg-slate-100 text-slate-600 border-slate-200',
+  active: 'bg-blue-50 text-blue-700 border-blue-200',
+  on_hold: 'bg-amber-50 text-amber-700 border-amber-200',
+  complete: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  cancelled: 'bg-red-50 text-red-700 border-red-200',
+};
+
+const TICKET_STATUS_STYLES = {
+  open: 'bg-blue-50 text-blue-700 border-blue-200',
+  in_progress: 'bg-amber-50 text-amber-700 border-amber-200',
+  waiting: 'bg-violet-50 text-violet-700 border-violet-200',
+  resolved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  closed: 'bg-slate-100 text-slate-500 border-slate-200',
+};
+
+const INVOICE_STATUS_STYLES = {
+  draft: 'bg-slate-100 text-slate-600 border-slate-200',
+  sent: 'bg-blue-50 text-blue-700 border-blue-200',
+  paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  overdue: 'bg-red-50 text-red-700 border-red-200',
+  void: 'bg-slate-100 text-slate-400 border-slate-200',
+};
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function Pill({ label, cls }) {
+  return <span className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize', cls)}>{label?.replace(/_/g, ' ')}</span>;
+}
+
+function EmptyRow({ icon: Icon, message }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
+      <Icon size={24} className="text-slate-200" />
+      <p className="text-sm">{message}</p>
+    </div>
+  );
+}
+
+const TABS = [
+  { id: 'contacts', label: 'Contacts' },
+  { id: 'quotes', label: 'Quotes' },
+  { id: 'projects', label: 'Projects' },
+  { id: 'tickets', label: 'Tickets' },
+  { id: 'invoices', label: 'Invoices' },
+  { id: 'overview', label: 'Overview' },
+];
 
 function EditableField({ label, value, onSave, type = 'text', placeholder }) {
   const [editing, setEditing] = useState(false);
@@ -113,8 +164,9 @@ function EditableTextarea({ label, value, onSave, placeholder }) {
 function AccountDetail() {
   const { id } = useParams();
   const { session } = useSession();
-  const { account, contacts, loading, updateAccount, createContact, deleteContact } = useCRMAccount(id, session);
+  const { account, contacts, quotes, projects, tickets, invoices, loading, updateAccount, createContact, deleteContact } = useCRMAccount(id, session);
   const [tab, setTab] = useState('contacts');
+  const TAB_COUNTS = { contacts: contacts.length, quotes: quotes.length, projects: projects.length, tickets: tickets.length, invoices: invoices.length };
   const [toast, setToast] = useState(null);
   const save = async (patch) => { await updateAccount(patch); setToast({ type: 'success', message: 'Saved.' }); };
 
@@ -152,12 +204,20 @@ function AccountDetail() {
             <option value="inactive">Inactive</option>
           </Select>
         </div>
-        <div className="mt-4 flex gap-1">
+        <div className="mt-4 flex flex-wrap gap-1">
           {TABS.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={cn('rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+              className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
                 tab === t.id ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-              )}>{t.label}</button>
+              )}>
+              {t.label}
+              {TAB_COUNTS[t.id] > 0 && (
+                <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                  tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500')}>
+                  {TAB_COUNTS[t.id]}
+                </span>
+              )}
+            </button>
           ))}
         </div>
       </div>
@@ -166,6 +226,80 @@ function AccountDetail() {
         {tab === 'contacts' && (
           <ContactSection contacts={contacts} onAdd={createContact} onDelete={deleteContact} />
         )}
+
+        {tab === 'quotes' && (
+          <div className="max-w-2xl rounded-xl border border-slate-200 bg-white">
+            {quotes.length === 0 ? (
+              <EmptyRow icon={FolderKanban} message="No quotes for this account yet." />
+            ) : quotes.map((q) => (
+              <Link key={q.id} href={`/builder?project=${q.id}`}
+                className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">{q.project_name}</p>
+                  <p className="text-xs text-slate-400">Updated {fmtDate(q.updated_at)}</p>
+                </div>
+                <QuoteStatusBadge status={q.status} version={q.version} />
+                <p className="w-24 shrink-0 text-right text-sm font-medium text-slate-700 tabular-nums">{currency(q.total_price)}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {tab === 'projects' && (
+          <div className="max-w-2xl rounded-xl border border-slate-200 bg-white">
+            {projects.length === 0 ? (
+              <EmptyRow icon={FolderKanban} message="No projects for this account yet." />
+            ) : projects.map((p) => (
+              <Link key={p.id} href={`/projects/${p.id}`}
+                className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">{p.name}</p>
+                  <p className="text-xs text-slate-400">
+                    {p.start_date ? fmtDate(p.start_date) : 'No start date'}{p.end_date ? ` – ${fmtDate(p.end_date)}` : ''}
+                  </p>
+                </div>
+                <Pill label={p.status} cls={PSA_STATUS_STYLES[p.status] ?? PSA_STATUS_STYLES.planning} />
+                {p.budget != null && <p className="w-24 shrink-0 text-right text-sm font-medium text-slate-700 tabular-nums">{currency(p.budget)}</p>}
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {tab === 'tickets' && (
+          <div className="max-w-2xl rounded-xl border border-slate-200 bg-white">
+            {tickets.length === 0 ? (
+              <EmptyRow icon={LifeBuoy} message="No support tickets for this account." />
+            ) : tickets.map((t) => (
+              <Link key={t.id} href={`/support/${t.id}`}
+                className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">{t.title}</p>
+                  <p className="text-xs capitalize text-slate-400">{t.priority} priority · {fmtDate(t.created_at)}</p>
+                </div>
+                <Pill label={t.status} cls={TICKET_STATUS_STYLES[t.status] ?? TICKET_STATUS_STYLES.open} />
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {tab === 'invoices' && (
+          <div className="max-w-2xl rounded-xl border border-slate-200 bg-white">
+            {invoices.length === 0 ? (
+              <EmptyRow icon={Receipt} message="No invoices for this account yet." />
+            ) : invoices.map((inv) => (
+              <Link key={inv.id} href="/invoices"
+                className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">{inv.title}</p>
+                  <p className="text-xs text-slate-400">{inv.invoice_number} · {fmtDate(inv.invoice_date)}</p>
+                </div>
+                <Pill label={inv.status} cls={INVOICE_STATUS_STYLES[inv.status] ?? INVOICE_STATUS_STYLES.draft} />
+                <p className="w-24 shrink-0 text-right text-sm font-medium text-slate-700 tabular-nums">{currency(inv.total)}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+
         {tab === 'overview' && (
           <div className="max-w-lg rounded-xl border border-slate-200 bg-white p-5 space-y-4">
             <EditableField label="Phone" value={account.phone} onSave={(v) => save({ phone: v })} type="tel" placeholder="(555) 000-0000" />

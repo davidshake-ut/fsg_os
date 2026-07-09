@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import AppToast from '@/components/ui/AppToast';
+import ErrorBanner from '@/components/ui/ErrorBanner';
 import { calculateBOM } from '@/lib/calculateBOM';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
@@ -121,6 +122,9 @@ function Calculator() {
   const [activeTab, setActiveTab] = useState('hardware');
   const [showMargin, setShowMargin] = useState(false);
   const [editPrices, setEditPrices] = useState(false);
+  // Cost/margin/profit are internal figures — a plain 'user' role never sees
+  // them (local mode has no roles, so it's always the single operator).
+  const canViewMargin = configured ? isAdmin : true;
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [savedSnapshot, setSavedSnapshot] = useState(null);
   const [modal, setModal] = useState({ open: false, product: null });
@@ -163,7 +167,7 @@ function Calculator() {
     session,
     { teamFilter: catalogTeamId }
   );
-  const { projects, loadProject, saveProject, setQuoteStatus, deleteProject } = useProjects(session, company, user);
+  const { projects, loadError: projectsLoadError, refresh: refreshProjects, loadProject, saveProject, setQuoteStatus, deleteProject } = useProjects(session, company, user);
   const { projects: psaProjects, createProject: createPSAProject } = usePSAProjects(session, company, user);
 
   // A locked quote (sent/accepted/declined) freezes its own catalog snapshot
@@ -480,6 +484,12 @@ function Calculator() {
       className="flex flex-col"
       style={{ '--brand': branding.primaryColor, '--brand-text': brandText }}
     >
+      {projectsLoadError && (
+        <div className="px-4 pt-3 sm:px-6">
+          <ErrorBanner error={projectsLoadError} onRetry={refreshProjects} />
+        </div>
+      )}
+
       {/* Compact builder action bar */}
       <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
@@ -592,6 +602,7 @@ function Calculator() {
             cameraBom={cameraBom}
             labor={labor}
             term={term}
+            canViewMargin={canViewMargin}
           />
 
           {tab === 'hardware' && (
@@ -603,6 +614,7 @@ function Calculator() {
               setPriceOverrides={setPriceOverrides}
               editPrices={editPrices}
               setEditPrices={setEditPrices}
+              canViewMargin={canViewMargin}
               onAddCustom={(seg) => addCustomLine('wifi', seg)}
               onUpdateCustom={updateCustomLine}
               onRemoveCustom={removeCustomLine}
@@ -610,15 +622,18 @@ function Calculator() {
           )}
           {tab === 'services' && (
             <div className="space-y-4">
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowMargin((s) => !s)}>
-                  {showMargin ? 'Hide Cost & Margin' : 'Show Cost & Margin'}
-                </Button>
-              </div>
+              {canViewMargin && (
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowMargin((s) => !s)}>
+                    {showMargin ? 'Hide Cost & Margin' : 'Show Cost & Margin'}
+                  </Button>
+                </div>
+              )}
               <LaborTable
                 roles={laborRoles}
                 setRoles={setLaborRoles}
                 showMargin={showMargin}
+                canViewMargin={canViewMargin}
                 estimatedHours={estimatedHours}
               />
               <p className="px-1 text-xs italic text-slate-400">
@@ -631,6 +646,7 @@ function Calculator() {
             <CostSummary
               sections={exportSections()}
               scope={buildScopeOfWork({ inputs, cameraInputs, wifiBom: bom, cameraBom, term })}
+              canViewMargin={canViewMargin}
             />
           )}
           {tab === 'cameras' && (
@@ -642,6 +658,7 @@ function Calculator() {
               setPriceOverrides={setPriceOverrides}
               editPrices={editPrices}
               setEditPrices={setEditPrices}
+              canViewMargin={canViewMargin}
               onAddCustom={(seg) => addCustomLine('camera', seg)}
               onUpdateCustom={updateCustomLine}
               onRemoveCustom={removeCustomLine}
@@ -651,6 +668,7 @@ function Calculator() {
             <ProductDatabase
               allProducts={allProducts}
               canManageCatalog={canManageCatalog}
+              canViewMargin={canViewMargin}
               teams={isSuperAdmin ? teams : null}
               teamFilter={catalogTeamId}
               onTeamFilterChange={setCatalogTeamId}

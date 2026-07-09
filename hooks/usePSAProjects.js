@@ -9,6 +9,7 @@ import {
   writePsa,
   newPsaId,
 } from '@/lib/psaLocalStore';
+import { logActivity } from '@/lib/activityLog';
 
 // Project list CRUD. Returns all projects for the current tenant.
 export function usePSAProjects(session, company, user) {
@@ -85,6 +86,11 @@ export function usePSAProjects(session, company, user) {
           }))
         );
       }
+      await logActivity(supabase, {
+        companyId: company?.id, actorId: user?.id,
+        verb: 'project.created', entityType: 'project', entityId: proj.id,
+        label: `Project created: ${proj.name}`,
+      });
       await refresh();
       return proj;
     },

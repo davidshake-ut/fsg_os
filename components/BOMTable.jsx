@@ -56,6 +56,7 @@ export default function BOMTable({
   setPriceOverrides,
   editPrices = false,
   setEditPrices,
+  canViewMargin = true,
   onAddCustom,
   onUpdateCustom,
   onRemoveCustom,
@@ -67,9 +68,11 @@ export default function BOMTable({
   const groups = useMemo(() => groupBySegment(bom.items), [bom.items]);
   const segmentsPresent = useMemo(() => groups.map(([seg]) => seg), [groups]);
 
+  // Editing sell price doesn't require seeing cost — a non-admin can still
+  // discount a quote. canViewMargin only gates the cost/margin columns
+  // themselves, regardless of showMargin/editPrices state.
   const editable = Boolean(setPriceOverrides);
-  // Editing cost requires the cost columns to be visible.
-  const showCost = showMargin || (editable && editPrices);
+  const showCost = canViewMargin && (showMargin || (editable && editPrices));
 
   const toggleCollapse = (seg) =>
     setCollapsed((prev) => {
@@ -178,7 +181,7 @@ export default function BOMTable({
             </button>
           )}
 
-          {!editPrices && (
+          {!editPrices && canViewMargin && (
             <Button variant="outline" size="sm" onClick={() => setShowMargin((s) => !s)}>
               {showMargin ? 'Hide Cost & Margin' : 'Show Cost & Margin'}
             </Button>
@@ -382,17 +385,19 @@ export default function BOMTable({
                                   className={`${CUSTOM_INPUT} w-16 text-right tabular-nums`}
                                 />
                               </label>
-                              <label className="flex items-center gap-1 text-xs text-slate-500">
-                                Cost
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={r.unitCost}
-                                  onChange={(e) => onUpdateCustom(r.id, 'cost', Number(e.target.value))}
-                                  className={`${CUSTOM_INPUT} w-24 text-right tabular-nums`}
-                                />
-                              </label>
+                              {canViewMargin && (
+                                <label className="flex items-center gap-1 text-xs text-slate-500">
+                                  Cost
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={r.unitCost}
+                                    onChange={(e) => onUpdateCustom(r.id, 'cost', Number(e.target.value))}
+                                    className={`${CUSTOM_INPUT} w-24 text-right tabular-nums`}
+                                  />
+                                </label>
+                              )}
                               <label className="flex items-center gap-1 text-xs text-slate-500">
                                 Price
                                 <input

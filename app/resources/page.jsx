@@ -166,7 +166,7 @@ function ResourceCard({ resource: r, onClick, onDelete, onMove, categories }) {
   return (
     <div
       className="group relative flex cursor-pointer flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-blue-300 hover:shadow-sm"
-      onClick={hasFile ? onClick : undefined}
+      onClick={onClick}
     >
       <div className="flex items-start gap-3">
         <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', bg)}>
@@ -237,7 +237,7 @@ function ResourceRow({ resource: r, onClick, onDelete, onMove, categories }) {
 
   return (
     <div className="group relative flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-2.5 transition-colors hover:bg-slate-50 last:border-b-0"
-      onClick={r.file_path ? onClick : undefined}>
+      onClick={onClick}>
       <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', bg)}>
         <Icon size={14} className={cls} />
       </div>
@@ -334,16 +334,49 @@ function SearchResultRow({ result: r, query, active, onClick }) {
   );
 }
 
-// ── Document viewer drawer ────────────────────────────────────────────────
+// ── Freeform content_text renderer (plain text; blank-line paragraphs, "- "
+// lines become a bullet list, short lines ending in ":" become sub-headings).
+function ResourceContentText({ text }) {
+  const blocks = text.split(/\n{2,}/).filter(Boolean);
+  return (
+    <div className="space-y-3 text-sm leading-relaxed text-slate-700">
+      {blocks.map((block, i) => {
+        const lines = block.split('\n').filter(Boolean);
+        const isList = lines.length > 1 && lines.every((l) => l.trim().startsWith('- '));
+        if (isList) {
+          return (
+            <ul key={i} className="list-disc space-y-1 pl-5">
+              {lines.map((l, j) => <li key={j}>{l.trim().replace(/^- /, '')}</li>)}
+            </ul>
+          );
+        }
+        if (lines.length === 1 && lines[0].trim().endsWith(':') && lines[0].length < 60) {
+          return <p key={i} className="pt-1 text-sm font-semibold text-slate-800">{lines[0]}</p>;
+        }
+        return <p key={i}>{block}</p>;
+      })}
+    </div>
+  );
+}
+
+// ── Resource detail drawer ────────────────────────────────────────────────
+// Shows full metadata (category, type, description) plus whichever content
+// the resource actually has: an uploaded-file preview, freeform content_text,
+// or an external link — instead of only rendering when a file is attached.
 function DocumentViewer({ resource: r, onClose, getSignedUrl, width }) {
   const [url,         setUrl]         = useState(null);
   const [content,     setContent]     = useState(null);
   const [loading,     setLoading]     = useState(true);
   const [signedUrl,   setSignedUrl]   = useState(null);
 
+  const hasFile = Boolean(r?.file_path);
+  const hasUrl  = Boolean(r?.url);
+
   useEffect(() => {
     if (!r) return;
-    setUrl(null); setContent(null); setSignedUrl(null); setLoading(true);
+    setUrl(null); setContent(null); setSignedUrl(null);
+    if (!hasFile) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       const signed = await getSignedUrl(r.file_path);
       if (!signed) { setLoading(false); return; }
@@ -358,7 +391,7 @@ function DocumentViewer({ resource: r, onClose, getSignedUrl, width }) {
       }
       setLoading(false);
     })();
-  }, [r?.id]);
+  }, [r?.id, hasFile]);
 
   const handleDownload = async () => {
     if (!signedUrl) return;
@@ -371,17 +404,34 @@ function DocumentViewer({ resource: r, onClose, getSignedUrl, width }) {
   };
 
   if (!r) return null;
+  const { icon: Icon, cls, bg } = primaryMeta(r);
+
   return (
     <div className="flex shrink-0 flex-col border-l border-slate-200 bg-white" style={{ width }}>
-      <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
-        <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', fileMeta(r.file_type).bg)}>
-          {(() => { const { icon: Icon, cls } = fileMeta(r.file_type); return <Icon size={14} className={cls} />; })()}
+      <div className="flex items-start gap-2.5 border-b border-slate-200 px-4 py-3">
+        <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', bg)}>
+          <Icon size={16} className={cls} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-800">{r.title}</p>
-          <p className="text-[10px] text-slate-400">{fmtDate(r.created_at)} · {fmtSize(r.file_size)}</p>
+          <p className="text-sm font-semibold text-slate-800">{r.title}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {r.category && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">{r.category}</span>}
+            <ResourceTypeBadge type={r.type} />
+            {hasFile && <FileTypeBadge fileType={r.file_type} />}
+          </div>
+          <p className="mt-1 text-[10px] text-slate-400">
+            {fmtDate(r.created_at)}
+            {r.updated_at && r.updated_at !== r.created_at ? ` · updated ${fmtDate(r.updated_at)}` : ''}
+            {hasFile && r.file_size ? ` · ${fmtSize(r.file_size)}` : ''}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {hasUrl && (
+            <a href={r.url} target="_blank" rel="noopener noreferrer" title="Open link"
+              className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600">
+              <ExternalLink size={14} />
+            </a>
+          )}
           {signedUrl && (
             <button type="button" onClick={handleDownload} title="Download"
               className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
@@ -394,20 +444,25 @@ function DocumentViewer({ resource: r, onClose, getSignedUrl, width }) {
           </button>
         </div>
       </div>
+
+      {r.description && (
+        <p className="shrink-0 border-b border-slate-100 px-4 py-2.5 text-xs leading-relaxed text-slate-500">{r.description}</p>
+      )}
+
       <div className="flex-1 overflow-hidden">
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 size={20} className="animate-spin text-slate-300" />
           </div>
-        ) : r.file_type === 'pdf' && url ? (
+        ) : hasFile && r.file_type === 'pdf' && url ? (
           <iframe src={url} className="h-full w-full border-0" title={r.title} />
-        ) : r.file_type === 'html' && content != null ? (
+        ) : hasFile && r.file_type === 'html' && content != null ? (
           <iframe srcDoc={content} sandbox="allow-same-origin allow-popups" className="h-full w-full border-0" title={r.title} />
-        ) : content != null ? (
+        ) : hasFile && content != null ? (
           <div className="h-full overflow-y-auto p-5">
             <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-700">{content}</pre>
           </div>
-        ) : url ? (
+        ) : hasFile && url ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
             <File size={32} className="text-slate-200" />
             <p className="text-sm">Preview not available.</p>
@@ -416,8 +471,21 @@ function DocumentViewer({ resource: r, onClose, getSignedUrl, width }) {
               <Download size={13} /> Download to view
             </button>
           </div>
+        ) : r.content_text ? (
+          <div className="h-full overflow-y-auto p-5">
+            <ResourceContentText text={r.content_text} />
+          </div>
+        ) : hasUrl ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-slate-400">
+            <Link2 size={28} className="text-slate-200" />
+            <p className="break-all text-xs text-slate-400">{r.url}</p>
+            <a href={r.url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-blue-600 hover:border-blue-300 hover:bg-blue-50">
+              <ExternalLink size={13} /> Open Link
+            </a>
+          </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-slate-300">No file attached</div>
+          <div className="flex h-full items-center justify-center text-sm text-slate-300">No additional details yet</div>
         )}
       </div>
     </div>
@@ -946,8 +1014,7 @@ function ResourcesContent() {
                       <SearchResultRow key={r.id} result={r} query={searchQuery} active={i === hoveredResult}
                         onClick={() => {
                           setHoveredResult(i);
-                          if (r.file_path) setSelectedItem(resources.find((x) => x.id === r.id) ?? r);
-                          else if (r.url) window.open(r.url, '_blank', 'noopener');
+                          setSelectedItem(resources.find((x) => x.id === r.id) ?? r);
                         }} />
                     ))}
                   </>
@@ -1008,7 +1075,7 @@ function ResourcesContent() {
           </div>
 
           {/* Resize handle + viewer */}
-          {selectedItem?.file_path && (
+          {selectedItem && (
             <>
               <div onMouseDown={startResize}
                 className="group relative w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-blue-400">

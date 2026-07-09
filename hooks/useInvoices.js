@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
+import { logActivity } from '@/lib/activityLog';
 
 const PAGE_SIZE = 100;
 
@@ -65,8 +66,16 @@ export function useInvoices(session, company, user) {
       .update({ ...data, updated_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
+    if (data.status === 'paid') {
+      const inv = invoices.find((i) => i.id === id);
+      await logActivity(supabase, {
+        companyId, actorId: user?.id,
+        verb: 'invoice.paid', entityType: 'invoice', entityId: id,
+        label: `Invoice ${inv?.invoice_number ?? ''} paid`.trim(),
+      });
+    }
     await refresh();
-  }, [supabase, refresh]);
+  }, [supabase, companyId, user, invoices, refresh]);
 
   const deleteInvoice = useCallback(async (id) => {
     if (!supabase) return;

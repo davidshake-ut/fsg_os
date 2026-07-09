@@ -14,8 +14,12 @@ function marginOf(cost, price) {
 //   view 'wifi'    → Wi-Fi metrics
 //   view 'cameras' → camera metrics
 //   view 'both'    → combined hardware + camera + labor (Services / Summary / etc.)
-export default function SummaryCards({ view = 'wifi', bom, cameraBom, labor = EMPTY_LABOR, term }) {
-  const cards = buildCards(view, { bom, cameraBom, labor, term });
+// canViewMargin gates cost/margin/profit — a plain 'user' role sees sell
+// price only, no "Cost:" sub-label and no Gross Margin card.
+export default function SummaryCards({ view = 'wifi', bom, cameraBom, labor = EMPTY_LABOR, term, canViewMargin = true }) {
+  const cards = buildCards(view, { bom, cameraBom, labor, term }).filter(
+    (c) => canViewMargin || !c.marginOnly
+  ).map((c) => (canViewMargin ? c : { ...c, sub: c.subNoMargin ?? c.sub }));
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -32,7 +36,7 @@ export default function SummaryCards({ view = 'wifi', bom, cameraBom, labor = EM
             <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-slate-900">
               {c.value}
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">{c.sub}</p>
+            {c.sub && <p className="mt-0.5 text-xs text-slate-500">{c.sub}</p>}
           </Card>
         );
       })}
@@ -56,6 +60,7 @@ function buildCards(view, { bom, cameraBom, labor, term }) {
         label: 'Camera Sell Price',
         value: currency(cameraBom.grandTotalPrice),
         sub: `Cost: ${currency(cameraBom.grandTotalCost)}`,
+        subNoMargin: '',
         icon: DollarSign,
         iconClass: 'bg-emerald-50 text-emerald-600',
       },
@@ -66,6 +71,7 @@ function buildCards(view, { bom, cameraBom, labor, term }) {
         icon: TrendingUp,
         iconClass: 'bg-violet-50 text-violet-600',
         tone: marginBg(cameraBom.overallMargin),
+        marginOnly: true,
       },
       {
         label: 'Recorders',
@@ -93,6 +99,7 @@ function buildCards(view, { bom, cameraBom, labor, term }) {
         label: 'Total Sell Price',
         value: currency(price),
         sub: `Cost: ${currency(cost)}`,
+        subNoMargin: '',
         icon: DollarSign,
         iconClass: 'bg-emerald-50 text-emerald-600',
       },
@@ -103,6 +110,7 @@ function buildCards(view, { bom, cameraBom, labor, term }) {
         icon: TrendingUp,
         iconClass: 'bg-violet-50 text-violet-600',
         tone: marginBg(marginOf(cost, price)),
+        marginOnly: true,
       },
       {
         label: 'Professional Labor',
@@ -129,6 +137,7 @@ function buildCards(view, { bom, cameraBom, labor, term }) {
       label: 'Wi-Fi Sell Price',
       value: currency(bom.grandTotalPrice),
       sub: `Cost: ${currency(bom.grandTotalCost)}`,
+      subNoMargin: '',
       icon: DollarSign,
       iconClass: 'bg-emerald-50 text-emerald-600',
     },
@@ -139,6 +148,7 @@ function buildCards(view, { bom, cameraBom, labor, term }) {
       icon: TrendingUp,
       iconClass: 'bg-violet-50 text-violet-600',
       tone: marginBg(bom.overallMargin),
+      marginOnly: true,
     },
     {
       label: 'IDF Switches',

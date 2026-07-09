@@ -96,31 +96,37 @@ export async function POST(request) {
   if (!projectOk) return json({ error: 'Project not found' }, 400);
   if (!accountOk) return json({ error: 'Account not found' }, 400);
 
-  const invoice_number = await nextInvoiceNumber(svc, companyId);
-
-  const { data: inv, error } = await svc
-    .from('invoices')
-    .insert({
-      company_id: companyId,
-      created_by: caller.id,
-      invoice_number,
-      title: title.slice(0, 300),
-      status,
-      quote_id: body.quote_id ?? null,
-      project_id: body.project_id ?? null,
-      crm_account_id: body.crm_account_id ?? null,
-      customer_name: body.customer_name ? String(body.customer_name).slice(0, 300) : null,
-      invoice_date: body.invoice_date ?? undefined,
-      due_date: body.due_date ?? null,
-      notes: body.notes ? String(body.notes).slice(0, 5000) : null,
-      line_items: totals.line_items,
-      tax_rate: totals.tax_rate,
-      subtotal: totals.subtotal,
-      tax_amount: totals.tax_amount,
-      total: totals.total,
-    })
-    .select()
-    .single();
+  // invoice_number is select-max-then-increment, which races under concurrent
+  // creates. The unique index on (company_id, invoice_number) turns a lost
+  // race into a 23505 here, which we retry with a freshly computed number.
+  let inv, error;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const invoice_number = await nextInvoiceNumber(svc, companyId);
+    ({ data: inv, error } = await svc
+      .from('invoices')
+      .insert({
+        company_id: companyId,
+        created_by: caller.id,
+        invoice_number,
+        title: title.slice(0, 300),
+        status,
+        quote_id: body.quote_id ?? null,
+        project_id: body.project_id ?? null,
+        crm_account_id: body.crm_account_id ?? null,
+        customer_name: body.customer_name ? String(body.customer_name).slice(0, 300) : null,
+        invoice_date: body.invoice_date ?? undefined,
+        due_date: body.due_date ?? null,
+        notes: body.notes ? String(body.notes).slice(0, 5000) : null,
+        line_items: totals.line_items,
+        tax_rate: totals.tax_rate,
+        subtotal: totals.subtotal,
+        tax_amount: totals.tax_amount,
+        total: totals.total,
+      })
+      .select()
+      .single());
+    if (!error || error.code !== '23505') break;
+  }
   if (error) return json({ error: error.message }, 400);
   return json({ invoice: inv });
 }

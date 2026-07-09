@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import {
   getPsaSnapshot,
@@ -20,6 +20,7 @@ export function usePSAProject(projectId, session) {
   const [remoteTasks,          setRemoteTasks]          = useState([]);
   const [remoteTimeEntries,    setRemoteTimeEntries]    = useState([]);
   const [remoteTechnologies,   setRemoteTechnologies]   = useState([]);
+  const [remoteChecklistItems, setRemoteChecklistItems] = useState([]);
   const [members,              setMembers]              = useState([]);
   const [loading,              setLoading]              = useState(false);
 
@@ -28,17 +29,24 @@ export function usePSAProject(projectId, session) {
   const tasks        = supabase ? remoteTasks        : localData.tasks.filter((t) => t.project_id === projectId).sort((a, b) => a.sort_order - b.sort_order || a.created_at?.localeCompare(b.created_at));
   const timeEntries  = supabase ? remoteTimeEntries  : localData.time_entries.filter((e) => e.project_id === projectId).sort((a, b) => b.logged_date?.localeCompare(a.logged_date));
   const technologies = supabase ? remoteTechnologies : (localData.technologies ?? []).filter((t) => t.project_id === projectId).sort((a, b) => a.order_index - b.order_index);
+  // Local mode doesn't track checklist items (single-user store predates this
+  // feature) — remote/team mode only, same tradeoff as the CRM 360° view.
+  // Memoized (unlike the ternaries above) because it feeds a useCallback dep
+  // array below — a bare `: []` literal branch is a fresh reference every
+  // render, which exhaustive-deps flags as unstable.
+  const checklistItems = useMemo(() => (supabase ? remoteChecklistItems : []), [supabase, remoteChecklistItems]);
 
   const refresh = useCallback(async () => {
     if (!supabase || !projectId) return;
     setLoading(true);
-    const [projRes, msRes, taskRes, timeRes, memRes, techRes] = await Promise.all([
+    const [projRes, msRes, taskRes, timeRes, memRes, techRes, clRes] = await Promise.all([
       supabase.from('psa_projects').select('*, saved_projects(project_name)').eq('id', projectId).single(),
       supabase.from('psa_milestones').select('*').eq('project_id', projectId).order('sort_order').order('created_at'),
       supabase.from('psa_tasks').select('*').eq('project_id', projectId).order('sort_order').order('created_at'),
       supabase.from('psa_time_entries').select('*, users(full_name, email)').eq('project_id', projectId).order('logged_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('users').select('id, full_name, email').order('full_name'),
       supabase.from('project_technologies').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('psa_task_checklist_items').select('*').eq('project_id', projectId).order('sort_order').order('created_at'),
     ]);
     setRemoteProject(projRes.data ?? null);
     setRemoteMilestones(msRes.data ?? []);
@@ -46,6 +54,7 @@ export function usePSAProject(projectId, session) {
     setRemoteTimeEntries(timeRes.data ?? []);
     setMembers(memRes.data ?? []);
     setRemoteTechnologies(techRes.data ?? []);
+    setRemoteChecklistItems(clRes.data ?? []);
     setLoading(false);
   }, [supabase, projectId]);
 
@@ -220,6 +229,43 @@ export function usePSAProject(projectId, session) {
         return;
       }
       const { error } = await supabase.from('psa_time_entries').delete().eq('id', id);
+      if (error) throw error;
+      await refresh();
+    },
+    [supabase, refresh]
+  );
+
+  // ---- Task checklist items ----
+  const createChecklistItem = useCallback(
+    async (taskId, label) => {
+      if (!supabase) return; // remote/team mode only, see checklistItems above
+      const sort_order = checklistItems.filter((c) => c.task_id === taskId).length * 10;
+      const { data: c, error } = await supabase
+        .from('psa_task_checklist_items')
+        .insert({ project_id: projectId, task_id: taskId, label, sort_order })
+        .select()
+        .single();
+      if (error) throw error;
+      await refresh();
+      return c;
+    },
+    [supabase, projectId, checklistItems, refresh]
+  );
+
+  const toggleChecklistItem = useCallback(
+    async (id, is_done) => {
+      if (!supabase) return;
+      const { error } = await supabase.from('psa_task_checklist_items').update({ is_done }).eq('id', id);
+      if (error) throw error;
+      await refresh();
+    },
+    [supabase, refresh]
+  );
+
+  const deleteChecklistItem = useCallback(
+    async (id) => {
+      if (!supabase) return;
+      const { error } = await supabase.from('psa_task_checklist_items').delete().eq('id', id);
       if (error) throw error;
       await refresh();
     },
@@ -574,6 +620,7 @@ export function usePSAProject(projectId, session) {
     tasks,
     timeEntries,
     technologies,
+    checklistItems,
     members,
     loading,
     refresh,
@@ -586,6 +633,9 @@ export function usePSAProject(projectId, session) {
     deleteTask,
     logTime,
     deleteTimeEntry,
+    createChecklistItem,
+    toggleChecklistItem,
+    deleteChecklistItem,
     createTechnology,
     updateTechnology,
     deleteTechnology,
