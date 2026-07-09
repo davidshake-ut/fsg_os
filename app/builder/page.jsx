@@ -30,6 +30,8 @@ import { useProducts } from '@/hooks/useProducts';
 import { useProjects } from '@/hooks/useProjects';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
+import { useTemplates } from '@/hooks/useTemplates';
+import { systemTemplatesForTech } from '@/lib/templates/index';
 import { DEFAULT_INPUTS, DEFAULT_CAMERA_INPUTS, DEFAULT_LABOR_ROLES } from '@/lib/defaults';
 import { resolveBuilderDefaults } from '@/lib/builderDefaults';
 import { getTerminology } from '@/lib/terminology';
@@ -109,6 +111,13 @@ function QuoteLifecycleMenu({ quote, onTransition, onRevision }) {
   );
 }
 
+// Prefer a company-owned template over the built-in system one for a given
+// technology, so a team's customized version wins once they've made one.
+function pickTemplateForTech(allTemplates, technology) {
+  const matches = allTemplates.filter((t) => t.technology === technology);
+  return matches.find((t) => !t.isSystem) ?? matches.find((t) => t.isSystem) ?? null;
+}
+
 function Calculator() {
   const { configured, session, company, user, isSuperAdmin, isAdmin, role, refresh } =
     useSession();
@@ -169,6 +178,7 @@ function Calculator() {
   );
   const { projects, loadError: projectsLoadError, refresh: refreshProjects, loadProject, saveProject, setQuoteStatus, deleteProject } = useProjects(session, company, user);
   const { projects: psaProjects, createProject: createPSAProject } = usePSAProjects(session, company, user);
+  const { allTemplates } = useTemplates(session, company, user);
 
   // A locked quote (sent/accepted/declined) freezes its own catalog snapshot
   // (see setQuoteStatus) so later catalog/discount changes never reprice it —
@@ -181,7 +191,7 @@ function Calculator() {
   const [toProjectOpen,  setToProjectOpen]  = useState(false);
   const [newPsaProjectId, setNewPsaProjectId] = useState(null);
   const [toProjectBusy,  setToProjectBusy]  = useState(false);
-  const [toProjectForm,  setToProjectForm]  = useState({ name: '', customer_name: '', start_date: '', budget: '' });
+  const [toProjectForm,  setToProjectForm]  = useState({ name: '', customer_name: '', start_date: '', budget: '', useTemplate: true });
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
@@ -739,6 +749,29 @@ function Calculator() {
                   </div>
                 </div>
               </div>
+
+              {(() => {
+                const techs = [
+                  ...(wifiEnabled ? ['Managed Wi-Fi'] : []),
+                  ...(camerasEnabled ? ['Camera Systems'] : []),
+                ];
+                const matched = techs
+                  .map((t) => ({ tech: t, template: pickTemplateForTech(allTemplates, t) }))
+                  .filter((m) => m.template);
+                if (matched.length === 0) return null;
+                return (
+                  <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                    <input type="checkbox" className="mt-0.5"
+                      checked={toProjectForm.useTemplate}
+                      onChange={(e) => setToProjectForm((f) => ({ ...f, useTemplate: e.target.checked }))} />
+                    <span>
+                      <span className="font-medium text-slate-700">Generate task plan from template</span>
+                      <br />
+                      {matched.map((m) => `${m.tech}: ${m.template.name}`).join(' · ')}
+                    </span>
+                  </label>
+                );
+              })()}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-3">
               <button type="button" onClick={() => setToProjectOpen(false)}
@@ -748,6 +781,17 @@ function Calculator() {
                   if (!toProjectForm.name.trim()) return;
                   setToProjectBusy(true);
                   try {
+                    const techs = [
+                      ...(wifiEnabled ? ['Managed Wi-Fi'] : []),
+                      ...(camerasEnabled ? ['Camera Systems'] : []),
+                    ];
+                    const templatesByTechnology = toProjectForm.useTemplate
+                      ? Object.fromEntries(
+                          techs
+                            .map((t) => [t, pickTemplateForTech(allTemplates, t)])
+                            .filter(([, tmpl]) => tmpl)
+                        )
+                      : {};
                     const proj = await createPSAProject({
                       name:          toProjectForm.name.trim(),
                       customer_name: toProjectForm.customer_name.trim() || null,
@@ -755,6 +799,8 @@ function Calculator() {
                       budget:        toProjectForm.budget ? Number(toProjectForm.budget) : null,
                       quote_id:      currentProjectId,
                       status:        'planning',
+                      technologies:  techs,
+                      templatesByTechnology,
                     });
                     setNewPsaProjectId(proj.id);
                     setToProjectOpen(false);

@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
 import { useModules } from '@/hooks/useModules';
+import NotificationBell from '@/components/NotificationBell';
+import CommandPalette from '@/components/CommandPalette';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -66,6 +68,7 @@ export default function Sidebar({ onClose }) {
           <Layers size={14} />
         </span>
         <span className="flex-1 text-sm font-bold tracking-tight text-slate-900">FSG OS</span>
+        <NotificationBell />
         {onClose && (
           <button
             onClick={onClose}
@@ -75,6 +78,11 @@ export default function Sidebar({ onClose }) {
             <X size={16} />
           </button>
         )}
+      </div>
+
+      {/* Global search */}
+      <div className="border-b border-slate-200 p-2">
+        <CommandPalette />
       </div>
 
       {/* Primary nav */}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { computeCoTotals } from '@/lib/changeOrders';
 import { logActivity } from '@/lib/activityLog';
+import { notify } from '@/lib/notify';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -91,14 +92,23 @@ export function useChangeOrders(session, company, user, projectId) {
     };
     const { error } = await supabase.from('change_orders').update(body).eq('id', id);
     if (error) throw error;
-    const coTitle = changeOrders.find((c) => c.id === id)?.title ?? 'Change order';
+    const co = changeOrders.find((c) => c.id === id);
+    const coTitle = co?.title ?? 'Change order';
     await logActivity(supabase, {
       companyId, actorId: user?.id,
       verb: `change_order.${status}`, entityType: 'change_order', entityId: id,
       label: `${coTitle} ${status}`,
     });
+    if (status === 'approved' && co?.created_by && co.created_by !== user?.id) {
+      await notify(supabase, {
+        companyId, userId: co.created_by,
+        verb: 'change_order.approved', entityType: 'change_order', entityId: id,
+        label: `Change order approved: ${coTitle}`,
+        href: `/projects/${projectId}`,
+      });
+    }
     await refresh();
-  }, [supabase, refresh, changeOrders, companyId, user]);
+  }, [supabase, refresh, changeOrders, companyId, user, projectId]);
 
   const deleteChangeOrder = useCallback(async (id) => {
     if (!supabase) return;

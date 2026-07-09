@@ -9,11 +9,11 @@ function fmt(n) {
   return n == null ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-function Row({ label, value, sub, highlight }) {
+function Row({ label, value, sub, highlight, tone }) {
   return (
     <div className={cn('flex items-center justify-between py-3', highlight && 'font-semibold')}>
       <span className={cn('text-sm', highlight ? 'text-slate-900' : 'text-slate-600')}>{label}</span>
-      <span className={cn('text-sm tabular-nums', highlight ? 'text-slate-900' : 'text-slate-700')}>
+      <span className={cn('text-sm tabular-nums', tone === 'danger' ? 'text-red-600' : highlight ? 'text-slate-900' : 'text-slate-700')}>
         {value}
         {sub && <span className="ml-1 text-xs text-slate-400">{sub}</span>}
       </span>
@@ -28,11 +28,22 @@ export default function ProjectBudget({ project, tasks, timeEntries }) {
 
   const totalHours = timeEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
 
+  // Actual cost/billable value from time-entry rates. Rates are captured
+  // per-entry (no user/role rate table exists), so entries logged before a
+  // rate was ever set just contribute $0 — surfaced below as a coverage note
+  // rather than silently presented as a complete number.
+  const ratedEntries = timeEntries.filter((e) => e.cost_rate != null);
+  const actualCost = timeEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0) * (parseFloat(e.cost_rate) || 0), 0);
+  const billableValue = timeEntries
+    .filter((e) => e.billable !== false)
+    .reduce((sum, e) => sum + (parseFloat(e.hours) || 0) * (parseFloat(e.bill_rate) || 0), 0);
+  const hasFullCostCoverage = timeEntries.length > 0 && ratedEntries.length === timeEntries.length;
+
   const tasksDone  = tasks.filter((t) => t.status === 'done').length;
   const tasksTotal = tasks.length;
   const pctTasks   = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0;
 
-  const remaining = budget != null ? budget - 0 : null; // cost tracking TBD when rates are added
+  const remaining = budget != null ? budget - actualCost : null;
 
   return (
     <div className="space-y-4">
@@ -53,9 +64,21 @@ export default function ProjectBudget({ project, tasks, timeEntries }) {
 
         <div className="divide-y divide-slate-100">
           <Row label="Project Budget"  value={fmt(budget)}  highlight />
-          <Row label="Budget Consumed" value="—" sub="(rates coming soon)" />
-          <Row label="Remaining"       value={remaining == null ? '—' : fmt(remaining)} />
+          <Row
+            label="Budget Consumed"
+            value={timeEntries.length === 0 ? '—' : fmt(actualCost)}
+            sub={timeEntries.length > 0 && !hasFullCostCoverage ? `(${ratedEntries.length}/${timeEntries.length} entries rated)` : undefined}
+          />
+          <Row
+            label="Remaining"
+            value={remaining == null ? '—' : fmt(remaining)}
+            highlight
+            tone={remaining != null && remaining < 0 ? 'danger' : undefined}
+          />
         </div>
+        {remaining != null && remaining < 0 && (
+          <p className="mt-2 text-xs font-medium text-red-600">Over budget by {fmt(Math.abs(remaining))}.</p>
+        )}
       </Card>
 
       {/* Hours card */}
@@ -66,6 +89,7 @@ export default function ProjectBudget({ project, tasks, timeEntries }) {
         <div className="divide-y divide-slate-100">
           <Row label="Hours Logged" value={`${totalHours.toFixed(1)}h`} highlight />
           <Row label="Entries"      value={timeEntries.length} />
+          <Row label="Billable Value" value={billableValue > 0 ? fmt(billableValue) : '—'} />
         </div>
       </Card>
 

@@ -8,6 +8,7 @@ import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useSupportTickets } from '@/hooks/useSupportTickets';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
+import { usePSAProjects } from '@/hooks/usePSAProjects';
 import NewTicketModal from '@/components/support/NewTicketModal';
 import TicketPriorityBadge, { TicketStatusBadge, STATUS_CONFIG } from '@/components/support/TicketPriorityBadge';
 import { Card, Button } from '@/components/ui/primitives';
@@ -32,6 +33,7 @@ function SupportContent() {
   const { session, company, user } = useSession();
   const { tickets, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, deleteTicket } = useSupportTickets(session, company, user);
   const { accounts } = useCRMAccounts(session, company, user);
+  const { projects } = usePSAProjects(session, company, user);
   const [statusFilter, setStatusFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -145,7 +147,7 @@ function SupportContent() {
         </div>
       )}
 
-      <NewTicketModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={async (d) => { await createTicket(d); setToast({ type: 'success', message: 'Ticket created.' }); }} accounts={accounts} />
+      <NewTicketModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={async (d) => { await createTicket(d); setToast({ type: 'success', message: 'Ticket created.' }); }} accounts={accounts} projects={projects} />
       <ConfirmModal
         open={!!confirmState}
         title={confirmState?.title}

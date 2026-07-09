@@ -18,8 +18,8 @@ function fmtDate(iso) {
 
 function TicketDetail() {
   const { id } = useParams();
-  const { session, user } = useSession();
-  const { ticket, comments, loading, updateTicket, addComment, deleteComment } = useSupportTicket(id, session);
+  const { session, company, user } = useSession();
+  const { ticket, comments, projects, projectAssets, loading, updateTicket, addComment, deleteComment } = useSupportTicket(id, session, company);
 
   if (loading) {
     return <div className="flex h-64 items-center justify-center gap-2 text-slate-400"><Loader2 className="animate-spin" size={18} /> Loading…</div>;
@@ -80,6 +80,28 @@ function TicketDetail() {
             <div><dt className="text-xs text-slate-400">Status</dt><dd className="mt-0.5"><TicketStatusBadge status={ticket.status} /></dd></div>
             {ticket.crm_accounts?.name && (
               <div className="col-span-2"><dt className="text-xs text-slate-400">Account</dt><dd className="mt-0.5 font-medium text-slate-800">{ticket.crm_accounts.name}</dd></div>
+            )}
+            <div className="col-span-2">
+              <dt className="text-xs text-slate-400">Project</dt>
+              <dd className="mt-0.5">
+                <Select className="h-8 w-full text-xs" value={ticket.project_id ?? ''}
+                  onChange={(e) => updateTicket({ project_id: e.target.value || null, asset_id: null })}>
+                  <option value="">— none —</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </dd>
+            </div>
+            {ticket.project_id && projectAssets.length > 0 && (
+              <div className="col-span-2">
+                <dt className="text-xs text-slate-400">Asset</dt>
+                <dd className="mt-0.5">
+                  <Select className="h-8 w-full text-xs" value={ticket.asset_id ?? ''}
+                    onChange={(e) => updateTicket({ asset_id: e.target.value || null })}>
+                    <option value="">— none —</option>
+                    {projectAssets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </Select>
+                </dd>
+              </div>
             )}
             {ticket.resolved_at && (
               <div className="col-span-2"><dt className="text-xs text-slate-400">Resolved</dt><dd className="mt-0.5 text-slate-800">{fmtDate(ticket.resolved_at)}</dd></div>

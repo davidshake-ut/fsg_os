@@ -9,6 +9,7 @@ import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useCRMAccount } from '@/hooks/useCRMAccount';
 import ContactSection from '@/components/crm/ContactSection';
+import { STAGES } from '@/components/crm/PipelineBoard';
 import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import { Select, Button } from '@/components/ui/primitives';
 import AppToast from '@/components/ui/AppToast';
@@ -301,11 +302,28 @@ function AccountDetail() {
         )}
 
         {tab === 'overview' && (
-          <div className="max-w-lg rounded-xl border border-slate-200 bg-white p-5 space-y-4">
-            <EditableField label="Phone" value={account.phone} onSave={(v) => save({ phone: v })} type="tel" placeholder="(555) 000-0000" />
-            <EditableField label="Website" value={account.website} onSave={(v) => save({ website: v })} placeholder="https://…" />
-            <EditableField label="Address" value={account.address} onSave={(v) => save({ address: v })} placeholder="123 Main St…" />
-            <EditableTextarea label="Notes" value={account.notes} onSave={(v) => save({ notes: v })} placeholder="Add notes about this account…" />
+          <div className="max-w-lg space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+              <EditableField label="Phone" value={account.phone} onSave={(v) => save({ phone: v })} type="tel" placeholder="(555) 000-0000" />
+              <EditableField label="Website" value={account.website} onSave={(v) => save({ website: v })} placeholder="https://…" />
+              <EditableField label="Address" value={account.address} onSave={(v) => save({ address: v })} placeholder="123 Main St…" />
+              <EditableTextarea label="Notes" value={account.notes} onSave={(v) => save({ notes: v })} placeholder="Add notes about this account…" />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Pipeline</p>
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-400">Stage</p>
+                <Select className="h-8 w-44 text-xs" value={account.stage ?? 'new'} onChange={(e) => save({ stage: e.target.value })}>
+                  {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <EditableField label="Deal Value" value={account.deal_value} onSave={(v) => save({ deal_value: v ? Number(v) : null })} type="number" placeholder="$0" />
+                <EditableField label="Probability (%)" value={account.probability} onSave={(v) => save({ probability: v ? Number(v) : null })} type="number" placeholder="0-100" />
+              </div>
+              <EditableField label="Expected Close Date" value={account.expected_close_date} onSave={(v) => save({ expected_close_date: v })} type="date" />
+            </div>
           </div>
         )}
       </div>

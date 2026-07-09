@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Building2, Phone, Globe, Trash2 } from 'lucide-react';
+import { Plus, Search, Building2, Phone, Globe, Trash2, List, KanbanSquare } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import NewAccountModal from '@/components/crm/NewAccountModal';
+import PipelineBoard from '@/components/crm/PipelineBoard';
 import { Card, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
@@ -28,19 +29,17 @@ const STATUS_STYLES = {
 
 function CRMContent() {
   const { session, company, user } = useSession();
-  const { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, deleteAccount } = useCRMAccounts(session, company, user);
+  const { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, updateAccount, deleteAccount } = useCRMAccounts(session, company, user);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [view, setView] = useState('list');
   const [modalOpen, setModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [toast, setToast] = useState(null);
 
-  const filtered = accounts.filter((a) => {
-    const matchSearch = !search || a.name.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || a.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const searchFiltered = accounts.filter((a) => !search || a.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = searchFiltered.filter((a) => statusFilter === 'all' || a.status === statusFilter);
 
   const handleDelete = (a) => {
     setConfirmState({
@@ -66,7 +65,7 @@ function CRMContent() {
         </Button>
       </div>
 
-      {/* Search + status filter */}
+      {/* Search + status filter + view toggle */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -76,18 +75,31 @@ function CRMContent() {
             className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           />
         </div>
-        <div className="flex gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
-          {['all', 'active', 'prospect', 'inactive'].map((s) => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={cn('whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-all capitalize',
-                statusFilter === s ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'
-              )}
-            >{s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}</button>
+        {view === 'list' && (
+          <div className="flex gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
+            {['all', 'active', 'prospect', 'inactive'].map((s) => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={cn('whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-all capitalize',
+                  statusFilter === s ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'
+                )}
+              >{s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}</button>
+            ))}
+          </div>
+        )}
+        <div className="flex shrink-0 items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+          {[['list', List, 'List'], ['pipeline', KanbanSquare, 'Pipeline']].map(([id, Icon, label]) => (
+            <button key={id} type="button" title={label} onClick={() => setView(id)}
+              className={cn('flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors',
+                view === id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
+              <Icon size={14} /> {label}
+            </button>
           ))}
         </div>
       </div>
 
-      {loading ? (
+      {view === 'pipeline' ? (
+        <PipelineBoard accounts={searchFiltered} onUpdateAccount={updateAccount} />
+      ) : loading ? (
         <p className="py-12 text-center text-sm text-slate-400">Loading accounts…</p>
       ) : filtered.length === 0 ? (
         <Card className="py-16 text-center">

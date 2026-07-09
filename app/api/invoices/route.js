@@ -87,14 +87,16 @@ export async function POST(request) {
   const svc = getServiceClient();
   const companyId = caller.company_id;
 
-  const [quoteOk, projectOk, accountOk] = await Promise.all([
+  const [quoteOk, projectOk, accountOk, changeOrderOk] = await Promise.all([
     checkOwned(svc, 'saved_projects', body.quote_id, companyId),
     checkOwned(svc, 'psa_projects', body.project_id, companyId),
     checkOwned(svc, 'crm_accounts', body.crm_account_id, companyId),
+    checkOwned(svc, 'change_orders', body.change_order_id, companyId),
   ]);
   if (!quoteOk) return json({ error: 'Quote not found' }, 400);
   if (!projectOk) return json({ error: 'Project not found' }, 400);
   if (!accountOk) return json({ error: 'Account not found' }, 400);
+  if (!changeOrderOk) return json({ error: 'Change order not found' }, 400);
 
   // invoice_number is select-max-then-increment, which races under concurrent
   // creates. The unique index on (company_id, invoice_number) turns a lost
@@ -113,6 +115,7 @@ export async function POST(request) {
         quote_id: body.quote_id ?? null,
         project_id: body.project_id ?? null,
         crm_account_id: body.crm_account_id ?? null,
+        change_order_id: body.change_order_id ?? null,
         customer_name: body.customer_name ? String(body.customer_name).slice(0, 300) : null,
         invoice_date: body.invoice_date ?? undefined,
         due_date: body.due_date ?? null,

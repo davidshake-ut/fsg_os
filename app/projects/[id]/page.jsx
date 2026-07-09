@@ -14,23 +14,28 @@ import { usePSAProject } from '@/hooks/usePSAProject';
 import { useTemplates } from '@/hooks/useTemplates';
 import ProjectStatusBadge, { STATUS_CONFIG } from '@/components/projects/ProjectStatusBadge';
 import TaskSection from '@/components/projects/TaskSection';
+import KanbanBoard from '@/components/projects/KanbanBoard';
 import GanttChart from '@/components/projects/GanttChart';
 import TimeLog from '@/components/projects/TimeLog';
 import ProjectBudget from '@/components/projects/ProjectBudget';
 import ApplyTemplateModal from '@/components/projects/ApplyTemplateModal';
 import ChangeOrderSection from '@/components/projects/ChangeOrderSection';
+import AssetsSection from '@/components/projects/AssetsSection';
 import { Select, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TECHNOLOGIES } from '@/lib/templates/index';
 import { cn } from '@/lib/utils';
 import { useRoleColors } from '@/hooks/useRoleColors';
+import { useAssets } from '@/hooks/useAssets';
 
 const TABS = [
   { id: 'tasks',    label: 'Tasks'         },
+  { id: 'board',    label: 'Board'         },
   { id: 'gantt',   label: 'Gantt'         },
   { id: 'time',     label: 'Time Log'      },
   { id: 'budget',   label: 'Budget'        },
   { id: 'changes',  label: 'Change Orders' },
+  { id: 'assets',   label: 'Assets'        },
   { id: 'overview', label: 'Overview'      },
 ];
 
@@ -151,6 +156,7 @@ function ProjectDetail() {
     moveMilestoneToSection, mergeTechnologies,
     cloneMilestone, cloneTask,
   } = usePSAProject(id, session);
+  const { assets, createAsset, deleteAsset } = useAssets(session, company, id);
 
   const { allTemplates } = useTemplates(session, company, user);
 
@@ -211,6 +217,7 @@ function ProjectDetail() {
     onCreateChecklistItem: createChecklistItem,
     onToggleChecklistItem: toggleChecklistItem,
     onDeleteChecklistItem: deleteChecklistItem,
+    allProjectTasks: tasks,
   };
 
   return (
@@ -424,6 +431,18 @@ function ProjectDetail() {
           </div>
         )}
 
+        {/* ── Board ── */}
+        {tab === 'board' && (
+          <KanbanBoard
+            tasks={tasks}
+            milestones={milestones}
+            members={members}
+            checklistItems={checklistItems}
+            getPalette={getPalette}
+            onUpdateTask={updateTask}
+          />
+        )}
+
         {/* ── Gantt ── */}
         {tab === 'gantt' && (
           <GanttChart
@@ -464,6 +483,11 @@ function ProjectDetail() {
         {/* ── Change Orders ── */}
         {tab === 'changes' && (
           <ChangeOrderSection project={project} />
+        )}
+
+        {/* ── Assets ── */}
+        {tab === 'assets' && (
+          <AssetsSection assets={assets} onCreate={createAsset} onDelete={deleteAsset} />
         )}
 
         {/* ── Overview ── */}

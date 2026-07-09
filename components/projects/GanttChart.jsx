@@ -242,6 +242,69 @@ function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onS
   );
 }
 
+// ── DependencyLines ──────────────────────────────────────────────────────────
+// Connector from the end of a dependency's bar to the start of the dependent
+// task's bar. Red/dashed when the dependent is scheduled to start before its
+// dependency finishes — a real scheduling conflict, not just a visual link.
+// This is NOT full critical-path (longest-path) analysis — just per-edge
+// conflict detection, which is the practical value for a small project team.
+function DependencyLines({ rows, rowMeta, minDate }) {
+  const taskRowIndex = new Map();
+  rows.forEach((row, i) => { if (row.kind === 'task') taskRowIndex.set(row.item.id, i); });
+
+  const lines = [];
+  rows.forEach((row) => {
+    if (row.kind !== 'task') return;
+    const taskIdx = taskRowIndex.get(row.item.id);
+    for (const depId of row.item.depends_on ?? []) {
+      const depIdx = taskRowIndex.get(depId);
+      if (depIdx == null) continue; // dependency deleted or filtered out — skip silently
+      const depItem = rows[depIdx].item;
+      if (!depItem.due_date || !row.item.start_date) continue; // need real dates to draw a line
+      const x1 = Math.max(0, dayOff(depItem.due_date, minDate)) * DAY_PX;
+      const y1 = rowMeta[depIdx].top + rowMeta[depIdx].h / 2;
+      const x2 = Math.max(0, dayOff(row.item.start_date, minDate)) * DAY_PX;
+      const y2 = rowMeta[taskIdx].top + rowMeta[taskIdx].h / 2;
+      const conflict = new Date(row.item.start_date + 'T00:00:00') < new Date(depItem.due_date + 'T00:00:00');
+      lines.push({ key: `${depId}->${row.item.id}`, x1, y1, x2, y2, conflict });
+    }
+  });
+
+  if (lines.length === 0) return null;
+  const totalH = rowMeta.length ? rowMeta.at(-1).top + rowMeta.at(-1).h : 0;
+
+  return (
+    <svg
+      className="pointer-events-none absolute left-0 top-0"
+      width={Math.max(...lines.map((l) => Math.max(l.x1, l.x2))) + 20}
+      height={totalH}
+    >
+      <defs>
+        <marker id="gantt-dep-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8" />
+        </marker>
+        <marker id="gantt-dep-arrow-danger" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" />
+        </marker>
+      </defs>
+      {lines.map((l) => {
+        const midX = (l.x1 + l.x2) / 2;
+        return (
+          <path
+            key={l.key}
+            d={`M ${l.x1} ${l.y1} C ${midX} ${l.y1}, ${midX} ${l.y2}, ${l.x2} ${l.y2}`}
+            fill="none"
+            stroke={l.conflict ? '#dc2626' : '#94a3b8'}
+            strokeWidth={l.conflict ? 1.5 : 1}
+            strokeDasharray={l.conflict ? '4 2' : undefined}
+            markerEnd={l.conflict ? 'url(#gantt-dep-arrow-danger)' : 'url(#gantt-dep-arrow)'}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 // ── RoleColorEditor ───────────────────────────────────────────────────────────
 function RoleColorEditor({ roles, getRoleColor, setRoleColor, onClose }) {
   if (roles.length === 0) {
@@ -561,6 +624,8 @@ export default function GanttChart({
                 </div>
               );
             })}
+
+            <DependencyLines rows={rows} rowMeta={rowMeta} minDate={minDate} />
           </div>
         </div>
       </div>

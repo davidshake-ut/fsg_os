@@ -31,6 +31,8 @@ import {
   Calendar,
   ArrowRight,
   Copy,
+  Link2,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -225,6 +227,70 @@ function TaskChecklist({ items, onAdd, onToggle, onDelete }) {
   );
 }
 
+// ── DependencyPicker ─────────────────────────────────────────────────────────
+// Only guards against a direct A↔B cycle (excludes tasks that already depend
+// on this one from the candidate list) — deeper cycles (A→B→C→A) aren't
+// detected, which would need full graph traversal.
+function DependencyPicker({ task, allProjectTasks, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const dependsOn = task.depends_on ?? [];
+  const deps = dependsOn.map((id) => (allProjectTasks ?? []).find((t) => t.id === id)).filter(Boolean);
+  const candidates = (allProjectTasks ?? []).filter(
+    (t) => t.id !== task.id && !dependsOn.includes(t.id) && !(t.depends_on ?? []).includes(task.id)
+  );
+
+  const addDep = (id) => onUpdate(task.id, { depends_on: [...dependsOn, id] });
+  const removeDep = (id) => onUpdate(task.id, { depends_on: dependsOn.filter((d) => d !== id) });
+
+  if (deps.length === 0 && candidates.length === 0) return null;
+
+  return (
+    <div>
+      <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        <Link2 size={10} /> Depends on
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {deps.map((d) => (
+          <span key={d.id} className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+            {d.title}
+            <button type="button" onClick={() => removeDep(d.id)} className="text-amber-400 hover:text-amber-700">
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+        {candidates.length > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-[11px] text-slate-400 hover:border-blue-300 hover:text-blue-500"
+            >
+              <Plus size={10} /> Add
+            </button>
+            {open && (
+              <div
+                className="absolute left-0 top-full z-30 mt-1 max-h-48 min-w-[200px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+                onMouseLeave={() => setOpen(false)}
+              >
+                {candidates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => { addDep(c.id); setOpen(false); }}
+                    className="w-full truncate rounded-lg px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    {c.title}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── AssigneeMenu ─────────────────────────────────────────────────────────────
 function initials(name, email) {
   const n = (name || '').trim();
@@ -333,7 +399,7 @@ function CloneMenu({ label, onCloneHere, items = [], onCloneTo }) {
 // ── SortableTaskRow ───────────────────────────────────────────────────────────
 function SortableTaskRow({
   task, allProjectMilestones, onUpdate, onDelete, onMoveTask, onCloneTask, getPalette, members,
-  checklistItems, onAddChecklistItem, onToggleChecklistItem, onDeleteChecklistItem,
+  checklistItems, onAddChecklistItem, onToggleChecklistItem, onDeleteChecklistItem, allProjectTasks,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -345,6 +411,9 @@ function SortableTaskRow({
   const taskChecklist = (checklistItems ?? []).filter((c) => c.task_id === task.id);
   const checklistDone = taskChecklist.filter((c) => c.is_done).length;
   const otherMilestones = (allProjectMilestones ?? []).filter((m) => m.id !== task.milestone_id);
+  const openDeps = (task.depends_on ?? [])
+    .map((id) => (allProjectTasks ?? []).find((t) => t.id === id))
+    .filter((d) => d && d.status !== 'done');
 
   return (
     <div ref={setNodeRef} style={style} className="group relative">
@@ -395,6 +464,14 @@ function SortableTaskRow({
                 ☑ {checklistDone}/{taskChecklist.length}
               </span>
             )}
+            {openDeps.length > 0 && (
+              <span
+                title={`Blocked by: ${openDeps.map((d) => d.title).join(', ')}`}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600"
+              >
+                <Link2 size={9} /> blocked
+              </span>
+            )}
             <AssigneeMenu
               members={members}
               assigneeId={task.assignee_id}
@@ -442,6 +519,11 @@ function SortableTaskRow({
                     onToggle={onToggleChecklistItem}
                     onDelete={onDeleteChecklistItem}
                   />
+                </div>
+              )}
+              {allProjectTasks && (
+                <div className="rounded-lg bg-slate-50 p-2.5">
+                  <DependencyPicker task={task} allProjectTasks={allProjectTasks} onUpdate={onUpdate} />
                 </div>
               )}
             </div>
@@ -513,6 +595,7 @@ function SortableMilestoneBlock({
   onAddChecklistItem,
   onToggleChecklistItem,
   onDeleteChecklistItem,
+  allProjectTasks,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: milestone.id,
@@ -625,6 +708,7 @@ function SortableMilestoneBlock({
                 onAddChecklistItem={onAddChecklistItem}
                 onToggleChecklistItem={onToggleChecklistItem}
                 onDeleteChecklistItem={onDeleteChecklistItem}
+                allProjectTasks={allProjectTasks}
               />
             ))}
           </SortableContext>
@@ -668,6 +752,7 @@ export default function TaskSection({
   onCreateChecklistItem,
   onToggleChecklistItem,
   onDeleteChecklistItem,
+  allProjectTasks,
 }) {
   const [activeId, setActiveId] = useState(null);
   const [activeType, setActiveType] = useState(null);
@@ -784,6 +869,7 @@ export default function TaskSection({
                 onAddChecklistItem={onCreateChecklistItem}
                 onToggleChecklistItem={onToggleChecklistItem}
                 onDeleteChecklistItem={onDeleteChecklistItem}
+                allProjectTasks={allProjectTasks}
               />
             );
           })}
@@ -812,6 +898,7 @@ export default function TaskSection({
                   onAddChecklistItem={onCreateChecklistItem}
                   onToggleChecklistItem={onToggleChecklistItem}
                   onDeleteChecklistItem={onDeleteChecklistItem}
+                  allProjectTasks={allProjectTasks}
                 />
               ))}
             </SortableContext>

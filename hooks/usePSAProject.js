@@ -9,6 +9,8 @@ import {
   writePsa,
   newPsaId,
 } from '@/lib/psaLocalStore';
+import { computeTemplateSchedule } from '@/lib/projectTemplateSchedule';
+import { notify } from '@/lib/notify';
 
 // Single project detail: milestones, tasks, time entries, team members, and technology sections.
 export function usePSAProject(projectId, session) {
@@ -177,9 +179,20 @@ export function usePSAProject(projectId, session) {
       }
       const { error } = await supabase.from('psa_tasks').update(data).eq('id', id);
       if (error) throw error;
+      if (data.assignee_id) {
+        const task = tasks.find((t) => t.id === id);
+        if (task && task.assignee_id !== data.assignee_id) {
+          await notify(supabase, {
+            companyId: project?.company_id, userId: data.assignee_id,
+            verb: 'task.assigned', entityType: 'task', entityId: id,
+            label: `You were assigned: ${task.title}`,
+            href: `/projects/${projectId}`,
+          });
+        }
+      }
       await refresh();
     },
-    [supabase, refresh]
+    [supabase, refresh, tasks, project, projectId]
   );
 
   const deleteTask = useCallback(
@@ -522,35 +535,17 @@ export function usePSAProject(projectId, session) {
     [supabase, refresh]
   );
 
-  // Apply a template to a technology section.
-  // All task and milestone dates are computed sequentially: task N+1 starts when task N ends.
-  // Phases chain the same way — each phase starts on the day after the last task of the prior phase.
+  // Apply a template to a technology section. Schedule math (task N+1 starts
+  // when task N ends, phases chain the same way) lives in
+  // lib/projectTemplateSchedule.js, shared with the Builder's "→ Project"
+  // auto-generation.
   const applyTemplate = useCallback(
     async (template, technologyId, startDate) => {
-      const phases = template.phases ?? [];
-      let globalOffset = 0; // running business-day offset from startDate
-      let sortBase = milestones.filter((m) => m.technology_id === technologyId).length * 10;
-      const base = startDate ? new Date(startDate) : null;
-      const isoDay = (d) => d.toISOString().slice(0, 10);
+      const sortBase = milestones.filter((m) => m.technology_id === technologyId).length * 10;
+      const schedule = computeTemplateSchedule(template.phases, startDate);
 
-      for (const phase of phases) {
-        const phaseStartOffset = globalOffset;
-
-        // Pre-compute per-task offset spans so we can set milestone dates too
-        let taskOffset = globalOffset;
-        const taskSpans = phase.tasks.map((t) => {
-          const days = Number(t.duration_days ?? 1);
-          const span = { start: taskOffset, end: taskOffset + days };
-          taskOffset += days;
-          return span;
-        });
-        const phaseEndOffset = taskOffset;
-        globalOffset = phaseEndOffset;
-
-        const phaseStartDate = base ? isoDay(addBusinessDays(new Date(base), phaseStartOffset)) : null;
-        const phaseEndDate   = base ? isoDay(addBusinessDays(new Date(base), phaseEndOffset))   : null;
-        const sort_order = sortBase;
-        sortBase += 10;
+      for (const phase of schedule) {
+        const sort_order = sortBase + phase.sort_order;
 
         let milestone;
         if (!supabase) {
@@ -558,7 +553,7 @@ export function usePSAProject(projectId, session) {
           milestone = {
             id: newPsaId(), project_id: projectId, technology_id: technologyId,
             name: phase.name, sort_order,
-            start_date: phaseStartDate, due_date: phaseEndDate,
+            start_date: phase.start_date, due_date: phase.due_date,
             created_at: now,
           };
           writePsa((s) => ({ ...s, milestones: [...s.milestones, milestone] }));
@@ -568,21 +563,14 @@ export function usePSAProject(projectId, session) {
             .insert({
               project_id: projectId, technology_id: technologyId,
               name: phase.name, sort_order,
-              start_date: phaseStartDate, due_date: phaseEndDate,
+              start_date: phase.start_date, due_date: phase.due_date,
             })
             .select().single();
           if (msErr) throw msErr;
           milestone = ms;
         }
 
-        for (let i = 0; i < phase.tasks.length; i++) {
-          const templateTask = phase.tasks[i];
-          const span = taskSpans[i];
-          const hrs = Number(templateTask.duration_days ?? 1) * 8;
-          const taskSort = (templateTask.order ?? templateTask.order_index ?? 0) * 10;
-          const taskStartDate = base ? isoDay(addBusinessDays(new Date(base), span.start)) : null;
-          const taskEndDate   = base ? isoDay(addBusinessDays(new Date(base), span.end))   : null;
-
+        for (const t of phase.tasks) {
           if (!supabase) {
             const now = new Date().toISOString();
             writePsa((s) => ({
@@ -590,19 +578,19 @@ export function usePSAProject(projectId, session) {
               tasks: [...s.tasks, {
                 id: newPsaId(), project_id: projectId, milestone_id: milestone.id,
                 technology_id: technologyId,
-                title: templateTask.name, description: templateTask.description ?? '',
-                role: templateTask.role ?? '', status: 'todo', estimated_hours: hrs,
-                start_date: taskStartDate, due_date: taskEndDate,
-                sort_order: taskSort, created_at: now,
+                title: t.title, description: t.description ?? '',
+                role: t.role ?? '', status: 'todo', estimated_hours: t.estimated_hours,
+                start_date: t.start_date, due_date: t.due_date,
+                sort_order: t.sort_order, created_at: now,
               }],
             }));
           } else {
             const { error: tErr } = await supabase.from('psa_tasks').insert({
               project_id: projectId, milestone_id: milestone.id, technology_id: technologyId,
-              title: templateTask.name, description: templateTask.description ?? null,
-              role: templateTask.role ?? null, status: 'todo', estimated_hours: hrs,
-              start_date: taskStartDate, due_date: taskEndDate,
-              sort_order: taskSort,
+              title: t.title, description: t.description,
+              role: t.role, status: 'todo', estimated_hours: t.estimated_hours,
+              start_date: t.start_date, due_date: t.due_date,
+              sort_order: t.sort_order,
             });
             if (tErr) throw tErr;
           }
@@ -647,16 +635,4 @@ export function usePSAProject(projectId, session) {
     cloneMilestone,
     cloneTask,
   };
-}
-
-// Add N business days (Mon-Fri) to a date.
-function addBusinessDays(date, days) {
-  const result = new Date(date);
-  let added = 0;
-  while (added < days) {
-    result.setDate(result.getDate() + 1);
-    const dow = result.getDay();
-    if (dow !== 0 && dow !== 6) added++;
-  }
-  return result;
 }

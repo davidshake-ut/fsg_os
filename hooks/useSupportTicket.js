@@ -4,25 +4,38 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getSupportSnapshot, getSupportServerSnapshot, subscribeSupport, writeSupport, newSupportId } from '@/lib/supportLocalStore';
 
-export function useSupportTicket(ticketId, session) {
+export function useSupportTicket(ticketId, session, company) {
   const supabase = getSupabase();
+  const companyId = company?.id;
   const localData = useSyncExternalStore(subscribeSupport, getSupportSnapshot, getSupportServerSnapshot);
 
   const [remoteTicket,   setRemoteTicket]   = useState(null);
   const [remoteComments, setRemoteComments] = useState([]);
+  const [projects,       setProjects]       = useState([]);
+  const [projectAssets,  setProjectAssets]  = useState([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!supabase || !ticketId) return;
     setLoading(true);
-    const [tRes, cRes] = await Promise.all([
-      supabase.from('support_tickets').select('*, crm_accounts(name)').eq('id', ticketId).single(),
+    const [tRes, cRes, pRes] = await Promise.all([
+      supabase.from('support_tickets').select('*, crm_accounts(name), psa_projects(name)').eq('id', ticketId).single(),
       supabase.from('support_comments').select('*, users(full_name, email)').eq('ticket_id', ticketId).order('created_at'),
+      companyId ? supabase.from('psa_projects').select('id, name').eq('company_id', companyId).order('name') : Promise.resolve({ data: [] }),
     ]);
     setRemoteTicket(tRes.data ?? null);
     setRemoteComments(cRes.data ?? []);
+    setProjects(pRes.data ?? []);
+
+    const projectId = tRes.data?.project_id;
+    if (projectId) {
+      const { data: aData } = await supabase.from('assets').select('id, name').eq('project_id', projectId).order('name');
+      setProjectAssets(aData ?? []);
+    } else {
+      setProjectAssets([]);
+    }
     setLoading(false);
-  }, [supabase, ticketId]);
+  }, [supabase, ticketId, companyId]);
 
   useEffect(() => {
     if (!ticketId || !supabase || !session) return;
@@ -71,5 +84,5 @@ export function useSupportTicket(ticketId, session) {
     await refresh();
   }, [supabase, refresh]);
 
-  return { ticket, comments, loading, refresh, updateTicket, addComment, deleteComment };
+  return { ticket, comments, projects, projectAssets, loading, refresh, updateTicket, addComment, deleteComment };
 }

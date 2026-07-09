@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Button, Field, TextInput, Select } from '@/components/ui/primitives';
 
-const EMPTY = { title: '', description: '', priority: 'medium', account_id: '' };
+const EMPTY = { title: '', description: '', priority: 'medium', account_id: '', project_id: '' };
 
-export default function NewTicketModal({ open, onClose, onSave, accounts = [] }) {
+export default function NewTicketModal({ open, onClose, onSave, accounts = [], projects = [] }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
@@ -36,6 +36,7 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [] })
         description: form.description.trim() || null,
         priority:    form.priority,
         account_id:  form.account_id || null,
+        project_id:  form.project_id || null,
       });
       onClose();
     } catch (ex) { setErr(ex.message); }
@@ -74,6 +75,14 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [] })
                 <Select value={form.account_id} onChange={(e) => set('account_id', e.target.value)}>
                   <option value="">— none —</option>
                   {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </Select>
+              </Field>
+            )}
+            {projects.length > 0 && (
+              <Field label="Project (optional)">
+                <Select value={form.project_id} onChange={(e) => set('project_id', e.target.value)}>
+                  <option value="">— none —</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </Select>
               </Field>
             )}

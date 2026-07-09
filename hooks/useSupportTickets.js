@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getSupportSnapshot, getSupportServerSnapshot, subscribeSupport, writeSupport, newSupportId } from '@/lib/supportLocalStore';
 import { logActivity } from '@/lib/activityLog';
+import { notify } from '@/lib/notify';
 
 const PAGE_SIZE = 100;
 
@@ -76,8 +77,19 @@ export function useSupportTickets(session, company, user) {
     }
     const { error } = await supabase.from('support_tickets').update({ ...data, updated_at: now }).eq('id', id);
     if (error) throw error;
+    if (data.assigned_to) {
+      const ticket = tickets.find((t) => t.id === id);
+      if (ticket && ticket.assigned_to !== data.assigned_to) {
+        await notify(supabase, {
+          companyId, userId: data.assigned_to,
+          verb: 'ticket.assigned', entityType: 'ticket', entityId: id,
+          label: `Ticket assigned to you: ${ticket.title}`,
+          href: `/support/${id}`,
+        });
+      }
+    }
     await refresh();
-  }, [supabase, refresh]);
+  }, [supabase, refresh, tickets, companyId]);
 
   const deleteTicket = useCallback(async (id) => {
     if (!supabase) {
