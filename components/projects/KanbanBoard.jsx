@@ -13,7 +13,7 @@ import {
 } from '@dnd-kit/core';
 import { CheckSquare, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TASK_STATUS_CONFIG } from './ProjectStatusBadge';
+import { TASK_STATUS_CONFIG, taskStatusClasses } from './ProjectStatusBadge';
 
 const COLUMNS = ['todo', 'in_progress', 'done'];
 
@@ -85,7 +85,7 @@ function Column({ status, tasks, milestoneNameOf, memberOf, checklistCountsOf, g
   return (
     <div className="flex min-w-[260px] flex-1 flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
-        <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', cfg.className)}>{cfg.label}</span>
+        <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', taskStatusClasses(status))}>{cfg.label}</span>
         <span className="text-xs tabular-nums text-slate-400">{tasks.length}</span>
       </div>
       <div

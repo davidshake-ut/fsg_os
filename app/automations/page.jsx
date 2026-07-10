@@ -202,7 +202,7 @@ function AutomationsContent() {
       <div className="flex gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
         {[['rules', 'Rules'], ['runs', 'Run Log']].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
-            className={cn('rounded-lg px-3 py-1.5 text-sm font-medium transition-all', tab === id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
+            className={cn('rounded-lg px-3 py-1.5 text-sm font-medium transition-all', tab === id ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
             {label}
           </button>
         ))}

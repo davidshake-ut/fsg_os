@@ -8,14 +8,13 @@ import { computeCoTotals } from '@/lib/changeOrders';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
-import { Button, Field, TextInput } from '@/components/ui/primitives';
-import { cn } from '@/lib/utils';
+import { Button, Field, TextInput, StatusBadge } from '@/components/ui/primitives';
 
 const CO_STATUS = {
-  draft:     { label: 'Draft',     cls: 'bg-slate-100 text-slate-600 border-slate-200'      },
-  submitted: { label: 'Submitted', cls: 'bg-blue-50 text-blue-700 border-blue-200'          },
-  approved:  { label: 'Approved',  cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  rejected:  { label: 'Rejected',  cls: 'bg-red-50 text-red-700 border-red-200'             },
+  draft:     { label: 'Draft',     tone: 'neutral' },
+  submitted: { label: 'Submitted', tone: 'info'    },
+  approved:  { label: 'Approved',  tone: 'success' },
+  rejected:  { label: 'Rejected',  tone: 'danger'  },
 };
 
 const fmtMoney = (n) =>
@@ -23,11 +22,7 @@ const fmtMoney = (n) =>
 
 function CoStatusBadge({ status }) {
   const cfg = CO_STATUS[status] ?? CO_STATUS.draft;
-  return (
-    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', cfg.cls)}>
-      {cfg.label}
-    </span>
-  );
+  return <StatusBadge tone={cfg.tone}>{cfg.label}</StatusBadge>;
 }
 
 const EMPTY_ITEM = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, description: '', qty: 1, unit_price: 0 });

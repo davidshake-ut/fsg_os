@@ -748,12 +748,12 @@ function CreateDocumentModal({ groups, activeGroup, onCreate, onClose }) {
           <div className="ml-auto flex items-center rounded-lg border border-slate-200 bg-white p-0.5">
             <button type="button" onClick={() => switchMode('rich')}
               className={cn('rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
-                mode === 'rich' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-800')}>
+                mode === 'rich' ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)]' : 'text-slate-500 hover:text-slate-800')}>
               Rich
             </button>
             <button type="button" onClick={() => switchMode('html')}
               className={cn('rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
-                mode === 'html' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-800')}>
+                mode === 'html' ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)]' : 'text-slate-500 hover:text-slate-800')}>
               HTML
             </button>
           </div>

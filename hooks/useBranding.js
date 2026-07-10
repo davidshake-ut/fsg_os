@@ -59,6 +59,9 @@ function companyBranding(company) {
     logo: company.logo || null,
     primaryColor: company.primary_color || DEFAULT_BRANDING.primaryColor,
     accentColor: company.accent_color || DEFAULT_BRANDING.accentColor,
+    secondaryColor: company.secondary_color || DEFAULT_BRANDING.secondaryColor,
+    uiTheme: company.ui_theme || DEFAULT_BRANDING.uiTheme,
+    sidebarStyle: company.sidebar_style || DEFAULT_BRANDING.sidebarStyle,
   };
 }
 
@@ -81,6 +84,9 @@ export function useBranding(opts = {}) {
           logo: b.logo ?? null,
           primary_color: b.primaryColor,
           accent_color: b.accentColor,
+          secondary_color: b.secondaryColor,
+          ui_theme: b.uiTheme,
+          sidebar_style: b.sidebarStyle,
         })
         .eq('id', company.id);
       if (error) throw error;

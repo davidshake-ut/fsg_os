@@ -14,14 +14,15 @@ import {
 import { Calendar, Percent } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { currency } from '@/lib/format';
+import { toneClasses } from '@/lib/statusColors';
 
 export const STAGES = [
-  { id: 'new',         label: 'New',         cls: 'bg-slate-100 text-slate-600' },
-  { id: 'qualifying',  label: 'Qualifying',  cls: 'bg-blue-50 text-blue-600' },
-  { id: 'proposal',    label: 'Proposal',    cls: 'bg-violet-50 text-violet-600' },
-  { id: 'negotiation', label: 'Negotiation', cls: 'bg-amber-50 text-amber-600' },
-  { id: 'won',         label: 'Won',         cls: 'bg-emerald-50 text-emerald-600' },
-  { id: 'lost',        label: 'Lost',        cls: 'bg-red-50 text-red-500' },
+  { id: 'new',         label: 'New',         tone: 'neutral'  },
+  { id: 'qualifying',  label: 'Qualifying',  tone: 'info'     },
+  { id: 'proposal',    label: 'Proposal',    tone: 'progress' },
+  { id: 'negotiation', label: 'Negotiation', tone: 'warning'  },
+  { id: 'won',         label: 'Won',         tone: 'success'  },
+  { id: 'lost',        label: 'Lost',        tone: 'danger'   },
 ];
 
 function fmtDate(iso) {
@@ -72,7 +73,7 @@ function Column({ stage, accounts, activeId }) {
   return (
     <div className="flex min-w-[220px] flex-1 flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
-        <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', stage.cls)}>{stage.label}</span>
+        <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', toneClasses(stage.tone, { border: false }))}>{stage.label}</span>
         <span className="text-xs tabular-nums text-slate-400">{accounts.length}</span>
         {totalValue > 0 && <span className="ml-auto text-[10px] tabular-nums text-slate-400">{currency(totalValue)}</span>}
       </div>

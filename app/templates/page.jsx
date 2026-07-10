@@ -433,7 +433,7 @@ function TemplatesContent() {
               onClick={() => setActiveTab(t)}
               className={cn(
                 'rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-all',
-                activeTab === t ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'
+                activeTab === t ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100'
               )}
             >
               {t === 'all' ? 'All' : t === 'system' ? 'System' : 'My Templates'}

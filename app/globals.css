@@ -1,31 +1,152 @@
 @import "tailwindcss";
 
-/* base44-inspired neutral theme, translated to Tailwind v4 tokens.
-   Light/neutral surface, near-black text, soft borders, blue accent. */
+/* Enterprise data-dense theme (Tier 1 of the UI redesign).
+   Light/neutral surface, near-black text, soft borders. The --brand accent
+   var (read by components/ui/primitives.jsx's Button, etc.) is set
+   per-team elsewhere — see hooks/useBranding.js. */
 :root {
   --background: #f6f7f9;        /* soft neutral page */
-  --foreground: #0f172a;        /* slate-900 */
+  --foreground: #14171b;        /* graphite-900, see @theme override below */
   --radius: 0.75rem;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+
+  /* Typography — loaded via next/font/google in app/layout.js, which sets
+     the --font-heading/--font-body/--font-data-mono CSS vars on <html>.
+     Falling back to system stacks keeps SSR/no-JS renders sane. */
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  --font-heading: var(--font-heading), var(--font-sans);
+  --font-mono: var(--font-data-mono), ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* Custom graphite neutral scale — overrides Tailwind's built-in `slate`
+     palette in place, so every existing slate-* class in the app (there are
+     hundreds) picks up the new cooler, more desaturated neutrals with zero
+     per-component changes. Deliberately less blue-violet than stock slate. */
+  --color-slate-50:  #f7f8f9;
+  --color-slate-100: #eef0f2;
+  --color-slate-200: #dfe3e7;
+  --color-slate-300: #c5cbd2;
+  --color-slate-400: #98a1ac;
+  --color-slate-500: #6b7480;
+  --color-slate-600: #4d5561;
+  --color-slate-700: #363c46;
+  --color-slate-800: #22262d;
+  --color-slate-900: #14171b;
+  --color-slate-950: #0a0c0e;
 }
 
 body {
-  background: var(--background);
+  background: var(--ui-page-bg, var(--background));
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Slightly tighter, more refined headings to lift it above the default look. */
-h1, h2, h3 {
+/* Headings pick up the distinct display face; tightened tracking keeps
+   dense enterprise UI from feeling loose at small sizes. */
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
   letter-spacing: -0.011em;
+}
+
+/* Tabular figures wherever the app renders $ amounts / hours / percentages
+   via the .font-mono utility (quote numbers, invoice totals, SKUs, etc.) —
+   IBM Plex Mono's numerals are already tabular by design, this just makes
+   the intent explicit for anyone extending it. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Appearance: Muted / Bold ────────────────────────────────────────────
+   A team setting (Team Branding — components/AdminPanel.jsx), applied
+   app-wide via components/BrandingVars.jsx — "Muted" is this app's original
+   restrained look; "Bold" is a saturated, gradient-driven alternative
+   modeled on ClickUp/Wrike/ConnectWise PSA. Both read the same --brand /
+   --brand-secondary (per-team colors, hooks/useBranding.js) as inputs, so a
+   team's custom brand colors show through either way.
+   Defaults below *are* "muted" — the [data-ui-theme="bold"] block is the
+   only thing that changes when a user switches. */
+:root {
+  --ui-page-bg: var(--background);
+  --ui-sidebar-bg: #ffffff;
+  --ui-sidebar-border: var(--color-slate-200);
+  --ui-sidebar-ink: var(--color-slate-600);
+  --ui-sidebar-ink-strong: var(--color-slate-900);
+  --ui-sidebar-active-bg: color-mix(in srgb, var(--brand, #2563eb) 10%, white);
+  --ui-sidebar-active-ink: var(--brand, #2563eb);
+  --ui-sidebar-logo-bg: var(--brand, #2563eb);
+  --ui-button-bg: var(--brand, #2563eb);
+
+  --tone-neutral-bg: var(--color-slate-100); --tone-neutral-text: var(--color-slate-600); --tone-neutral-border: var(--color-slate-200); --tone-neutral-dot: var(--color-slate-400);
+  --tone-info-bg: #eff6ff;  --tone-info-text: #1d4ed8;  --tone-info-border: #bfdbfe;  --tone-info-dot: #3b82f6;
+  --tone-progress-bg: #f5f3ff; --tone-progress-text: #6d28d9; --tone-progress-border: #ddd6fe; --tone-progress-dot: #8b5cf6;
+  --tone-warning-bg: #fffbeb; --tone-warning-text: #b45309; --tone-warning-border: #fde68a; --tone-warning-dot: #f59e0b;
+  --tone-danger-bg: #fef2f2; --tone-danger-text: #b91c1c; --tone-danger-border: #fecaca; --tone-danger-dot: #ef4444;
+  --tone-success-bg: #f0fdf4; --tone-success-text: #15803d; --tone-success-border: #bbf7d0; --tone-success-dot: #22c55e;
+  --tone-orange-bg: #fff7ed; --tone-orange-text: #c2410c; --tone-orange-border: #fed7aa; --tone-orange-dot: #f97316;
+
+  /* "Tile" backgrounds — used for larger surfaces (KPI chips, avatars) that
+     read better with a gradient than the flat --tone-*-bg pills do. In
+     muted mode a tile is just its flat tone color (no gradient). */
+  --tile-neutral-bg: var(--tone-neutral-bg);
+  --tile-info-bg: var(--tone-info-bg);
+  --tile-progress-bg: var(--tone-progress-bg);
+  --tile-warning-bg: var(--tone-warning-bg);
+  --tile-danger-bg: var(--tone-danger-bg);
+  --tile-success-bg: var(--tone-success-bg);
+  --tile-orange-bg: var(--tone-orange-bg);
+}
+
+:root[data-ui-theme="bold"] {
+  /* A faint brand-tinted wash instead of flat gray — visible mainly as
+     letterboxing around white cards, echoes the sidebar's hue without
+     competing with it. */
+  --ui-page-bg: color-mix(in srgb, var(--brand, #4338ca) 5%, #f5f6ff);
+
+  /* Both gradients derive from the team's own Primary + Secondary colors
+     (Team Branding — components/AdminPanel.jsx), not fixed hex stops, so
+     picking new brand colors actually changes the bold look. A color-mix()
+     midpoint (rather than a flat 2-stop) keeps the blend smooth even when
+     Primary/Secondary are very different hues. */
+  --ui-sidebar-bg: linear-gradient(195deg, var(--brand, #4338ca) 0%, color-mix(in srgb, var(--brand, #4338ca) 45%, var(--brand-secondary, #0891b2)) 55%, var(--brand-secondary, #0891b2) 100%);
+  --ui-sidebar-border: rgba(255, 255, 255, 0.18);
+  --ui-sidebar-ink: #dbe0ff;
+  --ui-sidebar-ink-strong: #ffffff;
+  --ui-sidebar-active-bg: rgba(255, 255, 255, 0.16);
+  --ui-sidebar-active-ink: #ffffff;
+  --ui-sidebar-logo-bg: rgba(255, 255, 255, 0.2);
+  --ui-button-bg: linear-gradient(120deg, var(--brand, #4f46e5), var(--brand-secondary, #06b6d4));
+
+  --tone-neutral-bg: #64748b;  --tone-neutral-text: #ffffff; --tone-neutral-border: transparent; --tone-neutral-dot: #e2e8f0;
+  --tone-info-bg: #2563eb;     --tone-info-text: #ffffff;    --tone-info-border: transparent; --tone-info-dot: #dbeafe;
+  --tone-progress-bg: #7c3aed; --tone-progress-text: #ffffff; --tone-progress-border: transparent; --tone-progress-dot: #ede9fe;
+  --tone-warning-bg: #f59e0b;  --tone-warning-text: #ffffff; --tone-warning-border: transparent; --tone-warning-dot: #fef3c7;
+  --tone-danger-bg: #f43f5e;   --tone-danger-text: #ffffff;  --tone-danger-border: transparent; --tone-danger-dot: #ffe4e6;
+  --tone-success-bg: #10b981;  --tone-success-text: #ffffff; --tone-success-border: transparent; --tone-success-dot: #d1fae5;
+  --tone-orange-bg: #f97316;   --tone-orange-text: #ffffff;  --tone-orange-border: transparent; --tone-orange-dot: #ffedd5;
+
+  /* Gradient tiles — deliberately fixed hues (not derived from --brand) so
+     KPI metrics stay visually distinct from each other regardless of which
+     brand color a team picks; the brand gradient already "owns" the sidebar
+     and buttons. */
+  --tile-neutral-bg:  linear-gradient(135deg, #64748b, #94a3b8);
+  --tile-info-bg:     linear-gradient(135deg, #4f46e5, #6366f1);
+  --tile-progress-bg: linear-gradient(135deg, #7c3aed, #a78bfa);
+  --tile-warning-bg:  linear-gradient(135deg, #f59e0b, #fb923c);
+  --tile-danger-bg:   linear-gradient(135deg, #ec4899, #f43f5e);
+  --tile-success-bg:  linear-gradient(135deg, #0ea5a4, #10b981);
+  --tile-orange-bg:   linear-gradient(135deg, #f97316, #fb923c);
+}
+
+/* Sidebar style is a sub-choice within "bold" mode only — "muted" always
+   keeps a flat white sidebar regardless of this setting. */
+:root[data-ui-theme="bold"][data-sidebar-style="solid"] {
+  --ui-sidebar-bg: var(--brand, #4338ca);
 }

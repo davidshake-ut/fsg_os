@@ -93,13 +93,13 @@ function SupportContent() {
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
         <button onClick={() => setStatusFilter('all')}
           className={cn('whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-            statusFilter === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
+            statusFilter === 'all' ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
           All <span className="ml-1 text-xs opacity-70">{tickets.length}</span>
         </button>
         {ALL_STATUSES.map((s) => (
           <button key={s} onClick={() => setStatusFilter(s)}
             className={cn('whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-              statusFilter === s ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
+              statusFilter === s ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
             {STATUS_CONFIG[s].label} <span className="ml-0.5 text-xs opacity-70">{counts[s] || 0}</span>
           </button>
         ))}

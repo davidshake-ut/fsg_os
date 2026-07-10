@@ -685,7 +685,7 @@ function CreateDocumentModal({ existingCategories, onCreate, onClose }) {
             {['rich', 'html'].map((m) => (
               <button key={m} type="button" onClick={() => switchMode(m)}
                 className={cn('rounded px-2 py-0.5 text-[11px] font-medium capitalize transition-colors',
-                  mode === m ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-800')}>
+                  mode === m ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)]' : 'text-slate-500 hover:text-slate-800')}>
                 {m === 'rich' ? 'Rich' : 'HTML'}
               </button>
             ))}
@@ -958,7 +958,7 @@ function ResourcesContent() {
                 return (
                   <button key={t} type="button" onClick={() => setActiveType(active ? null : t)}
                     className={cn('rounded-lg border px-2 py-1 text-[11px] font-medium transition-all',
-                      active ? 'border-blue-500 bg-blue-600 text-white' : 'border-slate-200 text-slate-500 hover:border-slate-300')}>
+                      active ? 'border-transparent [background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)]' : 'border-slate-200 text-slate-500 hover:border-slate-300')}>
                     {label}
                   </button>
                 );

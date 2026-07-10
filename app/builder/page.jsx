@@ -9,7 +9,6 @@ import { useSession } from '@/components/SessionProvider';
 import InputPanel from '@/components/InputPanel';
 import CameraInputPanel from '@/components/CameraInputPanel';
 import { useBranding } from '@/hooks/useBranding';
-import { readableTextHex } from '@/lib/colors';
 import SummaryCards from '@/components/SummaryCards';
 import BOMTable from '@/components/BOMTable';
 import LaborTable from '@/components/LaborTable';
@@ -487,13 +486,10 @@ function Calculator() {
     });
   };
 
-  const brandText = readableTextHex(branding.primaryColor);
-
+  // --brand/--brand-text are set app-wide by components/BrandingVars.jsx —
+  // no need to set them again locally here.
   return (
-    <div
-      className="flex flex-col"
-      style={{ '--brand': branding.primaryColor, '--brand-text': brandText }}
-    >
+    <div className="flex flex-col">
       {projectsLoadError && (
         <div className="px-4 pt-3 sm:px-6">
           <ErrorBanner error={projectsLoadError} onRetry={refreshProjects} />

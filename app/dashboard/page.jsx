@@ -15,13 +15,14 @@ import { useSupportTickets } from '@/hooks/useSupportTickets';
 import { useProjects } from '@/hooks/useProjects';
 import { useResources } from '@/hooks/useResources';
 import { useActivityLog } from '@/hooks/useActivityLog';
+import { toneClasses, tileClasses } from '@/lib/statusColors';
 
 const ACTIVITY_META = {
-  quote:        { icon: FileCheck,      cls: 'bg-blue-50 text-blue-600' },
-  change_order: { icon: GitPullRequest, cls: 'bg-amber-50 text-amber-600' },
-  invoice:      { icon: Receipt,        cls: 'bg-emerald-50 text-emerald-600' },
-  project:      { icon: FolderKanban,   cls: 'bg-violet-50 text-violet-600' },
-  ticket:       { icon: LifeBuoy,       cls: 'bg-red-50 text-red-600' },
+  quote:        { icon: FileCheck,      tone: 'info'     },
+  change_order: { icon: GitPullRequest, tone: 'warning'  },
+  invoice:      { icon: Receipt,        tone: 'success'  },
+  project:      { icon: FolderKanban,   tone: 'progress' },
+  ticket:       { icon: LifeBuoy,       tone: 'danger'   },
 };
 
 function fmtRelative(iso) {
@@ -41,10 +42,10 @@ function fmtMoney(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function KpiCard({ label, icon: Icon, value, sub, loading }) {
+function KpiCard({ label, icon: Icon, value, sub, loading, tone = 'info' }) {
   return (
     <Card className="flex items-start gap-4 p-5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm ${tileClasses(tone)}`}>
         <Icon size={20} />
       </span>
       <div>
@@ -92,6 +93,7 @@ function DashboardContent() {
       value: accounts.length,
       sub: 'CRM accounts',
       loading: loadingCrm,
+      tone: 'info',
     },
     {
       label: 'Active Projects',
@@ -99,6 +101,7 @@ function DashboardContent() {
       value: activeProjects,
       sub: 'Planning + active',
       loading: loadingPsa,
+      tone: 'progress',
     },
     {
       label: 'Revenue Collected',
@@ -106,6 +109,7 @@ function DashboardContent() {
       value: fmtMoney(revenueCollected),
       sub: 'All paid invoices',
       loading: loadingInv,
+      tone: 'success',
     },
     {
       label: 'Open Tickets',
@@ -113,6 +117,7 @@ function DashboardContent() {
       value: openTickets,
       sub: 'Open + in progress',
       loading: loadingTickets,
+      tone: 'danger',
     },
     {
       label: 'Builder Proposals',
@@ -120,6 +125,7 @@ function DashboardContent() {
       value: savedProjects.length,
       sub: 'Saved quotes',
       loading: false,
+      tone: 'warning',
     },
     {
       label: 'Avg. Response Time',
@@ -127,6 +133,7 @@ function DashboardContent() {
       value: '—',
       sub: 'Coming soon',
       loading: false,
+      tone: 'neutral',
     },
     {
       label: 'Documents',
@@ -134,6 +141,7 @@ function DashboardContent() {
       value: resources.length,
       sub: 'Resources uploaded',
       loading: loadingResources,
+      tone: 'orange',
     },
     {
       label: 'Resource Groups',
@@ -141,6 +149,7 @@ function DashboardContent() {
       value: categoryCount,
       sub: 'Unique categories',
       loading: loadingResources,
+      tone: 'info',
     },
   ];
 
@@ -175,10 +184,10 @@ function DashboardContent() {
         ) : (
           <div className="space-y-1.5">
             {activity.map((a) => {
-              const { icon: Icon, cls } = ACTIVITY_META[a.entity_type] ?? ACTIVITY_META.project;
+              const { icon: Icon, tone } = ACTIVITY_META[a.entity_type] ?? ACTIVITY_META.project;
               return (
                 <div key={a.id} className="flex items-center gap-3 rounded-lg px-4 py-2.5 hover:bg-slate-50">
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${cls}`}>
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${toneClasses(tone, { border: false })}`}>
                     <Icon size={14} />
                   </span>
                   <p className="min-w-0 flex-1 truncate text-sm text-slate-700">

@@ -14,6 +14,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { cn } from '@/lib/utils';
+import { toneClasses } from '@/lib/statusColors';
 
 const TYPE_LABELS = {
   hospitality: 'Hospitality', senior_living: 'Senior Living',
@@ -21,10 +22,10 @@ const TYPE_LABELS = {
   healthcare: 'Healthcare', other: 'Other',
 };
 
-const STATUS_STYLES = {
-  active:   'bg-emerald-50 text-emerald-700 border-emerald-200',
-  prospect: 'bg-amber-50 text-amber-700 border-amber-200',
-  inactive: 'bg-slate-100 text-slate-500 border-slate-200',
+const ACCOUNT_STATUS_TONE = {
+  active:   'success',
+  prospect: 'warning',
+  inactive: 'neutral',
 };
 
 function CRMContent() {
@@ -80,7 +81,7 @@ function CRMContent() {
             {['all', 'active', 'prospect', 'inactive'].map((s) => (
               <button key={s} onClick={() => setStatusFilter(s)}
                 className={cn('whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-all capitalize',
-                  statusFilter === s ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'
+                  statusFilter === s ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100'
                 )}
               >{s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}</button>
             ))}
@@ -123,7 +124,7 @@ function CRMContent() {
                   {a.phone && <span className="flex items-center gap-1 text-xs text-slate-400"><Phone size={11} />{a.phone}</span>}
                   {a.website && <span className="flex items-center gap-1 text-xs text-slate-400"><Globe size={11} />{a.website.replace(/^https?:\/\//, '')}</span>}
                 </div>
-                <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium', STATUS_STYLES[a.status] ?? STATUS_STYLES.prospect)}>
+                <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium', toneClasses(ACCOUNT_STATUS_TONE[a.status] ?? 'warning'))}>
                   {a.status.charAt(0).toUpperCase() + a.status.slice(1)}
                 </span>
               </Link>

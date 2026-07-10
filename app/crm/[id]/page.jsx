@@ -15,12 +15,7 @@ import { Select, Button } from '@/components/ui/primitives';
 import AppToast from '@/components/ui/AppToast';
 import { currency } from '@/lib/format';
 import { cn } from '@/lib/utils';
-
-const STATUS_STYLES = {
-  active:   'bg-emerald-50 text-emerald-700 border-emerald-200',
-  prospect: 'bg-amber-50 text-amber-700 border-amber-200',
-  inactive: 'bg-slate-100 text-slate-500 border-slate-200',
-};
+import { toneClasses } from '@/lib/statusColors';
 
 const TYPE_LABELS = {
   hospitality: 'Hospitality', senior_living: 'Senior Living',
@@ -28,28 +23,16 @@ const TYPE_LABELS = {
   healthcare: 'Healthcare', other: 'Other',
 };
 
-const PSA_STATUS_STYLES = {
-  planning: 'bg-slate-100 text-slate-600 border-slate-200',
-  active: 'bg-blue-50 text-blue-700 border-blue-200',
-  on_hold: 'bg-amber-50 text-amber-700 border-amber-200',
-  complete: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  cancelled: 'bg-red-50 text-red-700 border-red-200',
+const PSA_STATUS_TONE = {
+  planning: 'neutral', active: 'info', on_hold: 'warning', complete: 'success', cancelled: 'danger',
 };
 
-const TICKET_STATUS_STYLES = {
-  open: 'bg-blue-50 text-blue-700 border-blue-200',
-  in_progress: 'bg-amber-50 text-amber-700 border-amber-200',
-  waiting: 'bg-violet-50 text-violet-700 border-violet-200',
-  resolved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  closed: 'bg-slate-100 text-slate-500 border-slate-200',
+const TICKET_STATUS_TONE = {
+  open: 'info', in_progress: 'warning', waiting: 'progress', resolved: 'success', closed: 'neutral',
 };
 
-const INVOICE_STATUS_STYLES = {
-  draft: 'bg-slate-100 text-slate-600 border-slate-200',
-  sent: 'bg-blue-50 text-blue-700 border-blue-200',
-  paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  overdue: 'bg-red-50 text-red-700 border-red-200',
-  void: 'bg-slate-100 text-slate-400 border-slate-200',
+const INVOICE_STATUS_TONE = {
+  draft: 'neutral', sent: 'info', paid: 'success', overdue: 'danger', void: 'neutral',
 };
 
 function fmtDate(iso) {
@@ -57,8 +40,8 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function Pill({ label, cls }) {
-  return <span className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize', cls)}>{label?.replace(/_/g, ' ')}</span>;
+function Pill({ label, tone }) {
+  return <span className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize', toneClasses(tone))}>{label?.replace(/_/g, ' ')}</span>;
 }
 
 function EmptyRow({ icon: Icon, message }) {
@@ -259,7 +242,7 @@ function AccountDetail() {
                     {p.start_date ? fmtDate(p.start_date) : 'No start date'}{p.end_date ? ` – ${fmtDate(p.end_date)}` : ''}
                   </p>
                 </div>
-                <Pill label={p.status} cls={PSA_STATUS_STYLES[p.status] ?? PSA_STATUS_STYLES.planning} />
+                <Pill label={p.status} tone={PSA_STATUS_TONE[p.status] ?? 'neutral'} />
                 {p.budget != null && <p className="w-24 shrink-0 text-right text-sm font-medium text-slate-700 tabular-nums">{currency(p.budget)}</p>}
               </Link>
             ))}
@@ -277,7 +260,7 @@ function AccountDetail() {
                   <p className="truncate text-sm font-medium text-slate-800">{t.title}</p>
                   <p className="text-xs capitalize text-slate-400">{t.priority} priority · {fmtDate(t.created_at)}</p>
                 </div>
-                <Pill label={t.status} cls={TICKET_STATUS_STYLES[t.status] ?? TICKET_STATUS_STYLES.open} />
+                <Pill label={t.status} tone={TICKET_STATUS_TONE[t.status] ?? 'info'} />
               </Link>
             ))}
           </div>
@@ -294,7 +277,7 @@ function AccountDetail() {
                   <p className="truncate text-sm font-medium text-slate-800">{inv.title}</p>
                   <p className="text-xs text-slate-400">{inv.invoice_number} · {fmtDate(inv.invoice_date)}</p>
                 </div>
-                <Pill label={inv.status} cls={INVOICE_STATUS_STYLES[inv.status] ?? INVOICE_STATUS_STYLES.draft} />
+                <Pill label={inv.status} tone={INVOICE_STATUS_TONE[inv.status] ?? 'neutral'} />
                 <p className="w-24 shrink-0 text-right text-sm font-medium text-slate-700 tabular-nums">{currency(inv.total)}</p>
               </Link>
             ))}

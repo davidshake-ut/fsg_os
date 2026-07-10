@@ -200,7 +200,7 @@ function ProjectsContent() {
           className={cn(
             'whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
             statusFilter === 'all'
-              ? 'bg-blue-600 text-white shadow-sm'
+              ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm'
               : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
           )}
         >
@@ -213,7 +213,7 @@ function ProjectsContent() {
             className={cn(
               'whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
               statusFilter === s
-                ? 'bg-blue-600 text-white shadow-sm'
+                ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm'
                 : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
             )}
           >

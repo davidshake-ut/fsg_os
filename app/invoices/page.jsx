@@ -15,24 +15,20 @@ import { useUnbilledWork } from '@/hooks/useUnbilledWork';
 import { cn } from '@/lib/utils';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ErrorBanner from '@/components/ui/ErrorBanner';
+import { StatusBadge } from '@/components/ui/primitives';
 
 // ── Status config ─────────────────────────────────────────────────────────
 const STATUS = {
-  draft:    { label: 'Draft',    cls: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400'   },
-  sent:     { label: 'Sent',     cls: 'bg-blue-50 text-blue-700',     dot: 'bg-blue-500'    },
-  paid:     { label: 'Paid',     cls: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-  overdue:  { label: 'Overdue',  cls: 'bg-red-50 text-red-700',       dot: 'bg-red-500'     },
-  void:     { label: 'Void',     cls: 'bg-slate-100 text-slate-400',   dot: 'bg-slate-300'   },
+  draft:    { label: 'Draft',    tone: 'neutral' },
+  sent:     { label: 'Sent',     tone: 'info'    },
+  paid:     { label: 'Paid',     tone: 'success' },
+  overdue:  { label: 'Overdue',  tone: 'danger'  },
+  void:     { label: 'Void',     tone: 'neutral' },
 };
 
-function StatusBadge({ status }) {
+function InvoiceStatusBadge({ status }) {
   const s = STATUS[status] ?? STATUS.draft;
-  return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium', s.cls)}>
-      <span className={cn('h-1.5 w-1.5 rounded-full', s.dot)} />
-      {s.label}
-    </span>
-  );
+  return <StatusBadge tone={s.tone} dot>{s.label}</StatusBadge>;
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────
@@ -291,7 +287,7 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
           <div>
             <div className="flex items-center gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{inv.invoice_number}</p>
-              <StatusBadge status={inv.status} />
+              <InvoiceStatusBadge status={inv.status} />
             </div>
             <h2 className="mt-0.5 text-base font-semibold text-slate-900">{inv.title}</h2>
             {inv.customer_name && <p className="text-xs text-slate-500">{inv.customer_name}</p>}
@@ -540,7 +536,7 @@ function InvoicesContent() {
             onClick={() => setStatusFilter(s)}
             className={cn('whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-all',
               statusFilter === s
-                ? 'bg-blue-600 text-white shadow-sm'
+                ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm'
                 : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700')}>
             {s === 'all' ? 'All' : (STATUS[s]?.label ?? s)}
             <span className="ml-1 text-xs opacity-70">{counts[s] || 0}</span>
@@ -589,7 +585,7 @@ function InvoicesContent() {
                   </td>
                   <td className="px-4 py-3 text-sm tabular-nums font-semibold text-slate-800">{fmtMoney(inv.total)}</td>
                   <td className="px-4 py-3 text-sm tabular-nums text-slate-500">{fmtDate(inv.due_date)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={inv.status} /></td>
+                  <td className="px-4 py-3"><InvoiceStatusBadge status={inv.status} /></td>
                 </tr>
               ))}
             </tbody>

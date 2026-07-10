@@ -6,7 +6,7 @@ import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { useBranding } from '@/hooks/useBranding';
 import { useProducts } from '@/hooks/useProducts';
-import { Card, Button, Field, TextInput, Select, Badge, Toggle, NumberInput } from '@/components/ui/primitives';
+import { Card, Button, Field, TextInput, Select, Badge, Toggle, NumberInput, Segmented } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ModulesPanel from '@/components/ModulesPanel';
 import { resolveBuilderDefaults, BUILDER_DEFAULTS_KEY } from '@/lib/builderDefaults';
@@ -158,6 +158,24 @@ function BrandingForm({ initial, onSave }) {
             </div>
           </div>
           <div>
+            <p className="mb-1.5 text-xs text-slate-500">Secondary color</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={form.secondaryColor}
+                onChange={(e) => set('secondaryColor', e.target.value)}
+                className="h-9 w-9 cursor-pointer rounded-lg border border-slate-200 p-0.5"
+              />
+              <input
+                type="text"
+                value={form.secondaryColor}
+                onChange={(e) => set('secondaryColor', e.target.value)}
+                className="w-28 rounded-lg border border-slate-200 px-3 py-1.5 font-mono text-sm outline-none focus:border-blue-400"
+                placeholder="#0891b2"
+              />
+            </div>
+          </div>
+          <div>
             <p className="mb-1.5 text-xs text-slate-500">Accent color</p>
             <div className="flex items-center gap-2">
               <input
@@ -188,14 +206,61 @@ function BrandingForm({ initial, onSave }) {
           </span>
           <span
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
+            style={{ background: form.secondaryColor }}
+          >
+            Secondary
+          </span>
+          <span
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
             style={{ background: form.accentColor }}
           >
             Accent
+          </span>
+          <span
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
+            style={{ background: `linear-gradient(120deg, ${form.primaryColor}, ${form.secondaryColor})` }}
+          >
+            Gradient
           </span>
           {form.logo?.dataUrl && (
             <img src={form.logo.dataUrl} alt="Company logo" className="ml-auto h-7 w-auto object-contain" />
           )}
         </div>
+      </div>
+
+      {/* Appearance */}
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Appearance</p>
+        <p className="mb-2.5 text-xs text-slate-400">
+          Applies to everyone on this team. Bold uses Primary/Secondary as a gradient across the
+          sidebar and buttons; Muted keeps a flat, restrained look with Primary as a single accent.
+        </p>
+        <div className="max-w-xs">
+          <Segmented
+            value={form.uiTheme}
+            onChange={(v) => set('uiTheme', v)}
+            options={[
+              { value: 'bold', label: 'Bold' },
+              { value: 'muted', label: 'Muted' },
+            ]}
+          />
+        </div>
+
+        {form.uiTheme === 'bold' && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs text-slate-500">Sidebar style</p>
+            <div className="max-w-xs">
+              <Segmented
+                value={form.sidebarStyle}
+                onChange={(v) => set('sidebarStyle', v)}
+                options={[
+                  { value: 'gradient', label: 'Gradient' },
+                  { value: 'solid', label: 'Solid' },
+                ]}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
@@ -684,32 +749,44 @@ export default function AdminPanel() {
   const memberCount = (cid) => members.filter((m) => m.company_id === cid).length;
 
   // ── Branding for company admin (own team)
+  // Saving branding updates the `companies` row, but the app's global
+  // `company` object (read everywhere via useSession(), including
+  // components/BrandingVars.jsx) is cached in hooks/useTenant.js and only
+  // refetched by refreshSession() — this app's own local `refresh()` only
+  // re-fetches AdminPanel's own team/member lists. Without also calling
+  // refreshSession(), saved appearance/color changes never visibly apply.
   const { branding: ownBranding, setBranding: saveOwnBranding } = useBranding({
     configured: isSupabaseConfigured,
     company,
-    onSaved: refresh,
+    onSaved: async () => { await Promise.all([refresh(), refreshSession()]); },
   });
 
   // ── Branding for super admin targeting a specific team
   const brandingTarget = companies.find((c) => c.id === brandingTargetId) ?? null;
   const brandingInitial = brandingTarget
     ? {
-        companyName:   brandingTarget.name            || '',
-        logo:          brandingTarget.logo            || null,
-        primaryColor:  brandingTarget.primary_color   || '#2563eb',
-        accentColor:   brandingTarget.accent_color    || '#1e40af',
+        companyName:    brandingTarget.name            || '',
+        logo:           brandingTarget.logo            || null,
+        primaryColor:   brandingTarget.primary_color    || '#2563eb',
+        accentColor:    brandingTarget.accent_color     || '#1e40af',
+        secondaryColor: brandingTarget.secondary_color  || '#0891b2',
+        uiTheme:        brandingTarget.ui_theme         || 'bold',
+        sidebarStyle:   brandingTarget.sidebar_style    || 'gradient',
       }
-    : { companyName: '', logo: null, primaryColor: '#2563eb', accentColor: '#1e40af' };
+    : { companyName: '', logo: null, primaryColor: '#2563eb', accentColor: '#1e40af', secondaryColor: '#0891b2', uiTheme: 'bold', sidebarStyle: 'gradient' };
 
   const saveSuperBranding = async (form) => {
     if (!supabase || !brandingTargetId) return;
     const { error } = await supabase
       .from('companies')
       .update({
-        name:          form.companyName,
-        logo:          form.logo ?? null,
-        primary_color: form.primaryColor,
-        accent_color:  form.accentColor,
+        name:            form.companyName,
+        logo:            form.logo ?? null,
+        primary_color:   form.primaryColor,
+        accent_color:    form.accentColor,
+        secondary_color: form.secondaryColor,
+        ui_theme:        form.uiTheme,
+        sidebar_style:   form.sidebarStyle,
       })
       .eq('id', brandingTargetId);
     if (error) throw error;
@@ -899,10 +976,13 @@ export default function AdminPanel() {
               ) : (
                 <BrandingForm
                   initial={{
-                    companyName:  ownBranding.companyName  || '',
-                    logo:         ownBranding.logo         || null,
-                    primaryColor: ownBranding.primaryColor || '#2563eb',
-                    accentColor:  ownBranding.accentColor  || '#1e40af',
+                    companyName:    ownBranding.companyName    || '',
+                    logo:           ownBranding.logo           || null,
+                    primaryColor:   ownBranding.primaryColor   || '#2563eb',
+                    accentColor:    ownBranding.accentColor    || '#1e40af',
+                    secondaryColor: ownBranding.secondaryColor || '#0891b2',
+                    uiTheme:        ownBranding.uiTheme        || 'bold',
+                    sidebarStyle:   ownBranding.sidebarStyle   || 'gradient',
                   }}
                   onSave={saveOwnBranding}
                 />

@@ -1,6 +1,16 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { TONES } from '@/lib/statusColors';
+
+// Elevation/radius convention (enterprise data-dense direction — flat and
+// hairline-driven, not skeuomorphic):
+//   - In-page surfaces (Card, inputs, dropdowns): border + shadow-sm at most.
+//   - True overlays (modals, popovers, command palette): shadow-xl/2xl is
+//     fine — they're leaving the page, real elevation communicates that.
+//   - Radius: rounded-lg for controls/inputs, rounded-xl for cards/panels,
+//     rounded-full for pills/badges/avatars. Don't reach for rounded-2xl+
+//     outside modals.
 
 export function Card({ className, ...props }) {
   return (
@@ -16,8 +26,13 @@ export function Card({ className, ...props }) {
 
 export function Button({ className, variant = 'default', size = 'md', ...props }) {
   const variants = {
+    // --ui-button-bg is a solid color in "muted" mode but a gradient in
+    // "bold" mode (app/globals.css) — bg-[...] would emit background-color,
+    // which silently drops gradient values (invalid CSS), rendering an
+    // unstyled/invisible button. The [background:...] arbitrary property
+    // emits the `background` shorthand instead, which accepts either.
     default:
-      'bg-[var(--brand,#2563eb)] text-[var(--brand-text,#fff)] shadow-sm hover:brightness-110 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:brightness-100',
+      '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm hover:brightness-110 disabled:bg-slate-200 disabled:bg-none disabled:text-slate-400 disabled:shadow-none disabled:brightness-100',
     outline:
       'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50',
     ghost: 'text-slate-600 hover:bg-slate-100',
@@ -52,6 +67,20 @@ export function Badge({ className, ...props }) {
       )}
       {...props}
     />
+  );
+}
+
+// Domain-agnostic status/priority pill — pass a semantic `tone` (see
+// lib/statusColors.js) rather than colors. Domain badges (ProjectStatusBadge,
+// QuoteStatusBadge, TicketPriorityBadge, etc.) wrap this with their own
+// status -> tone mapping so the color values live in exactly one place.
+export function StatusBadge({ tone = 'neutral', dot = false, className, children }) {
+  const t = TONES[tone] ?? TONES.neutral;
+  return (
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium', t.bg, t.text, t.border, className)}>
+      {dot && <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', t.dot)} />}
+      {children}
+    </span>
   );
 }
 
@@ -126,6 +155,59 @@ export function Toggle({ checked, onChange, label }) {
         />
       </span>
     </button>
+  );
+}
+
+// ── Table primitives (Tier 4 wires these into the list pages — this Tier
+//    just establishes the shared shape) ──────────────────────────────────
+export function Table({ className, minWidth = 560, children }) {
+  return (
+    <div className={cn('overflow-x-auto overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-sm shadow-slate-900/[0.03]', className)}>
+      <table className="w-full" style={{ minWidth }}>{children}</table>
+    </div>
+  );
+}
+
+export function THead({ columns }) {
+  return (
+    <thead>
+      <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50">
+        {columns.map((h) => (
+          <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400">{h}</th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
+export function TRow({ className, onClick, children }) {
+  return (
+    <tr
+      onClick={onClick}
+      className={cn('border-b border-slate-100 transition-colors last:border-0', onClick && 'cursor-pointer hover:bg-slate-50', className)}
+    >
+      {children}
+    </tr>
+  );
+}
+
+export function TCell({ className, numeric = false, children }) {
+  return (
+    <td className={cn('px-4 py-3 text-sm text-slate-600', numeric && 'text-right font-mono tabular-nums', className)}>
+      {children}
+    </td>
+  );
+}
+
+// ── Empty state ─────────────────────────────────────────────────────────
+export function EmptyState({ icon: Icon, title, description, action, className }) {
+  return (
+    <Card className={cn('py-16 text-center', className)}>
+      {Icon && <Icon size={32} className="mx-auto mb-3 text-slate-300" />}
+      <p className="text-sm font-medium text-slate-600">{title}</p>
+      {description && <p className="mt-1 text-sm text-slate-400">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </Card>
   );
 }
 

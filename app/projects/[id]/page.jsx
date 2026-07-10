@@ -266,7 +266,7 @@ function ProjectDetail() {
               <span>{pct}% · {totalHours.toFixed(1)}h logged</span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+              <div className="h-full rounded-full [background:var(--ui-button-bg,var(--brand,#2563eb))] transition-all" style={{ width: `${pct}%` }} />
             </div>
           </div>
         )}
