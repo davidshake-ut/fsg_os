@@ -44,6 +44,14 @@ walk-through. In short:
 5. Promote your account to `super_admin`, then create teams and invite admins
    from the in-app console.
 
+## Enabling the AI Assistant (optional)
+
+Team mode only. Set `ANTHROPIC_API_KEY` (server-only) in Vercel and/or
+`.env.local` to turn on the AI Assistant panel on a project's Overview tab
+(status summaries, and turning pasted field/meeting notes into a reviewable
+task list). Without a key, those routes return a clean 503 and the rest of
+the app is unaffected.
+
 ## Architecture
 
 - `lib/calculateBOM.js` / `lib/calculateCameraBOM.js` — pure calculation engines

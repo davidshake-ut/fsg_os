@@ -10,6 +10,7 @@ import {
   newPsaId,
 } from '@/lib/psaLocalStore';
 import { logActivity } from '@/lib/activityLog';
+import { runAutomations } from '@/lib/automations';
 import { computeTemplateSchedule } from '@/lib/projectTemplateSchedule';
 
 // Project list CRUD. Returns all projects for the current tenant.
@@ -127,6 +128,10 @@ export function usePSAProjects(session, company, user) {
         companyId: company?.id, actorId: user?.id,
         verb: 'project.created', entityType: 'project', entityId: proj.id,
         label: `Project created: ${proj.name}`,
+      });
+      await runAutomations(supabase, {
+        companyId: company?.id, triggerType: 'project.created',
+        entity: proj,
       });
       await refresh();
       return proj;

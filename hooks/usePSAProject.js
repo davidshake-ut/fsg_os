@@ -11,6 +11,7 @@ import {
 } from '@/lib/psaLocalStore';
 import { computeTemplateSchedule } from '@/lib/projectTemplateSchedule';
 import { notify } from '@/lib/notify';
+import { runAutomations } from '@/lib/automations';
 
 // Single project detail: milestones, tasks, time entries, team members, and technology sections.
 export function usePSAProject(projectId, session) {
@@ -179,8 +180,8 @@ export function usePSAProject(projectId, session) {
       }
       const { error } = await supabase.from('psa_tasks').update(data).eq('id', id);
       if (error) throw error;
+      const task = tasks.find((t) => t.id === id);
       if (data.assignee_id) {
-        const task = tasks.find((t) => t.id === id);
         if (task && task.assignee_id !== data.assignee_id) {
           await notify(supabase, {
             companyId: project?.company_id, userId: data.assignee_id,
@@ -189,6 +190,12 @@ export function usePSAProject(projectId, session) {
             href: `/projects/${projectId}`,
           });
         }
+      }
+      if (data.status) {
+        await runAutomations(supabase, {
+          companyId: project?.company_id, triggerType: 'task.status_changed',
+          entity: { ...task, ...data, id, project_id: projectId },
+        });
       }
       await refresh();
     },

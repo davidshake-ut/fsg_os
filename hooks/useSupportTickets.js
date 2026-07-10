@@ -5,6 +5,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { getSupportSnapshot, getSupportServerSnapshot, subscribeSupport, writeSupport, newSupportId } from '@/lib/supportLocalStore';
 import { logActivity } from '@/lib/activityLog';
 import { notify } from '@/lib/notify';
+import { runAutomations } from '@/lib/automations';
 
 const PAGE_SIZE = 100;
 
@@ -65,6 +66,10 @@ export function useSupportTickets(session, company, user) {
       verb: 'ticket.created', entityType: 'ticket', entityId: t.id,
       label: `Ticket opened: ${t.title}`,
     });
+    await runAutomations(supabase, {
+      companyId, triggerType: 'ticket.created',
+      entity: t,
+    });
     await refresh();
     return t;
   }, [supabase, companyId, userId, refresh]);
@@ -77,8 +82,8 @@ export function useSupportTickets(session, company, user) {
     }
     const { error } = await supabase.from('support_tickets').update({ ...data, updated_at: now }).eq('id', id);
     if (error) throw error;
+    const ticket = tickets.find((t) => t.id === id);
     if (data.assigned_to) {
-      const ticket = tickets.find((t) => t.id === id);
       if (ticket && ticket.assigned_to !== data.assigned_to) {
         await notify(supabase, {
           companyId, userId: data.assigned_to,
@@ -87,6 +92,12 @@ export function useSupportTickets(session, company, user) {
           href: `/support/${id}`,
         });
       }
+    }
+    if (data.status) {
+      await runAutomations(supabase, {
+        companyId, triggerType: 'ticket.status_changed',
+        entity: { ...ticket, ...data, id },
+      });
     }
     await refresh();
   }, [supabase, refresh, tickets, companyId]);

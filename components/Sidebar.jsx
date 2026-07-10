@@ -14,6 +14,7 @@ import {
   Layers,
   LayoutTemplate,
   Receipt,
+  Zap,
   X,
 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { key: 'templates',  label: 'Templates',       href: '/templates',  icon: LayoutTemplate },
   { key: 'support',    label: 'Support',         href: '/support',    icon: LifeBuoy },
   { key: 'invoices',   label: 'Invoices',        href: '/invoices',   icon: Receipt  },
+  { key: 'automations', label: 'Automations',    href: '/automations', icon: Zap },
   { key: 'resources',  label: 'Resources',       href: '/resources',  icon: BookOpen },
 ];
 
@@ -57,7 +59,7 @@ export default function Sidebar({ onClose }) {
   const { isEnabled } = useModules();
 
   const visibleItems = NAV_ITEMS.filter((item) =>
-    item.key === 'templates' ? isEnabled('projects') : isEnabled(item.key)
+    item.key === 'templates' || item.key === 'automations' ? isEnabled('projects') : isEnabled(item.key)
   );
 
   return (

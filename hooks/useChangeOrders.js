@@ -5,6 +5,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { computeCoTotals } from '@/lib/changeOrders';
 import { logActivity } from '@/lib/activityLog';
 import { notify } from '@/lib/notify';
+import { runAutomations } from '@/lib/automations';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -107,6 +108,10 @@ export function useChangeOrders(session, company, user, projectId) {
         href: `/projects/${projectId}`,
       });
     }
+    await runAutomations(supabase, {
+      companyId, triggerType: 'change_order.status_changed',
+      entity: { ...co, id, status, project_id: projectId, title: coTitle },
+    });
     await refresh();
   }, [supabase, refresh, changeOrders, companyId, user, projectId]);
 

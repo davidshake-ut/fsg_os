@@ -21,6 +21,7 @@ import ProjectBudget from '@/components/projects/ProjectBudget';
 import ApplyTemplateModal from '@/components/projects/ApplyTemplateModal';
 import ChangeOrderSection from '@/components/projects/ChangeOrderSection';
 import AssetsSection from '@/components/projects/AssetsSection';
+import AIAssistantPanel from '@/components/projects/AIAssistantPanel';
 import { Select, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TECHNOLOGIES } from '@/lib/templates/index';
@@ -492,6 +493,7 @@ function ProjectDetail() {
 
         {/* ── Overview ── */}
         {tab === 'overview' && (
+          <div className="grid gap-4 lg:grid-cols-2">
           <div className="max-w-lg space-y-4">
             <div className="rounded-xl border border-slate-200 bg-white p-5">
               <h2 className="mb-3 text-sm font-semibold text-slate-700">Project Details</h2>
@@ -547,6 +549,11 @@ function ProjectDetail() {
                 <p className="whitespace-pre-wrap text-sm text-slate-600">{project.description}</p>
               </div>
             )}
+          </div>
+
+          <div className="max-w-lg">
+            <AIAssistantPanel projectId={id} session={session} milestones={milestones} onCreateTask={createTask} />
+          </div>
           </div>
         )}
       </div>

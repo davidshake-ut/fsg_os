@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { DEFAULT_INPUTS, DEFAULT_CAMERA_INPUTS, DEFAULT_LABOR_ROLES } from '@/lib/defaults';
 import { logActivity } from '@/lib/activityLog';
+import { runAutomations } from '@/lib/automations';
 
 // In local mode (no Supabase) projects are persisted to localStorage so the
 // user can still save and reopen projects. Rows use the same column shape as
@@ -240,11 +241,16 @@ export function useProjects(session, company, user) {
         .update({ status, ...stamp, ...snapshotPatch, updated_at: now })
         .eq('id', id);
       if (error) throw error;
-      const quoteName = projects.find((p) => p.id === id)?.project_name ?? 'Quote';
+      const quote = projects.find((p) => p.id === id);
+      const quoteName = quote?.project_name ?? 'Quote';
       await logActivity(supabase, {
         companyId: company?.id, actorId: user?.id,
         verb: `quote.${status}`, entityType: 'quote', entityId: id,
         label: `${quoteName} marked ${status}`,
+      });
+      await runAutomations(supabase, {
+        companyId: company?.id, triggerType: 'quote.status_changed',
+        entity: { ...quote, id, status, title: quoteName },
       });
       await refresh();
     },
