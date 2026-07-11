@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Building2, Phone, Globe, Trash2, List, KanbanSquare } from 'lucide-react';
+import { Plus, Search, Building2, Phone, Globe, Trash2, List, KanbanSquare, UserCheck } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -78,12 +78,15 @@ function CRMContent() {
         </div>
         {view === 'list' && (
           <div className="flex gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
-            {['all', 'active', 'prospect', 'inactive'].map((s) => (
+            {/* Flow language: a Lead is an account still being sold
+                (status=prospect); winning the pipeline (or the convert
+                action) makes it a Customer (status=active). */}
+            {[['all', 'All'], ['prospect', 'Leads'], ['active', 'Customers'], ['inactive', 'Inactive']].map(([s, label]) => (
               <button key={s} onClick={() => setStatusFilter(s)}
-                className={cn('whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-all capitalize',
+                className={cn('whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-all',
                   statusFilter === s ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100'
                 )}
-              >{s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}</button>
+              >{label} <span className="ml-0.5 opacity-70">{s === 'all' ? accounts.length : accounts.filter((a) => a.status === s).length}</span></button>
             ))}
           </div>
         )}
@@ -128,6 +131,25 @@ function CRMContent() {
                   {a.status.charAt(0).toUpperCase() + a.status.slice(1)}
                 </span>
               </Link>
+              {a.status === 'prospect' && (
+                <button
+                  onClick={async () => {
+                    await updateAccount(a.id, { status: 'active' });
+                    setToast({
+                      type: 'success',
+                      message: (
+                        <>
+                          {a.name} is now a customer.{' '}
+                          <Link href={`/builder?account=${a.id}`} className="font-semibold underline">Create a proposal →</Link>
+                        </>
+                      ),
+                    });
+                  }}
+                  title="Convert to customer"
+                  className="shrink-0 rounded-lg p-1.5 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-emerald-50 hover:text-emerald-600">
+                  <UserCheck size={15} />
+                </button>
+              )}
               <button onClick={() => handleDelete(a)} disabled={deleting === a.id}
                 className="shrink-0 rounded-lg p-1.5 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500">
                 <Trash2 size={15} />

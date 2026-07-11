@@ -16,6 +16,7 @@ import {
   Receipt,
   Zap,
   MessageSquare,
+  FileCheck,
   X,
 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { key: 'messages',  label: 'Messages',        href: '/messages',  icon: MessageSquare,   group: null },
   { key: 'crm',       label: 'CRM',             href: '/crm',       icon: Users,           group: 'Sell' },
   { key: 'builder',   label: 'System Builder',  href: '/builder',   icon: Wrench,          group: 'Sell' },
+  { key: 'proposals',  label: 'Proposals',       href: '/proposals',  icon: FileCheck,      group: 'Deliver' },
   { key: 'projects',   label: 'Projects',        href: '/projects',   icon: FolderKanban,   group: 'Deliver' },
   { key: 'templates',  label: 'Templates',       href: '/templates',  icon: LayoutTemplate, group: 'Deliver' },
   { key: 'automations', label: 'Automations',    href: '/automations', icon: Zap,           group: 'Deliver' },
@@ -65,9 +67,11 @@ export default function Sidebar({ onClose }) {
   const { isAdmin, isSuperAdmin, role, configured, session, user, signOut } = useSession();
   const { isEnabled } = useModules();
 
-  const visibleItems = NAV_ITEMS.filter((item) =>
-    item.key === 'templates' || item.key === 'automations' ? isEnabled('projects') : isEnabled(item.key)
-  );
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (item.key === 'templates' || item.key === 'automations') return isEnabled('projects');
+    if (item.key === 'proposals') return isEnabled('builder'); // proposals ARE builder quotes
+    return isEnabled(item.key);
+  });
 
   return (
     <aside

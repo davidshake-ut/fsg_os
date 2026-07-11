@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, FolderOpen, Plus, User, X } from 'lucide-react';
+import { Building2, ChevronDown, FolderOpen, Plus, User, X } from 'lucide-react';
 import {
   Card,
   Field,
@@ -256,6 +256,138 @@ function CustomerPicker({ accounts = [], crmAccountId, onSelectAccount, onCreate
   );
 }
 
+// Property of the selected customer — the middle link of the sales chain
+// Account -> Property -> Proposal -> Project. Same interaction pattern as
+// CustomerPicker above (dropdown + inline create), scoped to the chosen
+// account's properties.
+function PropertyPicker({ properties = [], propertyId, accountSelected, onSelectProperty, onCreateProperty }) {
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newAddress, setNewAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const selected = properties.find((p) => p.id === propertyId);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setBusy(true);
+    try {
+      const prop = await onCreateProperty({ name: newName.trim(), address: newAddress.trim() || null });
+      if (prop) onSelectProperty(prop.id);
+      setCreating(false);
+      setNewName('');
+      setNewAddress('');
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        disabled={!accountSelected}
+        onClick={() => { setOpen((o) => !o); setCreating(false); }}
+        className="flex h-9 w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm shadow-sm transition-colors hover:border-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50"
+      >
+        <Building2 size={14} className="shrink-0 text-slate-400" />
+        <span className={cn('flex-1 truncate text-left', selected ? 'text-slate-900' : 'text-slate-400')}>
+          {selected ? selected.name : accountSelected ? 'Select or create property…' : 'Select a customer first'}
+        </span>
+        {selected ? (
+          <X
+            size={13}
+            className="shrink-0 text-slate-400 hover:text-slate-600"
+            onClick={(e) => { e.stopPropagation(); onSelectProperty(null); }}
+          />
+        ) : (
+          <ChevronDown size={14} className={cn('shrink-0 text-slate-400 transition-transform', open && 'rotate-180')} />
+        )}
+      </button>
+
+      {open && accountSelected && (
+        <div className="absolute left-0 right-0 z-30 mt-1.5 max-h-72 overflow-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10">
+          {creating ? (
+            <div className="space-y-2 p-2">
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false); }}
+                placeholder="Property name…"
+                className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+              />
+              <input
+                value={newAddress}
+                onChange={(e) => setNewAddress(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false); }}
+                placeholder="Address (optional)"
+                className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={!newName.trim() || busy}
+                  className="flex-1 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 [background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)]"
+                >
+                  {busy ? 'Saving…' : 'Create'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreating(false)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-blue-600 transition-colors hover:bg-blue-50"
+              >
+                <Plus size={14} /> New property
+              </button>
+              {properties.length > 0 && <div className="my-1 h-px bg-slate-100" />}
+              {properties.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { onSelectProperty(p.id); setOpen(false); }}
+                  className={cn(
+                    'flex w-full items-center gap-2 truncate rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-slate-100',
+                    p.id === propertyId ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-700'
+                  )}
+                >
+                  <Building2 size={13} className="shrink-0 text-slate-400" />
+                  <span className="truncate">{p.name}</span>
+                  {p.address && <span className="ml-auto shrink-0 max-w-[40%] truncate text-[10px] text-slate-400">{p.address}</span>}
+                </button>
+              ))}
+              {properties.length === 0 && (
+                <p className="px-2.5 py-2 text-xs text-slate-400">No properties for this customer yet — create one above.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InputPanel({
   inputs,
   setInputs,
@@ -267,6 +399,10 @@ export default function InputPanel({
   crmAccountId = null,
   onSelectAccount = () => {},
   onCreateAccount = async () => {},
+  properties = [],
+  propertyId = null,
+  onSelectProperty = () => {},
+  onCreateProperty = async () => {},
 }) {
   const set = (field, value) => setInputs((prev) => ({ ...prev, [field]: value }));
 
@@ -315,6 +451,15 @@ export default function InputPanel({
             crmAccountId={crmAccountId}
             onSelectAccount={onSelectAccount}
             onCreateAccount={onCreateAccount}
+          />
+        </Field>
+        <Field label="Property">
+          <PropertyPicker
+            properties={properties}
+            propertyId={propertyId}
+            accountSelected={!!crmAccountId}
+            onSelectProperty={onSelectProperty}
+            onCreateProperty={onCreateProperty}
           />
         </Field>
         <Field label="Project / Property Name">

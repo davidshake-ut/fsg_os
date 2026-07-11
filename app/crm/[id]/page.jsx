@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Building2, Phone, Globe, MapPin, FileText, Loader2, AlertCircle, Pencil, Check, X, FolderKanban, LifeBuoy, Receipt } from 'lucide-react';
+import { ArrowLeft, Building2, Phone, Globe, MapPin, FileText, Loader2, AlertCircle, Pencil, Check, X, FolderKanban, LifeBuoy, Receipt, Plus } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -55,7 +55,8 @@ function EmptyRow({ icon: Icon, message }) {
 
 const TABS = [
   { id: 'contacts', label: 'Contacts' },
-  { id: 'quotes', label: 'Quotes' },
+  { id: 'properties', label: 'Properties' },
+  { id: 'quotes', label: 'Proposals' },
   { id: 'projects', label: 'Projects' },
   { id: 'tickets', label: 'Tickets' },
   { id: 'invoices', label: 'Invoices' },
@@ -145,12 +146,83 @@ function EditableTextarea({ label, value, onSave, placeholder }) {
   );
 }
 
+// One property card: its proposals, its project (once one exists), and the
+// per-property "New Proposal" push into the Builder.
+function PropertyCard({ property, accountId, quotes, project }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+          <Building2 size={15} className="text-slate-500" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-800">{property.name}</p>
+          {property.address && <p className="truncate text-xs text-slate-400">{property.address}</p>}
+        </div>
+        {project ? (
+          <Link href={`/projects/${project.id}`}
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
+            <FolderKanban size={12} /> View Project
+          </Link>
+        ) : (
+          <Link href={`/builder?account=${accountId}&property=${property.id}`}
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-colors">
+            <Plus size={12} /> New Proposal
+          </Link>
+        )}
+      </div>
+      {quotes.length === 0 ? (
+        <p className="px-4 py-3 text-xs text-slate-400">No proposals for this property yet.</p>
+      ) : quotes.map((q) => (
+        <Link key={q.id} href={`/builder?project=${q.id}`}
+          className="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-b-0 hover:bg-slate-50">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm text-slate-700">{q.project_name}</p>
+            <p className="text-xs text-slate-400">Updated {fmtDate(q.updated_at)}</p>
+          </div>
+          <QuoteStatusBadge status={q.status} version={q.version} />
+          <p className="w-24 shrink-0 text-right text-sm font-medium text-slate-700 tabular-nums">{currency(q.total_price)}</p>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function AddPropertyForm({ onCreate }) {
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    try {
+      await onCreate({ name, address: address.trim() || null });
+      setName('');
+      setAddress('');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-3 py-2.5">
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Property name…"
+        className="h-8 min-w-[160px] flex-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20" />
+      <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address (optional)"
+        className="h-8 min-w-[160px] flex-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20" />
+      <Button type="submit" size="sm" disabled={!name.trim() || busy}>
+        <Plus size={13} /> {busy ? 'Adding…' : 'Add Property'}
+      </Button>
+    </form>
+  );
+}
+
 function AccountDetail() {
   const { id } = useParams();
   const { session } = useSession();
-  const { account, contacts, quotes, projects, tickets, invoices, loading, updateAccount, createContact, deleteContact } = useCRMAccount(id, session);
+  const { account, contacts, quotes, properties, projects, tickets, invoices, loading, updateAccount, createContact, deleteContact, createProperty } = useCRMAccount(id, session);
   const [tab, setTab] = useState('contacts');
-  const TAB_COUNTS = { contacts: contacts.length, quotes: quotes.length, projects: projects.length, tickets: tickets.length, invoices: invoices.length };
+  const TAB_COUNTS = { contacts: contacts.length, properties: properties.length, quotes: quotes.length, projects: projects.length, tickets: tickets.length, invoices: invoices.length };
   const [toast, setToast] = useState(null);
   const save = async (patch) => { await updateAccount(patch); setToast({ type: 'success', message: 'Saved.' }); };
 
@@ -181,12 +253,17 @@ function AccountDetail() {
             <h1 className="text-lg font-bold text-slate-900">{account.name}</h1>
             <p className="text-xs text-slate-500">{TYPE_LABELS[account.type] ?? account.type}</p>
           </div>
-          <Select className="h-8 w-32 text-xs" value={account.status}
-            onChange={(e) => save({ status: e.target.value })}>
-            <option value="prospect">Prospect</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Link href={`/builder?account=${id}`}>
+              <Button size="sm"><FileText size={13} /> New Proposal</Button>
+            </Link>
+            <Select className="h-8 w-32 text-xs" value={account.status}
+              onChange={(e) => save({ status: e.target.value })}>
+              <option value="prospect">Prospect</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </Select>
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-1">
           {TABS.map((t) => (
@@ -209,6 +286,42 @@ function AccountDetail() {
       <div className="flex-1 p-6">
         {tab === 'contacts' && (
           <ContactSection contacts={contacts} onAdd={createContact} onDelete={deleteContact} />
+        )}
+
+        {tab === 'properties' && (
+          <div className="max-w-2xl space-y-3">
+            <AddPropertyForm onCreate={createProperty} />
+            {properties.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white">
+                <EmptyRow icon={Building2} message="No properties yet — each property groups its proposals and becomes a project." />
+              </div>
+            ) : (
+              properties.map((prop) => (
+                <PropertyCard
+                  key={prop.id}
+                  property={prop}
+                  accountId={id}
+                  quotes={quotes.filter((q) => q.property_id === prop.id)}
+                  project={projects.find((p) => p.property_id === prop.id) ?? null}
+                />
+              ))
+            )}
+            {quotes.some((q) => !q.property_id) && (
+              <div className="rounded-xl border border-slate-200 bg-white">
+                <p className="border-b border-slate-100 px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-400">Not linked to a property</p>
+                {quotes.filter((q) => !q.property_id).map((q) => (
+                  <Link key={q.id} href={`/builder?project=${q.id}`}
+                    className="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-b-0 hover:bg-slate-50">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-slate-700">{q.project_name}</p>
+                      <p className="text-xs text-slate-400">Open in the Builder and pick a property to link it</p>
+                    </div>
+                    <QuoteStatusBadge status={q.status} version={q.version} />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {tab === 'quotes' && (

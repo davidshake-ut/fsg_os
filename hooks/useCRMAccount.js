@@ -11,22 +11,21 @@ export function useCRMAccount(accountId, session) {
   const [remoteAccount,  setRemoteAccount]  = useState(null);
   const [remoteContacts, setRemoteContacts] = useState([]);
   const [remoteQuotes,   setRemoteQuotes]   = useState([]);
+  const [remoteProperties, setRemoteProperties] = useState([]);
   const [remoteProjects, setRemoteProjects] = useState([]);
   const [remoteTickets,  setRemoteTickets]  = useState([]);
   const [remoteInvoices, setRemoteInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Quotes/tickets/invoices link to the account directly (crm_account_id /
-  // account_id). PSA projects don't — they only link to a quote — so project
-  // lookup is a second pass keyed off the quote ids just fetched.
   const refresh = useCallback(async () => {
     if (!supabase || !accountId) return;
     setLoading(true);
-    const [accRes, conRes, quoteRes, ticketRes, invoiceRes] = await Promise.all([
+    const [accRes, conRes, quoteRes, propRes, ticketRes, invoiceRes] = await Promise.all([
       supabase.from('crm_accounts').select('*').eq('id', accountId).single(),
       supabase.from('crm_contacts').select('*').eq('account_id', accountId).order('first_name'),
-      supabase.from('saved_projects').select('id, project_name, status, version, total_price, total_cost, updated_at')
+      supabase.from('saved_projects').select('id, project_name, status, version, total_price, total_cost, updated_at, property_id')
         .eq('crm_account_id', accountId).order('updated_at', { ascending: false }),
+      supabase.from('properties').select('*').eq('crm_account_id', accountId).order('name'),
       supabase.from('support_tickets').select('id, title, status, priority, created_at')
         .eq('account_id', accountId).order('created_at', { ascending: false }),
       supabase.from('invoices').select('id, invoice_number, title, status, total, invoice_date')
@@ -35,18 +34,26 @@ export function useCRMAccount(accountId, session) {
     setRemoteAccount(accRes.data ?? null);
     setRemoteContacts(conRes.data ?? []);
     setRemoteQuotes(quoteRes.data ?? []);
+    setRemoteProperties(propRes.data ?? []);
     setRemoteTickets(ticketRes.data ?? []);
     setRemoteInvoices(invoiceRes.data ?? []);
 
+    // Projects link to the account directly since migration 0040; the
+    // quote-id fallback covers older rows the backfill couldn't attribute.
     const quoteIds = (quoteRes.data ?? []).map((q) => q.id);
-    if (quoteIds.length) {
-      const { data: projData } = await supabase.from('psa_projects')
-        .select('id, name, status, start_date, end_date, budget')
-        .in('quote_id', quoteIds).order('created_at', { ascending: false });
-      setRemoteProjects(projData ?? []);
-    } else {
-      setRemoteProjects([]);
-    }
+    const [byAccount, byQuote] = await Promise.all([
+      supabase.from('psa_projects')
+        .select('id, name, status, start_date, end_date, budget, property_id, quote_id')
+        .eq('crm_account_id', accountId),
+      quoteIds.length
+        ? supabase.from('psa_projects')
+            .select('id, name, status, start_date, end_date, budget, property_id, quote_id')
+            .in('quote_id', quoteIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const merged = new Map();
+    for (const p of [...(byAccount.data ?? []), ...(byQuote.data ?? [])]) merged.set(p.id, p);
+    setRemoteProjects([...merged.values()]);
     setLoading(false);
   }, [supabase, accountId]);
 
@@ -57,20 +64,23 @@ export function useCRMAccount(accountId, session) {
 
   const account  = supabase ? remoteAccount  : (localData.accounts.find((a) => a.id === accountId) ?? null);
   const contacts = supabase ? remoteContacts : localData.contacts.filter((c) => c.account_id === accountId);
-  // Quotes/projects/tickets/invoices don't cross-link in the single-user
-  // local-mode store, so the 360° view is remote(team-mode)-only for now.
-  const quotes   = supabase ? remoteQuotes   : [];
-  const projects = supabase ? remoteProjects : [];
-  const tickets  = supabase ? remoteTickets  : [];
-  const invoices = supabase ? remoteInvoices : [];
+  // Quotes/properties/projects/tickets/invoices don't cross-link in the
+  // single-user local-mode store, so the 360° view is remote(team-mode)-only.
+  const quotes     = supabase ? remoteQuotes     : [];
+  const properties = supabase ? remoteProperties : [];
+  const projects   = supabase ? remoteProjects   : [];
+  const tickets    = supabase ? remoteTickets    : [];
+  const invoices   = supabase ? remoteInvoices   : [];
 
   const updateAccount = useCallback(async (data) => {
     const now = new Date().toISOString();
+    // Won -> customer, same sync as useCRMAccounts.updateAccount.
+    const patch = data.stage === 'won' ? { ...data, status: 'active' } : data;
     if (!supabase) {
-      writeCrm((s) => ({ ...s, accounts: s.accounts.map((a) => a.id === accountId ? { ...a, ...data, updated_at: now } : a) }));
+      writeCrm((s) => ({ ...s, accounts: s.accounts.map((a) => a.id === accountId ? { ...a, ...patch, updated_at: now } : a) }));
       return;
     }
-    const { error } = await supabase.from('crm_accounts').update({ ...data, updated_at: now }).eq('id', accountId);
+    const { error } = await supabase.from('crm_accounts').update({ ...patch, updated_at: now }).eq('id', accountId);
     if (error) throw error;
     await refresh();
   }, [supabase, accountId, refresh]);
@@ -112,5 +122,31 @@ export function useCRMAccount(accountId, session) {
     await refresh();
   }, [supabase, refresh]);
 
-  return { account, contacts, quotes, projects, tickets, invoices, loading, refresh, updateAccount, createContact, updateContact, deleteContact };
+  const accountCompanyId = account?.company_id ?? null;
+  const createProperty = useCallback(async ({ name, address = null, notes = null }) => {
+    if (!supabase || !accountCompanyId || !name?.trim()) return null;
+    const { data, error } = await supabase
+      .from('properties')
+      .insert({ company_id: accountCompanyId, crm_account_id: accountId, name: name.trim(), address, notes })
+      .select()
+      .single();
+    if (error) throw error;
+    await refresh();
+    return data;
+  }, [supabase, accountId, accountCompanyId, refresh]);
+
+  const updateProperty = useCallback(async (id, patch) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('properties')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    await refresh();
+  }, [supabase, refresh]);
+
+  return {
+    account, contacts, quotes, properties, projects, tickets, invoices, loading, refresh,
+    updateAccount, createContact, updateContact, deleteContact, createProperty, updateProperty,
+  };
 }

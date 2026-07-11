@@ -113,6 +113,7 @@ export function useProjects(session, company, user) {
           ? project.labor_roles
           : DEFAULT_LABOR_ROLES,
       crmAccountId: project.crm_account_id ?? null,
+      propertyId: project.property_id ?? null,
     };
   }, []);
 
@@ -127,6 +128,7 @@ export function useProjects(session, company, user) {
       customLineItems,
       laborRoles,
       crmAccountId = null,
+      propertyId = null,
       totalPrice = null,
       totalCost = null,
       version,
@@ -157,6 +159,7 @@ export function useProjects(session, company, user) {
             custom_line_items: customLineItems,
             labor_roles: laborRoles,
             crm_account_id: crmAccountId,
+            property_id: propertyId,
             ...lifecycle,
             updated_at: now,
           };
@@ -173,6 +176,7 @@ export function useProjects(session, company, user) {
             custom_line_items: customLineItems,
             labor_roles: laborRoles,
             crm_account_id: crmAccountId,
+            property_id: propertyId,
             status: 'draft',
             version: 1,
             ...lifecycle,
@@ -194,6 +198,7 @@ export function useProjects(session, company, user) {
         custom_line_items: customLineItems,
         labor_roles: laborRoles,
         crm_account_id: crmAccountId,
+        property_id: propertyId,
         company_id: company?.id ?? null,
         ...lifecycle,
         updated_at: new Date().toISOString(),

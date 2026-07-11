@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getSupabase } from '@/lib/supabase/client';
-import { FileDown, FileText, Sheet, Save, FolderKanban, CheckCircle2, X, Loader2, Send, Ban, Undo2, GitBranch, ChevronDown } from 'lucide-react';
+import { FileDown, FileText, Sheet, Save, FolderKanban, CheckCircle2, X, Loader2 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -18,7 +19,7 @@ import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
 import { Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
-import QuoteStatusBadge from '@/components/QuoteStatusBadge';
+import QuoteLifecycleMenu from '@/components/QuoteLifecycleMenu';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { calculateBOM } from '@/lib/calculateBOM';
@@ -29,6 +30,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { useProjects } from '@/hooks/useProjects';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
+import { useProperties } from '@/hooks/useProperties';
 import { useTemplates } from '@/hooks/useTemplates';
 import { systemTemplatesForTech } from '@/lib/templates/index';
 import { DEFAULT_INPUTS, DEFAULT_CAMERA_INPUTS, DEFAULT_LABOR_ROLES } from '@/lib/defaults';
@@ -47,68 +49,6 @@ const TABS = [
   { id: 'summary', label: 'Summary' },
   { id: 'products', label: 'Product Database' },
 ];
-
-// Status badge + dropdown of the transitions valid from the current status.
-function QuoteLifecycleMenu({ quote, onTransition, onRevision }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
-
-  const status = quote.status ?? 'draft';
-  const nextVersion = (quote.version ?? 1) + 1;
-  const items = [];
-  if (status === 'draft') {
-    items.push({ label: 'Mark as Sent', Icon: Send, run: () => onTransition('sent') });
-  }
-  if (status === 'sent') {
-    items.push({ label: 'Mark Accepted', Icon: CheckCircle2, run: () => onTransition('accepted') });
-    items.push({ label: 'Mark Declined', Icon: Ban, run: () => onTransition('declined') });
-    items.push({ label: 'Reopen as Draft', Icon: Undo2, run: () => onTransition('draft') });
-  }
-  if (status === 'declined' || status === 'expired') {
-    items.push({ label: 'Reopen as Draft', Icon: Undo2, run: () => onTransition('draft') });
-  }
-  if (status !== 'draft') {
-    items.push({ label: `New Revision (v${nextVersion})`, Icon: GitBranch, run: onRevision });
-  }
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label="Quote status actions"
-        className="flex items-center gap-0.5 rounded-full hover:opacity-80"
-      >
-        <QuoteStatusBadge status={status} version={quote.version} />
-        <ChevronDown size={12} className={cn('text-slate-400 transition-transform', open && 'rotate-180')} />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full z-30 mt-1.5 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10">
-          {items.map(({ label, Icon, run }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => { setOpen(false); run(); }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
-            >
-              <Icon size={14} className="shrink-0 text-slate-400" />
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // Prefer a company-owned template over the built-in system one for a given
 // technology, so a team's customized version wins once they've made one.
@@ -138,6 +78,7 @@ function Calculator() {
   const [modal, setModal] = useState({ open: false, product: null });
   const [busy, setBusy] = useState(false);
   const [currentCrmAccountId, setCurrentCrmAccountId] = useState(null);
+  const [currentPropertyId, setCurrentPropertyId] = useState(null);
 
   const [catalogTeamId, setCatalogTeamId] = useState('all');
   const [teams, setTeams] = useState([]);
@@ -171,6 +112,7 @@ function Calculator() {
 
   const { branding, setBranding } = useBranding({ configured, company, onSaved: refresh });
   const { accounts: crmAccounts, createAccount: createCrmAccount } = useCRMAccounts(session, company, user);
+  const { properties, createProperty } = useProperties(session, company, currentCrmAccountId);
   const { allProducts, addProduct, editProduct, deleteProduct, importProducts, bulkUpdateProducts } = useProducts(
     session,
     { teamFilter: catalogTeamId }
@@ -191,6 +133,15 @@ function Calculator() {
   const [newPsaProjectId, setNewPsaProjectId] = useState(null);
   const [toProjectBusy,  setToProjectBusy]  = useState(false);
   const [toProjectForm,  setToProjectForm]  = useState({ name: '', customer_name: '', start_date: '', budget: '', useTemplate: true });
+
+  // The PSA project this proposal (or its property — one project per
+  // property, migration 0040) already spawned, if any. Drives the header's
+  // View Project / → Project toggle and the accepted-without-project nudge.
+  const linkedProject = newPsaProjectId
+    ? { id: newPsaProjectId }
+    : (psaProjects.find((p) => p.quote_id === currentProjectId)
+       ?? (currentPropertyId ? psaProjects.find((p) => p.property_id === currentPropertyId) : null)
+       ?? null);
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
@@ -309,6 +260,7 @@ function Calculator() {
       setLaborRoles(DEFAULT_LABOR_ROLES);
       setCurrentProjectId(null);
       setCurrentCrmAccountId(null);
+      setCurrentPropertyId(null);
       setSavedSnapshot(null);
       return;
     }
@@ -316,6 +268,7 @@ function Calculator() {
     if (!project) return;
     const loaded = loadProject(project);
     setCurrentCrmAccountId(loaded.crmAccountId ?? null);
+    setCurrentPropertyId(loaded.propertyId ?? null);
     setInputs(loaded.inputs);
     setCameraInputs(loaded.cameraInputs);
     setPriceOverrides(loaded.priceOverrides);
@@ -325,6 +278,38 @@ function Calculator() {
     setCurrentProjectId(project.id);
     setSavedSnapshot(loaded);
   };
+
+  // ── URL params — the deep-link contract other pages rely on ────────────
+  // ?project=<id>            load that proposal (account 360°, ⌘K, project pages)
+  // ?project=<id>&createProject=1  …and open the Create Project modal
+  // ?account=<id>[&property=<id>]  pre-seed a NEW proposal for that customer
+  // Each applies exactly once, after the data it needs has loaded.
+  const searchParams = useSearchParams();
+  const urlApplied = useRef(false);
+  const [pendingCreateProject, setPendingCreateProject] = useState(false);
+  useEffect(() => {
+    if (urlApplied.current) return;
+    const projectParam = searchParams.get('project');
+    const accountParam = searchParams.get('account');
+    if (!projectParam && !accountParam) { urlApplied.current = true; return; }
+    if (projectParam) {
+      if (projects.length === 0) return; // quotes still loading
+      urlApplied.current = true;
+      if (projects.some((p) => p.id === projectParam)) {
+        selectProject(projectParam);
+        if (searchParams.get('createProject') === '1') setPendingCreateProject(true);
+      }
+      return;
+    }
+    if (crmAccounts.length === 0) return; // accounts still loading
+    urlApplied.current = true;
+    if (crmAccounts.some((a) => a.id === accountParam)) {
+      setCurrentCrmAccountId(accountParam);
+      const propertyParam = searchParams.get('property');
+      if (propertyParam) setCurrentPropertyId(propertyParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, projects, crmAccounts]);
 
   const round2 = (n) => Math.round(n * 100) / 100;
   const buildStatePayload = () => ({
@@ -336,9 +321,34 @@ function Calculator() {
     customLineItems,
     laborRoles,
     crmAccountId: currentCrmAccountId,
+    propertyId: currentPropertyId,
     totalPrice: round2((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0)),
     totalCost:  round2((bom.grandTotalCost ?? 0) + (cameraBom.grandTotalCost ?? 0)),
   });
+
+  // Prefill + open the Create Project modal for the loaded proposal. Shared
+  // by the header "→ Project" button and the ?createProject=1 deep-link.
+  // (Also fixes a latent bug: the old inline prefill dropped useTemplate
+  // from the form state, silently unchecking template auto-generation.)
+  const openCreateProjectModal = () => {
+    const quote   = projects.find((p) => p.id === currentProjectId);
+    const account = crmAccounts.find((a) => a.id === currentCrmAccountId);
+    setToProjectForm({
+      name:          quote?.project_name ?? inputs.propertyName ?? '',
+      customer_name: account?.name ?? '',
+      start_date:    '',
+      budget:        String(Math.round((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0))),
+      useTemplate:   true,
+    });
+    setToProjectOpen(true);
+  };
+
+  useEffect(() => {
+    if (!pendingCreateProject || !currentProjectId) return;
+    setPendingCreateProject(false);
+    openCreateProjectModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCreateProject, currentProjectId]);
 
   const snapshotCurrent = () =>
     setSavedSnapshot({ inputs, cameraInputs, priceOverrides, serviceOverrides, customLineItems, laborRoles });
@@ -496,6 +506,21 @@ function Calculator() {
         </div>
       )}
 
+      {/* Flow nudge: an accepted proposal is the one that becomes the
+          project — make the next step unmissable. */}
+      {quoteStatus === 'accepted' && !linkedProject && (
+        <div className="px-4 pt-3 sm:px-6">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-sm text-emerald-800">
+              <span className="font-semibold">This proposal was accepted.</span> Create its project to kick off delivery — templates and schedule generate automatically.
+            </p>
+            <Button size="sm" onClick={openCreateProjectModal}>
+              <FolderKanban size={14} /> Create Project
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Compact builder action bar */}
       <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-md">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
@@ -524,33 +549,20 @@ function Calculator() {
             >
               <Save size={14} /> {quoteLocked ? 'Save as Revision' : currentProjectId ? 'Update Project' : 'Save Project'}
             </Button>
-            {currentProjectId && (() => {
-              const linkedProject = newPsaProjectId
-                ? { id: newPsaProjectId }
-                : psaProjects.find((p) => p.quote_id === currentProjectId);
-              return linkedProject ? (
+            {currentProjectId && (
+              linkedProject ? (
                 <a href={`/projects/${linkedProject.id}`}
                   className="flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
                   <CheckCircle2 size={13} /> View Project
                 </a>
               ) : (
                 <button type="button"
-                  onClick={() => {
-                    const quote   = projects.find((p) => p.id === currentProjectId);
-                    const account = crmAccounts.find((a) => a.id === currentCrmAccountId);
-                    setToProjectForm({
-                      name:          quote?.project_name ?? inputs.propertyName ?? '',
-                      customer_name: account?.name ?? '',
-                      start_date:    '',
-                      budget:        String(Math.round((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0))),
-                    });
-                    setToProjectOpen(true);
-                  }}
+                  onClick={openCreateProjectModal}
                   className="flex h-8 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors">
                   <FolderKanban size={13} /> → Project
                 </button>
-              );
-            })()}
+              )
+            )}
             <Button variant="outline" size="sm" onClick={handleExportCSV}>
               <Sheet size={14} /> CSV
             </Button>
@@ -575,8 +587,12 @@ function Calculator() {
               term={term}
               crmAccounts={crmAccounts}
               crmAccountId={currentCrmAccountId}
-              onSelectAccount={setCurrentCrmAccountId}
+              onSelectAccount={(id) => { setCurrentCrmAccountId(id); setCurrentPropertyId(null); }}
               onCreateAccount={createCrmAccount}
+              properties={properties}
+              propertyId={currentPropertyId}
+              onSelectProperty={setCurrentPropertyId}
+              onCreateProperty={({ name, address }) => createProperty({ crmAccountId: currentCrmAccountId, name, address })}
               projects={projects}
               currentProjectId={currentProjectId}
               onSelectProject={selectProject}
@@ -789,18 +805,39 @@ function Calculator() {
                         )
                       : {};
                     const proj = await createPSAProject({
-                      name:          toProjectForm.name.trim(),
-                      customer_name: toProjectForm.customer_name.trim() || null,
-                      start_date:    toProjectForm.start_date || null,
-                      budget:        toProjectForm.budget ? Number(toProjectForm.budget) : null,
-                      quote_id:      currentProjectId,
-                      status:        'planning',
-                      technologies:  techs,
+                      name:           toProjectForm.name.trim(),
+                      customer_name:  toProjectForm.customer_name.trim() || null,
+                      start_date:     toProjectForm.start_date || null,
+                      budget:         toProjectForm.budget ? Number(toProjectForm.budget) : null,
+                      quote_id:       currentProjectId,
+                      crm_account_id: currentCrmAccountId,
+                      property_id:    currentPropertyId,
+                      status:         'planning',
+                      technologies:   techs,
                       templatesByTechnology,
                     });
                     setNewPsaProjectId(proj.id);
                     setToProjectOpen(false);
-                  } catch (e) { setToast({ type: 'error', message: e.message }); }
+                  } catch (e) {
+                    // One project per property (unique index, 0040) — if a
+                    // teammate created it between our check and insert, link
+                    // to theirs instead of erroring.
+                    if (e?.code === '23505' && currentPropertyId) {
+                      const supabase = getSupabase();
+                      const { data: existing } = await supabase
+                        .from('psa_projects').select('id')
+                        .eq('property_id', currentPropertyId).maybeSingle();
+                      if (existing) {
+                        setNewPsaProjectId(existing.id);
+                        setToProjectOpen(false);
+                        setToast({ type: 'success', message: 'This property already has a project — linked to it.' });
+                      } else {
+                        setToast({ type: 'error', message: e.message });
+                      }
+                    } else {
+                      setToast({ type: 'error', message: e.message });
+                    }
+                  }
                   finally { setToProjectBusy(false); }
                 }}
                 className="flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60">
@@ -829,7 +866,9 @@ export default function BuilderPage() {
   return (
     <AuthGuard>
       <OSShell>
-        <Calculator />
+        <Suspense fallback={null}>
+          <Calculator />
+        </Suspense>
       </OSShell>
     </AuthGuard>
   );
