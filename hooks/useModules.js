@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 
-export const ALL_MODULE_KEYS = ['dashboard', 'crm', 'builder', 'projects', 'support', 'invoices', 'resources'];
+export const ALL_MODULE_KEYS = ['dashboard', 'crm', 'builder', 'projects', 'support', 'invoices', 'resources', 'messages'];
 
 // Returns which modules are enabled for the current tenant.
 // Local mode (no Supabase) and teams with no config rows → all modules on.

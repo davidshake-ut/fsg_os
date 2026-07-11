@@ -15,19 +15,23 @@ import {
   LayoutTemplate,
   Receipt,
   Zap,
+  MessageSquare,
   X,
 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
 import { useModules } from '@/hooks/useModules';
 import NotificationBell from '@/components/NotificationBell';
 import CommandPalette from '@/components/CommandPalette';
-import { cn } from '@/lib/utils';
+import { cn, initials } from '@/lib/utils';
 
 // `group: null` renders with no header (top-level); consecutive items
 // sharing a group render under one label, matching the Sell/Deliver/
 // Support & Bill structure design settled on for the "bold" chrome pass.
+// Messages stays ungrouped like Dashboard — it's cross-cutting (every
+// department uses it), not scoped to one workflow stage.
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard',       href: '/dashboard', icon: LayoutDashboard, group: null },
+  { key: 'messages',  label: 'Messages',        href: '/messages',  icon: MessageSquare,   group: null },
   { key: 'crm',       label: 'CRM',             href: '/crm',       icon: Users,           group: 'Sell' },
   { key: 'builder',   label: 'System Builder',  href: '/builder',   icon: Wrench,          group: 'Sell' },
   { key: 'projects',   label: 'Projects',        href: '/projects',   icon: FolderKanban,   group: 'Deliver' },
@@ -37,13 +41,6 @@ const NAV_ITEMS = [
   { key: 'invoices',   label: 'Invoices',        href: '/invoices',   icon: Receipt,        group: 'Support & Bill' },
   { key: 'resources',  label: 'Resources',       href: '/resources',  icon: BookOpen,       group: 'Support & Bill' },
 ];
-
-function initials(name, email) {
-  const source = (name || '').trim() || (email || '').trim();
-  if (!source) return '?';
-  const parts = source.includes('@') ? [source[0]] : source.split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase()).join('') || '?';
-}
 
 function NavLink({ href, icon: Icon, label, active, onClick }) {
   return (

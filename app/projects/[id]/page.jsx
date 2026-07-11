@@ -2,16 +2,18 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, Calendar, DollarSign, Building2, Loader2, AlertCircle,
   LayoutTemplate, Plus, Trash2, ChevronDown, ChevronRight, GitMerge, Pencil, Check, X,
+  MessageSquare,
 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { usePSAProject } from '@/hooks/usePSAProject';
 import { useTemplates } from '@/hooks/useTemplates';
+import { useConversations } from '@/hooks/useConversations';
 import ProjectStatusBadge, { STATUS_CONFIG } from '@/components/projects/ProjectStatusBadge';
 import TaskSection from '@/components/projects/TaskSection';
 import KanbanBoard from '@/components/projects/KanbanBoard';
@@ -144,6 +146,7 @@ function MergeMenu({ tech, others, onMerge }) {
 
 function ProjectDetail() {
   const { id } = useParams();
+  const router = useRouter();
   const { session, company, user } = useSession();
   const {
     project, milestones, tasks, timeEntries, technologies, checklistItems, members, loading,
@@ -162,12 +165,25 @@ function ProjectDetail() {
   const { allTemplates } = useTemplates(session, company, user);
 
   const { getRoleColor, setRoleColor, getPalette } = useRoleColors();
+  const { openProjectChannel } = useConversations(session, company, user);
 
   const [tab, setTab] = useState('tasks');
   const [applyModal, setApplyModal] = useState(null);
   const [addingTech, setAddingTech] = useState(false);
   const [collapsedTechs, setCollapsedTechs] = useState(new Set());
   const [confirmState, setConfirmState] = useState(null);
+  const [openingChannel, setOpeningChannel] = useState(false);
+
+  const messageTeam = async () => {
+    if (!project || openingChannel) return;
+    setOpeningChannel(true);
+    try {
+      const convo = await openProjectChannel(project);
+      if (convo?.id) router.push(`/messages?c=${convo.id}`);
+    } finally {
+      setOpeningChannel(false);
+    }
+  };
 
   const toggleTech = (techId) =>
     setCollapsedTechs((prev) => {
@@ -248,15 +264,21 @@ function ProjectDetail() {
             </div>
           </div>
 
-          <Select
-            className="h-8 w-36 text-xs"
-            value={project.status}
-            onChange={(e) => updateProject({ status: e.target.value })}
-          >
-            {Object.entries(STATUS_CONFIG).map(([val, cfg]) => (
-              <option key={val} value={val}>{cfg.label}</option>
-            ))}
-          </Select>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={messageTeam} disabled={openingChannel}>
+              {openingChannel ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
+              Message Team
+            </Button>
+            <Select
+              className="h-8 w-36 text-xs"
+              value={project.status}
+              onChange={(e) => updateProject({ status: e.target.value })}
+            >
+              {Object.entries(STATUS_CONFIG).map(([val, cfg]) => (
+                <option key={val} value={val}>{cfg.label}</option>
+              ))}
+            </Select>
+          </div>
         </div>
 
         {tasksTotal > 0 && (

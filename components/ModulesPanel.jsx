@@ -15,6 +15,7 @@ const MODULES = [
   { key: 'support',   label: 'Customer Support',   description: 'Ticket system with alerts and SLA tracking' },
   { key: 'invoices',  label: 'Invoices',           description: 'Create and send invoices tied to projects and quotes' },
   { key: 'resources', label: 'Resources',           description: 'Knowledge base, guides, and team tools' },
+  { key: 'messages',  label: 'Message Center',      description: 'Direct messages, group channels, and project channels' },
 ];
 
 function ModuleToggle({ label, description, checked, onChange, saving }) {
