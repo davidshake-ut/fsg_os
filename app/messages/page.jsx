@@ -25,7 +25,7 @@ function MessagesContent() {
 
   const { conversations, loading: listLoading, loadError, refresh: refreshList, createConversation } = useConversations(session, company, user);
   const {
-    conversation, members, messages, loading: threadLoading, sending, sendMessage, refresh: refreshThread,
+    conversation, members, memberStates, messages, loading: threadLoading, sending, sendMessage, refresh: refreshThread,
   } = useConversation(activeId, session, company, user);
   const { results, searching, searchError, search, clear } = useMessageSearch();
 
@@ -119,6 +119,7 @@ function MessagesContent() {
           <MessageThread
             conversation={conversation}
             members={members}
+            memberStates={memberStates}
             messages={messages}
             currentUserId={user?.id}
             onSend={handleSend}

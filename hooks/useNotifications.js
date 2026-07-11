@@ -45,6 +45,22 @@ export function useNotifications(session, company, user) {
     void refresh();
   }, [supabase, session, companyId, userId, refresh]);
 
+  // Live bell: new notifications for me push instantly (migration 0038 put
+  // notifications in the realtime publication; its RLS is user-scoped, but
+  // the explicit filter avoids waking every client for every insert).
+  useEffect(() => {
+    if (!supabase || !session || !userId) return;
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        () => { void refresh(); }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [supabase, session, userId, refresh]);
+
   const markRead = useCallback(async (id) => {
     if (!supabase) return;
     await supabase.from('notifications').update({ is_read: true }).eq('id', id);

@@ -74,8 +74,11 @@ export default function ConversationList({ conversations, activeId, onSelect, cu
         {conversations.map((convo) => {
           const info = displayInfo(convo, currentUserId);
           const active = convo.id === activeId;
+          const previewBody = convo.lastMessage
+            ? (convo.lastMessage.body ?? (convo.lastMessage.attachment_name ? `📎 ${convo.lastMessage.attachment_name}` : ''))
+            : null;
           const preview = convo.lastMessage
-            ? `${convo.lastMessage.sender_id === currentUserId ? 'You: ' : ''}${convo.lastMessage.body}`
+            ? `${convo.lastMessage.sender_id === currentUserId ? 'You: ' : ''}${previewBody}`
             : 'No messages yet';
           return (
             <button

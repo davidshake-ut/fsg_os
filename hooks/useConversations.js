@@ -1,7 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
+
+// List updates arrive live via a Realtime subscription on message inserts
+// (RLS-scoped to the caller's conversations, migration 0038); a slow poll
+// remains as a safety net for dropped sockets and membership changes that
+// don't produce a message event.
+const FALLBACK_POLL_MS = 60000;
 
 // Conversation list — DMs, group channels, and project channels the
 // current user belongs to (RLS already scopes `conversations` to rows
@@ -15,9 +21,12 @@ export function useConversations(session, company, user) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
 
-  const refresh = useCallback(async () => {
+  // `silent` skips the loading flag — used by realtime/poll-triggered
+  // background refreshes so the list doesn't flash a spinner mid-use.
+  // (Button onClick passes a MouseEvent as the arg; that has no `silent`.)
+  const refresh = useCallback(async (opts = {}) => {
     if (!supabase || !companyId || !userId) return;
-    setLoading(true);
+    if (!opts.silent) setLoading(true);
     setLoadError(null);
 
     const { data: convos, error } = await supabase
@@ -41,7 +50,7 @@ export function useConversations(session, company, user) {
     if (ids.length > 0) {
       const { data: recent } = await supabase
         .from('messages')
-        .select('conversation_id, body, sender_id, created_at')
+        .select('conversation_id, body, sender_id, created_at, attachment_name')
         .in('conversation_id', ids)
         .order('created_at', { ascending: false })
         .limit(300);
@@ -82,6 +91,38 @@ export function useConversations(session, company, user) {
   useEffect(() => {
     if (!supabase || !session || !companyId) return;
     void refresh();
+  }, [supabase, session, companyId, refresh]);
+
+  // ── Realtime: any message insert visible to me → refresh the list ──────
+  // Debounced so a burst of messages produces one recompute, not N. New
+  // conversations without a first message are covered by the fallback poll
+  // (the membership row lands after the conversation event, so the
+  // conversation INSERT event itself isn't reliably visible to invitees).
+  const debounceRef = useRef(null);
+  useEffect(() => {
+    if (!supabase || !session || !companyId) return;
+    const channel = supabase
+      .channel('conversation-list')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        () => {
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => { void refresh({ silent: true }); }, 400);
+        }
+      )
+      .subscribe();
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, session, companyId, refresh]);
+
+  // Slow fallback poll — safety net only (see FALLBACK_POLL_MS above).
+  useEffect(() => {
+    if (!supabase || !session || !companyId) return;
+    const id = setInterval(() => { void refresh({ silent: true }); }, FALLBACK_POLL_MS);
+    return () => clearInterval(id);
   }, [supabase, session, companyId, refresh]);
 
   // type: 'dm' | 'group' | 'project'. memberIds excludes the creator (added
