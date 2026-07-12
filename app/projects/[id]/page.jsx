@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, Calendar, DollarSign, Building2, Loader2, AlertCircle,
   LayoutTemplate, Plus, Trash2, ChevronDown, ChevronRight, GitMerge, Pencil, Check, X,
-  MessageSquare,
+  MessageSquare, Receipt,
 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
@@ -24,6 +24,9 @@ import ApplyTemplateModal from '@/components/projects/ApplyTemplateModal';
 import ChangeOrderSection from '@/components/projects/ChangeOrderSection';
 import AssetsSection from '@/components/projects/AssetsSection';
 import AIAssistantPanel from '@/components/projects/AIAssistantPanel';
+import InstalledEquipment from '@/components/projects/InstalledEquipment';
+import CreateInvoiceModal from '@/components/invoices/CreateInvoiceModal';
+import { useInvoices } from '@/hooks/useInvoices';
 import { Select, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TECHNOLOGIES } from '@/lib/templates/index';
@@ -166,6 +169,7 @@ function ProjectDetail() {
 
   const { getRoleColor, setRoleColor, getPalette } = useRoleColors();
   const { openProjectChannel } = useConversations(session, company, user);
+  const { createInvoice } = useInvoices(session, company, user);
 
   const [tab, setTab] = useState('tasks');
   const [applyModal, setApplyModal] = useState(null);
@@ -173,6 +177,7 @@ function ProjectDetail() {
   const [collapsedTechs, setCollapsedTechs] = useState(new Set());
   const [confirmState, setConfirmState] = useState(null);
   const [openingChannel, setOpeningChannel] = useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
 
   const messageTeam = async () => {
     if (!project || openingChannel) return;
@@ -265,6 +270,9 @@ function ProjectDetail() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setInvoiceModalOpen(true)}>
+              <Receipt size={13} /> Create Invoice
+            </Button>
             <Button size="sm" variant="outline" onClick={messageTeam} disabled={openingChannel}>
               {openingChannel ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
               Message Team
@@ -510,7 +518,12 @@ function ProjectDetail() {
 
         {/* ── Assets ── */}
         {tab === 'assets' && (
-          <AssetsSection assets={assets} onCreate={createAsset} onDelete={deleteAsset} />
+          <AssetsSection
+            assets={assets}
+            onCreate={(data) => createAsset({ ...data, crm_account_id: project.crm_account_id ?? null })}
+            onDelete={deleteAsset}
+            bomSnapshot={project.saved_projects?.bom_snapshot}
+          />
         )}
 
         {/* ── Overview ── */}
@@ -571,6 +584,8 @@ function ProjectDetail() {
                 <p className="whitespace-pre-wrap text-sm text-slate-600">{project.description}</p>
               </div>
             )}
+
+            <InstalledEquipment bomSnapshot={project.saved_projects?.bom_snapshot} />
           </div>
 
           <div className="max-w-lg">
@@ -579,6 +594,14 @@ function ProjectDetail() {
           </div>
         )}
       </div>
+      {invoiceModalOpen && (
+        <CreateInvoiceModal
+          project={project}
+          milestones={milestones}
+          onSave={createInvoice}
+          onClose={() => setInvoiceModalOpen(false)}
+        />
+      )}
       <ConfirmModal
         open={!!confirmState}
         title={confirmState?.title}

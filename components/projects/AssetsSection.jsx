@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, HardDrive, Wifi, Camera, Router, Server } from 'lucide-react';
+import { Plus, Trash2, HardDrive, Wifi, Camera, Router, Server, PackageOpen, Loader2 } from 'lucide-react';
 import { Card, Button, Field, TextInput, Select } from '@/components/ui/primitives';
+import { assetsFromSnapshot } from '@/lib/bomSnapshot';
 
 const ASSET_TYPES = [
   { id: 'access_point', label: 'Access Point', icon: Wifi },
@@ -60,8 +61,24 @@ function AddAssetForm({ onAdd, onClose }) {
   );
 }
 
-export default function AssetsSection({ assets, onCreate, onDelete }) {
+export default function AssetsSection({ assets, onCreate, onDelete, bomSnapshot = null }) {
   const [adding, setAdding] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  // Seed the asset list from the accepted proposal's parts list — one row
+  // per hardware line (qty noted; serials/locations filled in by techs).
+  const generatable = assets.length === 0 ? assetsFromSnapshot(bomSnapshot) : [];
+  const generateFromProposal = async () => {
+    if (generating || generatable.length === 0) return;
+    setGenerating(true);
+    try {
+      for (const asset of generatable) {
+        await onCreate({ ...asset, install_date: new Date().toISOString().slice(0, 10) });
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -69,6 +86,12 @@ export default function AssetsSection({ assets, onCreate, onDelete }) {
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-12 text-slate-400">
           <HardDrive size={28} className="text-slate-200" />
           <p className="text-sm">No assets tracked for this project yet.</p>
+          {generatable.length > 0 && (
+            <Button size="sm" variant="outline" className="mt-2" onClick={generateFromProposal} disabled={generating}>
+              {generating ? <Loader2 size={13} className="animate-spin" /> : <PackageOpen size={13} />}
+              {generating ? 'Generating…' : `Generate ${generatable.length} asset${generatable.length !== 1 ? 's' : ''} from proposal`}
+            </Button>
+          )}
         </div>
       )}
 

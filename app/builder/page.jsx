@@ -397,11 +397,34 @@ function Calculator() {
     }
   };
 
+  // The as-sold line items, persisted at Sent and refreshed at Accepted so
+  // downstream features (installed equipment on projects/tickets, asset
+  // generation) can read the parts list from the DB. Client-side recompute
+  // (lib/calculateBOM.js) remains the source of truth while drafting.
+  const buildBomSnapshot = () => {
+    const lines = [
+      ...bom.items.map((i) => ({ ...i, system: 'wifi' })),
+      ...cameraBom.items.map((i) => ({ ...i, system: 'camera' })),
+    ];
+    return lines
+      .filter((i) => (i.qty ?? 0) > 0)
+      .map((i) => ({
+        system: i.system,
+        sku: i.sku ?? null,
+        description: i.description ?? '',
+        category: i.category ?? 'Miscellaneous',
+        qty: i.qty,
+        unitPrice: i.unitPrice ?? 0,
+        totalPrice: i.totalPrice ?? 0,
+      }));
+  };
+
   const handleQuoteStatus = async (status) => {
     if (!currentQuote) return;
     try {
       const snapshot = status === 'sent' ? buildCatalogSnapshot() : undefined;
-      await setQuoteStatus(currentQuote.id, status, snapshot);
+      const bomSnap = status === 'sent' || status === 'accepted' ? buildBomSnapshot() : undefined;
+      await setQuoteStatus(currentQuote.id, status, snapshot, bomSnap);
       setToast({ type: 'success', message: status === 'draft' ? 'Quote reopened as draft.' : `Quote marked ${status}.` });
     } catch (e) {
       setToast({ type: 'error', message: `Could not update status: ${e.message}` });

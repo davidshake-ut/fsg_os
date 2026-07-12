@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getCrmSnapshot, getCrmServerSnapshot, subscribeCrm, writeCrm, newCrmId } from '@/lib/crmLocalStore';
+import { runAutomations } from '@/lib/automations';
 
 export function useCRMAccount(accountId, session) {
   const supabase = getSupabase();
@@ -82,8 +83,14 @@ export function useCRMAccount(accountId, session) {
     }
     const { error } = await supabase.from('crm_accounts').update({ ...patch, updated_at: now }).eq('id', accountId);
     if (error) throw error;
+    if (patch.stage) {
+      await runAutomations(supabase, {
+        companyId: account?.company_id, triggerType: 'account.stage_changed',
+        entity: { ...account, ...patch, id: accountId },
+      });
+    }
     await refresh();
-  }, [supabase, accountId, refresh]);
+  }, [supabase, accountId, refresh, account]);
 
   const createContact = useCallback(async (data) => {
     const now = new Date().toISOString();

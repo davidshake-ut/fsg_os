@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getCrmSnapshot, getCrmServerSnapshot, subscribeCrm, writeCrm, newCrmId } from '@/lib/crmLocalStore';
+import { runAutomations } from '@/lib/automations';
 
 const PAGE_SIZE = 100;
 
@@ -74,8 +75,15 @@ export function useCRMAccounts(session, company, user) {
     }
     const { error } = await supabase.from('crm_accounts').update({ ...patch, updated_at: now }).eq('id', id);
     if (error) throw error;
+    if (patch.stage) {
+      const account = accounts.find((a) => a.id === id);
+      await runAutomations(supabase, {
+        companyId, triggerType: 'account.stage_changed',
+        entity: { ...account, ...patch, id },
+      });
+    }
     await refresh();
-  }, [supabase, refresh]);
+  }, [supabase, refresh, accounts, companyId]);
 
   const deleteAccount = useCallback(async (id) => {
     if (!supabase) {

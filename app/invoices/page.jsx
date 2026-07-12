@@ -354,15 +354,31 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
             {inv.saved_projects?.project_name && (
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-slate-400">Proposal / Quote</p>
-                <p className="mt-0.5 text-slate-700 text-sm">{inv.saved_projects.project_name}</p>
+                <Link href={`/builder?project=${inv.quote_id}`} className="mt-0.5 text-blue-600 hover:underline text-sm">
+                  {inv.saved_projects.project_name}
+                </Link>
+              </div>
+            )}
+            {inv.crm_accounts?.name && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">Account</p>
+                <Link href={`/crm/${inv.crm_account_id}`} className="mt-0.5 text-blue-600 hover:underline text-sm">
+                  {inv.crm_accounts.name}
+                </Link>
               </div>
             )}
             {inv.change_orders?.title && (
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-slate-400">Change Order</p>
-                <p className="mt-0.5 flex items-center gap-1 text-sm text-slate-700">
-                  <GitPullRequest size={12} className="text-amber-500" /> {inv.change_orders.title}
-                </p>
+                {inv.project_id ? (
+                  <Link href={`/projects/${inv.project_id}`} className="mt-0.5 flex items-center gap-1 text-sm text-blue-600 hover:underline">
+                    <GitPullRequest size={12} className="text-amber-500" /> {inv.change_orders.title}
+                  </Link>
+                ) : (
+                  <p className="mt-0.5 flex items-center gap-1 text-sm text-slate-700">
+                    <GitPullRequest size={12} className="text-amber-500" /> {inv.change_orders.title}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -439,7 +455,7 @@ function InvoicesContent() {
   const { session, company, user } = useSession();
   const { invoices, loading, loadError, hasMore, totalCount, loadMore, refresh, createInvoice, updateInvoice, deleteInvoice } =
     useInvoices(session, company, user);
-  const { items: unbilled, totalValue: unbilledValue, refresh: refreshUnbilled } = useUnbilledWork(session, company);
+  const { items: unbilled, unbilledProjects, totalValue: unbilledValue, refresh: refreshUnbilled } = useUnbilledWork(session, company);
 
   const [statusFilter,  setStatusFilter]  = useState('all');
   const [modalOpen,     setModalOpen]     = useState(false);
@@ -489,17 +505,47 @@ function InvoicesContent() {
         </button>
       </div>
 
-      {/* Unbilled work — approved change orders with no invoice yet */}
-      {unbilled.length > 0 && (
+      {/* Unbilled work — approved COs and completed projects with no invoice */}
+      {(unbilled.length > 0 || unbilledProjects.length > 0) && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <div className="mb-2.5 flex items-center gap-2">
             <AlertTriangle size={15} className="text-amber-600" />
             <p className="text-sm font-semibold text-amber-800">
-              {unbilled.length} approved change order{unbilled.length !== 1 ? 's' : ''} not yet invoiced
+              {[
+                unbilled.length > 0 ? `${unbilled.length} approved change order${unbilled.length !== 1 ? 's' : ''}` : null,
+                unbilledProjects.length > 0 ? `${unbilledProjects.length} completed project${unbilledProjects.length !== 1 ? 's' : ''}` : null,
+              ].filter(Boolean).join(' + ')}{' '}not yet invoiced
             </p>
             <span className="ml-auto text-xs font-medium tabular-nums text-amber-700">{fmtMoney(unbilledValue)} unbilled</span>
           </div>
           <div className="space-y-1.5">
+            {unbilledProjects.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm">
+                <Receipt size={13} className="shrink-0 text-amber-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-slate-700">{p.name}</p>
+                  <p className="text-xs text-slate-400">Completed project · {p.customer_name ?? 'No customer'}</p>
+                </div>
+                {p.budget != null && <span className="shrink-0 text-sm font-medium tabular-nums text-slate-700">{fmtMoney(p.budget)}</span>}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalInitial({
+                      title: `Invoice – ${p.name}`,
+                      customer_name: p.customer_name ?? '',
+                      project_id: p.id,
+                      quote_id: p.quote_id ?? null,
+                      crm_account_id: p.crm_account_id ?? null,
+                      line_items: p.budget ? [{ id: crypto.randomUUID(), description: p.name, qty: 1, unit_price: Number(p.budget), total: Number(p.budget) }] : [],
+                    });
+                    setModalOpen(true);
+                  }}
+                  className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                >
+                  Create Invoice
+                </button>
+              </div>
+            ))}
             {unbilled.map((co) => (
               <div key={co.id} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm">
                 <GitPullRequest size={13} className="shrink-0 text-amber-500" />

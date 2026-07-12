@@ -156,9 +156,16 @@ export function usePSAProjects(session, company, user) {
         .update({ ...data, updated_at: now })
         .eq('id', id);
       if (error) throw error;
+      if (data.status) {
+        const project = projects.find((p) => p.id === id);
+        await runAutomations(supabase, {
+          companyId: company?.id, triggerType: 'project.status_changed',
+          entity: { ...project, ...data, id },
+        });
+      }
       await refresh();
     },
-    [supabase, refresh]
+    [supabase, refresh, projects, company]
   );
 
   const deleteProject = useCallback(

@@ -1,8 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import {
-  TrendingUp, Users, FolderKanban, DollarSign, Clock, AlertCircle,
-  FileText, Layers, FileCheck, GitPullRequest, Receipt, LifeBuoy, Inbox,
+  TrendingUp, Users, FolderKanban, DollarSign, AlertCircle,
+  FileText, FileCheck, GitPullRequest, Receipt, LifeBuoy, Inbox,
+  Send, ArrowRight, Workflow,
 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
@@ -86,6 +88,45 @@ function DashboardContent() {
     resources.filter((r) => r.category).map((r) => r.category),
   ).size;
 
+  // ── Pipeline queues — the lifecycle's stuck points, each linking to the
+  //    surface where the push-to-next-stage action lives. ──────────────────
+  const projectsByQuote = new Set(psaProjects.filter((p) => p.quote_id).map((p) => p.quote_id));
+  const projectsByProperty = new Set(psaProjects.filter((p) => p.property_id).map((p) => p.property_id));
+  const invoicedProjectIds = new Set(invoices.filter((i) => i.project_id).map((i) => i.project_id));
+
+  const queues = [
+    {
+      label: 'Proposals awaiting response',
+      sub: 'Sent, no decision yet',
+      icon: Send,
+      count: savedProjects.filter((q) => q.status === 'sent').length,
+      href: '/proposals',
+    },
+    {
+      label: 'Accepted, no project yet',
+      sub: 'Ready to kick off delivery',
+      icon: FileCheck,
+      count: savedProjects.filter(
+        (q) => q.status === 'accepted' && !projectsByQuote.has(q.id) && !(q.property_id && projectsByProperty.has(q.property_id))
+      ).length,
+      href: '/proposals',
+    },
+    {
+      label: 'Completed, not invoiced',
+      sub: 'Finished work awaiting billing',
+      icon: Receipt,
+      count: psaProjects.filter((p) => p.status === 'complete' && !invoicedProjectIds.has(p.id)).length,
+      href: '/invoices',
+    },
+    {
+      label: 'Unassigned open tickets',
+      sub: 'Nobody owns these yet',
+      icon: LifeBuoy,
+      count: tickets.filter((t) => (t.status === 'open' || t.status === 'in_progress') && !t.assigned_to).length,
+      href: '/support',
+    },
+  ];
+
   const kpis = [
     {
       label: 'Total Customers',
@@ -128,28 +169,12 @@ function DashboardContent() {
       tone: 'warning',
     },
     {
-      label: 'Avg. Response Time',
-      icon: Clock,
-      value: '—',
-      sub: 'Coming soon',
-      loading: false,
-      tone: 'neutral',
-    },
-    {
       label: 'Documents',
       icon: FileText,
       value: resources.length,
-      sub: 'Resources uploaded',
+      sub: `${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'}`,
       loading: loadingResources,
       tone: 'orange',
-    },
-    {
-      label: 'Resource Groups',
-      icon: Layers,
-      value: categoryCount,
-      sub: 'Unique categories',
-      loading: loadingResources,
-      tone: 'info',
     },
   ];
 
@@ -167,6 +192,35 @@ function DashboardContent() {
           <KpiCard key={kpi.label} {...kpi} />
         ))}
       </div>
+
+      {/* Pipeline — where the flow is stuck, each queue linking to the page
+          with the push-to-next-stage action */}
+      <Card className="p-5">
+        <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+          <Workflow size={15} className="text-slate-400" /> Pipeline
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {queues.map((q) => (
+            <Link
+              key={q.label}
+              href={q.href}
+              className="group flex items-start gap-3 rounded-xl border border-slate-200 p-3.5 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                <q.icon size={16} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-1.5">
+                  <span className={`text-xl font-bold ${q.count > 0 ? 'text-slate-900' : 'text-slate-300'}`}>{q.count}</span>
+                  <ArrowRight size={12} className="text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+                </span>
+                <span className="block text-xs font-medium text-slate-600">{q.label}</span>
+                <span className="block text-[11px] text-slate-400">{q.sub}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </Card>
 
       <Card className="p-5">
         <h2 className="mb-4 text-sm font-semibold text-slate-700">Recent Activity</h2>

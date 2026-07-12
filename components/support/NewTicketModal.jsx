@@ -2,14 +2,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { getSupabase } from '@/lib/supabase/client';
 import { Button, Field, TextInput, Select } from '@/components/ui/primitives';
 
-const EMPTY = { title: '', description: '', priority: 'medium', account_id: '', project_id: '' };
+const EMPTY = { title: '', description: '', priority: 'medium', account_id: '', project_id: '', asset_id: '' };
 
 export default function NewTicketModal({ open, onClose, onSave, accounts = [], projects = [] }) {
+  const supabase = getSupabase();
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
+  // Keyed by the project they were fetched for — stale entries from a
+  // previously-selected project simply don't match and render as empty,
+  // no synchronous reset needed.
+  const [assetState, setAssetState] = useState({ projectId: null, list: [] });
   const firstRef = useRef(null);
 
   useEffect(() => {
@@ -24,7 +30,27 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
     return () => window.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
+  // Assets for the chosen project, so "which device is this about" is
+  // captured at creation instead of after the fact.
+  useEffect(() => {
+    if (!supabase || !form.project_id) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.from('assets').select('id, name').eq('project_id', form.project_id).order('name');
+      if (!cancelled) setAssetState({ projectId: form.project_id, list: data ?? [] });
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, form.project_id]);
+
+  const assets = assetState.projectId === form.project_id ? assetState.list : [];
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // A chosen account narrows the project list to that customer's projects
+  // (direct FK since migration 0040; unattributed projects stay visible).
+  const visibleProjects = form.account_id
+    ? projects.filter((p) => !p.crm_account_id || p.crm_account_id === form.account_id)
+    : projects;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,6 +63,7 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
         priority:    form.priority,
         account_id:  form.account_id || null,
         project_id:  form.project_id || null,
+        asset_id:    form.asset_id || null,
       });
       onClose();
     } catch (ex) { setErr(ex.message); }
@@ -72,17 +99,25 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
             </Field>
             {accounts.length > 0 && (
               <Field label="Account (optional)">
-                <Select value={form.account_id} onChange={(e) => set('account_id', e.target.value)}>
+                <Select value={form.account_id} onChange={(e) => setForm((f) => ({ ...f, account_id: e.target.value, project_id: '', asset_id: '' }))}>
                   <option value="">— none —</option>
                   {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </Select>
               </Field>
             )}
-            {projects.length > 0 && (
+            {visibleProjects.length > 0 && (
               <Field label="Project (optional)">
-                <Select value={form.project_id} onChange={(e) => set('project_id', e.target.value)}>
+                <Select value={form.project_id} onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value, asset_id: '' }))}>
                   <option value="">— none —</option>
-                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {visibleProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </Field>
+            )}
+            {form.project_id && assets.length > 0 && (
+              <Field label="Asset (optional)" className="sm:col-span-2">
+                <Select value={form.asset_id} onChange={(e) => set('asset_id', e.target.value)}>
+                  <option value="">— none —</option>
+                  {assets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </Select>
               </Field>
             )}

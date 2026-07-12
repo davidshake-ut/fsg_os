@@ -98,6 +98,25 @@ export async function POST(request) {
   if (!accountOk) return json({ error: 'Account not found' }, 400);
   if (!changeOrderOk) return json({ error: 'Change order not found' }, 400);
 
+  // Phase billing: every claimed milestone must belong to the invoice's
+  // project (service role bypasses RLS, so verified explicitly like the
+  // FKs above).
+  let milestone_ids = [];
+  if (Array.isArray(body.milestone_ids) && body.milestone_ids.length > 0) {
+    if (!body.project_id) return json({ error: 'Milestone billing requires a project' }, 400);
+    if (body.milestone_ids.length > 100) return json({ error: 'Too many milestones' }, 400);
+    const ids = body.milestone_ids.filter((m) => typeof m === 'string');
+    const { data: owned } = await svc
+      .from('psa_milestones')
+      .select('id')
+      .eq('project_id', body.project_id)
+      .in('id', ids);
+    if ((owned ?? []).length !== ids.length) {
+      return json({ error: 'One or more milestones do not belong to this project' }, 400);
+    }
+    milestone_ids = ids;
+  }
+
   // invoice_number is select-max-then-increment, which races under concurrent
   // creates. The unique index on (company_id, invoice_number) turns a lost
   // race into a 23505 here, which we retry with a freshly computed number.
@@ -116,6 +135,7 @@ export async function POST(request) {
         project_id: body.project_id ?? null,
         crm_account_id: body.crm_account_id ?? null,
         change_order_id: body.change_order_id ?? null,
+        milestone_ids,
         customer_name: body.customer_name ? String(body.customer_name).slice(0, 300) : null,
         invoice_date: body.invoice_date ?? undefined,
         due_date: body.due_date ?? null,

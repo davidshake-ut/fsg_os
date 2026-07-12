@@ -76,6 +76,22 @@ function ActionRow({ action, onChange, onRemove }) {
           </Select>
         </div>
       )}
+      {action.type === 'create_project' && (
+        <div className="space-y-1">
+          <TextInput className="h-8 w-full text-xs" value={action.name ?? ''} onChange={(e) => set({ name: e.target.value })} placeholder="Project name (defaults to the proposal's name)" />
+          <p className="text-[10px] text-slate-400">
+            Proposal triggers only. Carries account, property, and budget; auto-applies matching templates. Skips if the property already has a project.
+          </p>
+        </div>
+      )}
+      {action.type === 'post_message' && (
+        <div className="space-y-1">
+          <TextInput className="h-8 w-full text-xs" value={action.body ?? ''} onChange={(e) => set({ body: e.target.value })} placeholder="Message text" />
+          <p className="text-[10px] text-slate-400">
+            Posts into the project&rsquo;s channel (created if needed). Skips when the trigger has no project.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

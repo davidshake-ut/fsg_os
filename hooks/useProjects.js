@@ -221,20 +221,25 @@ export function useProjects(session, company, user) {
   );
 
   // Quote lifecycle transition. Stamps the matching timestamp so reporting
-  // can measure sent→accepted cycle time later. When the caller passes a
-  // catalogSnapshot (built from the live BOM at the moment a quote is first
-  // marked Sent), it's persisted so later catalog/discount changes never
-  // reprice an already-sent/accepted/declined quote — only drafts and new
-  // revisions read live catalog pricing.
+  // can measure sent→accepted cycle time later. Snapshots (both passed by
+  // the Builder from its live BOM at the moment of transition):
+  //   - catalogSnapshot: frozen SKU pricing, so later catalog changes never
+  //     reprice a sent/accepted/declined quote.
+  //   - bomSnapshot: the as-sold line items, persisted so downstream
+  //     features (support's installed-equipment view, asset generation)
+  //     can read "what was sold" from the DB instead of recomputing.
   const setQuoteStatus = useCallback(
-    async (id, status, catalogSnapshot) => {
+    async (id, status, catalogSnapshot, bomSnapshot) => {
       const now = new Date().toISOString();
       const stamp =
         status === 'sent' ? { sent_at: now }
         : status === 'accepted' ? { accepted_at: now }
         : status === 'declined' ? { declined_at: now }
         : {};
-      const snapshotPatch = catalogSnapshot ? { catalog_snapshot: catalogSnapshot } : {};
+      const snapshotPatch = {
+        ...(catalogSnapshot ? { catalog_snapshot: catalogSnapshot } : {}),
+        ...(bomSnapshot ? { bom_snapshot: bomSnapshot } : {}),
+      };
       if (!supabase) {
         writeLocal(readLocalArray().map((p) =>
           p.id === id ? { ...p, status, ...stamp, ...snapshotPatch, updated_at: now } : p

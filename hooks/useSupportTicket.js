@@ -13,27 +13,47 @@ export function useSupportTicket(ticketId, session, company) {
   const [remoteComments, setRemoteComments] = useState([]);
   const [projects,       setProjects]       = useState([]);
   const [projectAssets,  setProjectAssets]  = useState([]);
+  const [priorTickets,   setPriorTickets]   = useState([]);
+  const [bomSnapshot,    setBomSnapshot]    = useState(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!supabase || !ticketId) return;
     setLoading(true);
     const [tRes, cRes, pRes] = await Promise.all([
-      supabase.from('support_tickets').select('*, crm_accounts(name), psa_projects(name)').eq('id', ticketId).single(),
+      supabase.from('support_tickets')
+        .select('*, crm_accounts(name), psa_projects(name, quote_id, crm_account_id)')
+        .eq('id', ticketId).single(),
       supabase.from('support_comments').select('*, users(full_name, email)').eq('ticket_id', ticketId).order('created_at'),
-      companyId ? supabase.from('psa_projects').select('id, name').eq('company_id', companyId).order('name') : Promise.resolve({ data: [] }),
+      companyId ? supabase.from('psa_projects').select('id, name, crm_account_id').eq('company_id', companyId).order('name') : Promise.resolve({ data: [] }),
     ]);
     setRemoteTicket(tRes.data ?? null);
     setRemoteComments(cRes.data ?? []);
     setProjects(pRes.data ?? []);
 
+    // The support bundle — everything a tech needs to know what they're
+    // looking at: the project's full asset details, the account's prior
+    // ticket history, and the as-sold parts list from the accepted proposal.
     const projectId = tRes.data?.project_id;
-    if (projectId) {
-      const { data: aData } = await supabase.from('assets').select('id, name').eq('project_id', projectId).order('name');
-      setProjectAssets(aData ?? []);
-    } else {
-      setProjectAssets([]);
-    }
+    const accountId = tRes.data?.account_id;
+    const quoteId = tRes.data?.psa_projects?.quote_id;
+    const [aRes, priorRes, quoteRes] = await Promise.all([
+      projectId
+        ? supabase.from('assets').select('id, name, asset_type, serial_number, location, install_date, notes').eq('project_id', projectId).order('name')
+        : Promise.resolve({ data: [] }),
+      accountId
+        ? supabase.from('support_tickets')
+            .select('id, title, status, priority, created_at')
+            .eq('account_id', accountId).neq('id', ticketId)
+            .order('created_at', { ascending: false }).limit(10)
+        : Promise.resolve({ data: [] }),
+      quoteId
+        ? supabase.from('saved_projects').select('bom_snapshot').eq('id', quoteId).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    setProjectAssets(aRes.data ?? []);
+    setPriorTickets(priorRes.data ?? []);
+    setBomSnapshot(quoteRes.data?.bom_snapshot ?? null);
     setLoading(false);
   }, [supabase, ticketId, companyId]);
 
@@ -84,5 +104,5 @@ export function useSupportTicket(ticketId, session, company) {
     await refresh();
   }, [supabase, refresh]);
 
-  return { ticket, comments, projects, projectAssets, loading, refresh, updateTicket, addComment, deleteComment };
+  return { ticket, comments, projects, projectAssets, priorTickets, bomSnapshot, loading, refresh, updateTicket, addComment, deleteComment };
 }

@@ -43,7 +43,7 @@ export function usePSAProject(projectId, session) {
     if (!supabase || !projectId) return;
     setLoading(true);
     const [projRes, msRes, taskRes, timeRes, memRes, techRes, clRes] = await Promise.all([
-      supabase.from('psa_projects').select('*, saved_projects(project_name)').eq('id', projectId).single(),
+      supabase.from('psa_projects').select('*, saved_projects(project_name, bom_snapshot)').eq('id', projectId).single(),
       supabase.from('psa_milestones').select('*').eq('project_id', projectId).order('sort_order').order('created_at'),
       supabase.from('psa_tasks').select('*').eq('project_id', projectId).order('sort_order').order('created_at'),
       supabase.from('psa_time_entries').select('*, users(full_name, email)').eq('project_id', projectId).order('logged_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -84,9 +84,15 @@ export function usePSAProject(projectId, session) {
         .update({ ...data, updated_at: now })
         .eq('id', projectId);
       if (error) throw error;
+      if (data.status) {
+        await runAutomations(supabase, {
+          companyId: project?.company_id, triggerType: 'project.status_changed',
+          entity: { ...project, ...data, id: projectId },
+        });
+      }
       await refresh();
     },
-    [supabase, projectId, refresh]
+    [supabase, projectId, refresh, project]
   );
 
   // ---- Milestones ----

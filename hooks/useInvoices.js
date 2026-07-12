@@ -56,6 +56,12 @@ export function useInvoices(session, company, user) {
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(payload.error || 'Could not create invoice');
+    if (payload.invoice) {
+      await runAutomations(supabase, {
+        companyId, triggerType: 'invoice.created',
+        entity: { ...payload.invoice, title: payload.invoice.title ?? `Invoice ${payload.invoice.invoice_number ?? ''}`.trim() },
+      });
+    }
     await refresh();
     return payload.invoice;
   }, [supabase, companyId, session, refresh]);
