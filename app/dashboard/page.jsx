@@ -81,7 +81,9 @@ function ActiveTicketRow({ ticket: t }) {
           {t.crm_accounts?.name && <>{t.crm_accounts.name} · </>}
           {fmtRelative(t.created_at)}
           {' · '}
-          {t.assignee?.full_name ?? <span className="font-medium text-rose-400">Unassigned</span>}
+          {t.assigned_to
+            ? (t.assignee?.full_name || t.assignee?.email || 'Assigned')
+            : <span className="font-medium text-rose-400">Unassigned</span>}
           {t.due_date && (
             <span className={overdue ? 'font-semibold text-rose-500' : undefined}>
               {' '}· due {new Date(t.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -211,14 +213,13 @@ function DashboardContent() {
       count: psaProjects.filter((p) => p.status === 'complete' && !invoicedProjectIds.has(p.id)).length,
       href: '/invoices',
     },
-    {
-      label: 'Unassigned open tickets',
-      sub: 'Nobody owns these yet',
-      icon: LifeBuoy,
-      count: tickets.filter((t) => (t.status === 'open' || t.status === 'in_progress') && !t.assigned_to).length,
-      href: '/support',
-    },
   ];
+
+  // Lives in the Active Tickets panel (not Pipeline) — it's a support-desk
+  // signal, not a sales/delivery stage.
+  const unassignedOpen = tickets.filter(
+    (t) => (t.status === 'open' || t.status === 'in_progress') && !t.assigned_to,
+  ).length;
 
   const kpis = [
     {
@@ -328,7 +329,7 @@ function DashboardContent() {
             <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
               <Workflow size={15} className="text-slate-400" /> Pipeline
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               {queues.map((q) => (
             <Link
               key={q.label}
@@ -367,6 +368,14 @@ function DashboardContent() {
                 View all <ArrowRight size={12} />
               </Link>
             </div>
+            {unassignedOpen > 0 && (
+              <Link href="/support"
+                className="mb-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100">
+                <AlertCircle size={13} className="shrink-0" />
+                {unassignedOpen} open ticket{unassignedOpen !== 1 ? 's' : ''} unassigned — nobody owns {unassignedOpen !== 1 ? 'these' : 'it'} yet
+                <ArrowRight size={12} className="ml-auto shrink-0" />
+              </Link>
+            )}
             {loadingTickets ? (
               <div className="space-y-2">
                 {[0, 1].map((i) => (

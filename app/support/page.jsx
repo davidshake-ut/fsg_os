@@ -124,8 +124,8 @@ function SupportContent() {
                   <p className="truncate text-xs text-slate-400">
                     {t.crm_accounts?.name ?? 'No account'} · {timeAgo(t.created_at)}
                     {' · '}
-                    {t.assignee?.full_name
-                      ? t.assignee.full_name
+                    {t.assigned_to
+                      ? (t.assignee?.full_name || t.assignee?.email || 'Assigned')
                       : <span className={t.status === 'open' || t.status === 'in_progress' ? 'font-medium text-rose-400' : undefined}>Unassigned</span>}
                     {t.due_date && (
                       <span className={t.due_date < new Date().toISOString().slice(0, 10) && t.status !== 'resolved' && t.status !== 'closed' ? ' font-semibold text-rose-500' : undefined}>
