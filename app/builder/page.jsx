@@ -500,8 +500,59 @@ function Calculator() {
       branding,
     });
 
-  const handleExportProposal = () =>
-    exportProposalPDF({ inputs, cameraInputs, term, sections: exportSections(), branding });
+  // "Create Proposal" = persist the version + generate the customer PDF
+  // (proposal + scope of work) + attach a copy to the proposal record so it
+  // shows on the Proposals tab. Re-running it on an already-proposed or
+  // locked version rolls a new version; the old one stays in the archive.
+  const handleCreateProposal = async () => {
+    if (!inputs.propertyName.trim()) {
+      setToast({ type: 'error', message: 'Enter a project / property name before creating a proposal.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      let saved;
+      if (!currentProjectId) {
+        saved = await saveProject({ id: null, ...buildStatePayload() });
+        setCurrentProjectId(saved.id);
+      } else if (quoteLocked || currentQuote?.pdf_path) {
+        saved = await saveProject({
+          id: null,
+          ...buildStatePayload(),
+          version: (currentQuote?.version ?? 1) + 1,
+          parentQuoteId: currentQuote?.parent_quote_id ?? currentQuote?.id ?? null,
+        });
+        setCurrentProjectId(saved.id);
+      } else {
+        saved = await saveProject({ id: currentProjectId, ...buildStatePayload() });
+      }
+      snapshotCurrent();
+
+      const doc = exportProposalPDF({ inputs, cameraInputs, term, sections: exportSections(), branding });
+
+      let attached = false;
+      const supabase = getSupabase();
+      if (supabase && company?.id && saved?.id) {
+        const path = `${company.id}/${saved.id}/Proposal-v${saved.version ?? 1}.pdf`;
+        const { error: upErr } = await supabase.storage
+          .from('proposal-files')
+          .upload(path, doc.output('blob'), { upsert: true, contentType: 'application/pdf' });
+        if (!upErr) {
+          const { error: linkErr } = await supabase.from('saved_projects').update({ pdf_path: path }).eq('id', saved.id);
+          attached = !linkErr;
+        }
+        await refreshProjects();
+      }
+      setToast({
+        type: 'success',
+        message: `Proposal v${saved.version ?? 1} created${attached ? ' — PDF saved to the Proposals tab' : ''}.`,
+      });
+    } catch (e) {
+      setToast({ type: 'error', message: `Could not create proposal: ${e.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const saveCatalog = async (form) => {
     if (modal.product && !modal.clone) await editProduct(form);
@@ -592,8 +643,9 @@ function Calculator() {
             <Button variant="outline" size="sm" onClick={handleExportPDF}>
               <FileDown size={14} /> PDF
             </Button>
-            <Button size="sm" onClick={handleExportProposal} title="Customer-facing proposal (sell price only)">
-              <FileText size={14} /> Proposal
+            <Button size="sm" onClick={handleCreateProposal} disabled={busy}
+              title="Save this version, generate the customer PDF (proposal + scope of work), and file it on the Proposals tab">
+              <FileText size={14} /> Create Proposal
             </Button>
           </div>
         </div>

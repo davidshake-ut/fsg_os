@@ -2,15 +2,17 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { FileCheck, Search, FolderKanban, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { FileCheck, Search, FolderKanban, ExternalLink, CheckCircle2, ChevronRight, FileDown, History } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
+import { getSupabase } from '@/lib/supabase/client';
 import { useProjects } from '@/hooks/useProjects';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import { useProperties } from '@/hooks/useProperties';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import QuoteLifecycleMenu from '@/components/QuoteLifecycleMenu';
+import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import { Card, Button, Select, TextInput, EmptyState } from '@/components/ui/primitives';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import AppToast from '@/components/ui/AppToast';
@@ -28,6 +30,28 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Signed-URL download for the attached proposal PDF (private bucket).
+function PdfChip({ path, className }) {
+  const supabase = getSupabase();
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    if (!supabase || busy) return;
+    setBusy(true);
+    try {
+      const { data } = await supabase.storage.from('proposal-files').createSignedUrl(path, 300);
+      if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button type="button" onClick={open} disabled={busy} title="Open the proposal PDF"
+      className={cn('flex h-7 shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 text-xs font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600', className)}>
+      <FileDown size={12} /> {busy ? '…' : 'PDF'}
+    </button>
+  );
+}
+
 function ProposalsContent() {
   const { session, company, user } = useSession();
   const { projects: proposals, loading, loadError, refresh, setQuoteStatus } = useProjects(session, company, user);
@@ -39,6 +63,7 @@ function ProposalsContent() {
   const [accountFilter, setAccountFilter] = useState('');
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState(null);
+  const [expanded, setExpanded] = useState(() => new Set());
 
   const accountName = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
   const propertyName = useMemo(() => new Map(properties.map((p) => [p.id, p.name])), [properties]);
@@ -47,22 +72,55 @@ function ProposalsContent() {
   const projectByQuote = useMemo(() => new Map(psaProjects.filter((p) => p.quote_id).map((p) => [p.quote_id, p])), [psaProjects]);
   const projectByProperty = useMemo(() => new Map(psaProjects.filter((p) => p.property_id).map((p) => [p.property_id, p])), [psaProjects]);
 
-  const filtered = proposals.filter((p) => {
-    if (statusFilter !== 'all' && (p.status ?? 'draft') !== statusFilter) return false;
-    if (accountFilter && p.crm_account_id !== accountFilter) return false;
+  // One row per proposal lineage: the latest version leads, older versions
+  // sit in an expandable archive underneath. Groups are ordered by the
+  // head's creation date — deliberately NOT updated_at, so a status change
+  // never reshuffles rows under the user's cursor (the source of the
+  // wrong-row mis-click).
+  const groups = useMemo(() => {
+    const byRoot = new Map();
+    for (const p of proposals) {
+      const key = p.parent_quote_id ?? p.id;
+      if (!byRoot.has(key)) byRoot.set(key, []);
+      byRoot.get(key).push(p);
+    }
+    return [...byRoot.values()]
+      .map((list) => {
+        const sorted = [...list].sort((a, b) =>
+          ((b.version ?? 1) - (a.version ?? 1)) || (a.created_at < b.created_at ? 1 : -1));
+        return { head: sorted[0], archived: sorted.slice(1) };
+      })
+      .sort((a, b) => ((a.head.created_at ?? '') < (b.head.created_at ?? '') ? 1 : -1));
+  }, [proposals]);
+
+  const filteredGroups = groups.filter(({ head, archived }) => {
+    if (statusFilter !== 'all' && (head.status ?? 'draft') !== statusFilter) return false;
+    if (accountFilter && head.crm_account_id !== accountFilter) return false;
     const q = query.trim().toLowerCase();
     if (q) {
-      const hay = `${p.project_name ?? ''} ${accountName.get(p.crm_account_id) ?? ''} ${propertyName.get(p.property_id) ?? ''}`.toLowerCase();
+      const hay = [
+        head.project_name,
+        accountName.get(head.crm_account_id),
+        propertyName.get(head.property_id),
+        ...archived.map((a) => a.project_name),
+      ].filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
 
-  const counts = proposals.reduce((acc, p) => {
-    const s = p.status ?? 'draft';
+  const counts = groups.reduce((acc, { head }) => {
+    const s = head.status ?? 'draft';
     acc[s] = (acc[s] ?? 0) + 1;
     return acc;
   }, {});
+
+  const toggleExpanded = (id) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   const handleTransition = async (proposal, status) => {
     try {
@@ -103,7 +161,7 @@ function ProposalsContent() {
                   ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm'
                   : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700')}>
               {s === 'all' ? 'All' : s}
-              <span className="ml-1 text-xs opacity-70">{s === 'all' ? proposals.length : counts[s] ?? 0}</span>
+              <span className="ml-1 text-xs opacity-70">{s === 'all' ? groups.length : counts[s] ?? 0}</span>
             </button>
           ))}
         </div>
@@ -118,54 +176,85 @@ function ProposalsContent() {
       </div>
 
       {/* List */}
-      {filtered.length === 0 && !loading ? (
+      {filteredGroups.length === 0 && !loading ? (
         <EmptyState
           icon={FileCheck}
           title={proposals.length === 0 ? 'No proposals yet' : 'No proposals match your filters'}
-          description={proposals.length === 0 ? 'Author your first proposal in the System Builder.' : undefined}
+          description={proposals.length === 0 ? 'Author your first proposal in the System Builder — the Create Proposal button files it here.' : undefined}
           action={proposals.length === 0 ? <Link href="/builder"><Button size="sm">Open System Builder</Button></Link> : undefined}
         />
       ) : (
         <div className="space-y-2">
-          {filtered.map((p) => {
+          {filteredGroups.map(({ head: p, archived }) => {
             const project = projectByQuote.get(p.id) ?? (p.property_id ? projectByProperty.get(p.property_id) : null);
             const isAccepted = (p.status ?? 'draft') === 'accepted';
+            const isOpen = expanded.has(p.id);
             return (
-              <Card key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
-                <div className="min-w-0 flex-1 basis-64">
-                  <div className="flex items-center gap-2">
-                    <Link href={`/builder?project=${p.id}`} className="truncate text-sm font-semibold text-slate-900 hover:text-[var(--brand,#2563eb)] hover:underline">
-                      {p.project_name || 'Untitled proposal'}
-                    </Link>
-                    <QuoteLifecycleMenu quote={p} onTransition={(status) => handleTransition(p, status)} />
+              <Card key={p.id} className="px-5 py-3.5">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="min-w-0 flex-1 basis-64">
+                    <div className="flex items-center gap-2">
+                      <Link href={`/builder?project=${p.id}`} className="truncate text-sm font-semibold text-slate-900 hover:text-[var(--brand,#2563eb)] hover:underline">
+                        {p.project_name || 'Untitled proposal'}
+                      </Link>
+                      <QuoteLifecycleMenu quote={p} onTransition={(status) => handleTransition(p, status)} />
+                    </div>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 truncate text-xs text-slate-400">
+                      {accountName.get(p.crm_account_id) ?? 'No account'}
+                      {p.property_id ? ` · ${propertyName.get(p.property_id) ?? 'Property'}` : ''}
+                      {` · Updated ${fmtDate(p.updated_at)}`}
+                      {archived.length > 0 && (
+                        <button type="button" onClick={() => toggleExpanded(p.id)}
+                          className="flex items-center gap-0.5 font-medium text-slate-500 hover:text-blue-600">
+                          <ChevronRight size={11} className={cn('transition-transform', isOpen && 'rotate-90')} />
+                          <History size={11} /> {archived.length} older version{archived.length !== 1 ? 's' : ''}
+                        </button>
+                      )}
+                    </p>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-slate-400">
-                    {accountName.get(p.crm_account_id) ?? 'No account'}
-                    {p.property_id ? ` · ${propertyName.get(p.property_id) ?? 'Property'}` : ''}
-                    {` · Updated ${fmtDate(p.updated_at)}`}
-                  </p>
+
+                  <p className="w-24 shrink-0 text-right font-mono text-sm font-semibold text-slate-800">{fmtMoney(p.total_price)}</p>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {p.pdf_path && <PdfChip path={p.pdf_path} />}
+                    {project ? (
+                      <Link href={`/projects/${project.id}`}
+                        className="flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100">
+                        <CheckCircle2 size={13} /> View Project
+                      </Link>
+                    ) : isAccepted ? (
+                      <Link href={`/builder?project=${p.id}&createProject=1`}
+                        className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-sm [background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] hover:brightness-110 transition-all">
+                        <FolderKanban size={13} /> Create Project
+                      </Link>
+                    ) : (
+                      <Link href={`/builder?project=${p.id}`}
+                        className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50">
+                        <ExternalLink size={13} /> Open in Builder
+                      </Link>
+                    )}
+                  </div>
                 </div>
 
-                <p className="w-24 shrink-0 text-right font-mono text-sm font-semibold text-slate-800">{fmtMoney(p.total_price)}</p>
-
-                <div className="flex shrink-0 items-center gap-2">
-                  {project ? (
-                    <Link href={`/projects/${project.id}`}
-                      className="flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100">
-                      <CheckCircle2 size={13} /> View Project
-                    </Link>
-                  ) : isAccepted ? (
-                    <Link href={`/builder?project=${p.id}&createProject=1`}
-                      className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-sm [background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] hover:brightness-110 transition-all">
-                      <FolderKanban size={13} /> Create Project
-                    </Link>
-                  ) : (
-                    <Link href={`/builder?project=${p.id}`}
-                      className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50">
-                      <ExternalLink size={13} /> Open in Builder
-                    </Link>
-                  )}
-                </div>
+                {/* Version archive — the paths not taken, kept on the record */}
+                {isOpen && archived.length > 0 && (
+                  <div className="mt-3 space-y-1 border-l-2 border-slate-100 pl-4">
+                    {archived.map((v) => (
+                      <div key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+                        <QuoteStatusBadge status={v.status} version={v.version} />
+                        <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                          {v.project_name || 'Untitled'} · {fmtDate(v.updated_at)}
+                        </span>
+                        <span className="shrink-0 font-mono text-xs text-slate-500">{fmtMoney(v.total_price)}</span>
+                        {v.pdf_path && <PdfChip path={v.pdf_path} className="h-6" />}
+                        <Link href={`/builder?project=${v.id}`}
+                          className="flex h-6 shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:bg-white">
+                          <ExternalLink size={11} /> Open
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Card>
             );
           })}
