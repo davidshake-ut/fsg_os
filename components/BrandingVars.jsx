@@ -25,5 +25,17 @@ export default function BrandingVars() {
     root.setAttribute('data-sidebar-style', branding.sidebarStyle === 'solid' ? 'solid' : 'gradient');
   }, [branding.primaryColor, branding.secondaryColor, branding.uiTheme, branding.sidebarStyle]);
 
+  // Browser-tab favicon follows the team too; fall back to the stock icon.
+  const faviconUrl = branding.favicon?.dataUrl ?? null;
+  useEffect(() => {
+    let link = document.querySelector('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = faviconUrl ?? '/favicon.ico';
+  }, [faviconUrl]);
+
   return null;
 }

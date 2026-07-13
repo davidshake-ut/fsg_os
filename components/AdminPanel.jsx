@@ -44,6 +44,7 @@ function BrandingForm({ initial, onSave }) {
   const [saved,  setSaved]  = useState(false);
   const [err,    setErr]    = useState(null);
   const fileRef             = useRef();
+  const favRef              = useRef();
 
   useEffect(() => { setForm(initial); }, [JSON.stringify(initial)]);
 
@@ -57,6 +58,19 @@ function BrandingForm({ initial, onSave }) {
       img.onload = () => set('logo', { dataUrl: ev.target.result, w: img.naturalWidth, h: img.naturalHeight });
       img.src = ev.target.result;
     };
+    reader.readAsDataURL(file);
+  };
+
+  // Favicons ride in the companies row like the logo — keep them tiny.
+  const handleFaviconFile = (file) => {
+    if (!file) return;
+    if (file.size > 256 * 1024) {
+      setErr('Favicon should be under 256 KB — use a small square PNG (32–64px).');
+      return;
+    }
+    setErr(null);
+    const reader = new FileReader();
+    reader.onload = (ev) => set('favicon', { dataUrl: ev.target.result });
     reader.readAsDataURL(file);
   };
 
@@ -130,6 +144,46 @@ function BrandingForm({ initial, onSave }) {
               accept="image/*"
               className="hidden"
               onChange={(e) => handleLogoFile(e.target.files?.[0])}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Favicon */}
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Favicon</p>
+        <div className="flex items-center gap-4">
+          {form.favicon?.dataUrl ? (
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-1">
+              <img src={form.favicon.dataUrl} alt="Favicon" className="max-h-full max-w-full object-contain" />
+              <button
+                type="button"
+                onClick={() => set('favicon', null)}
+                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-500 text-white hover:bg-red-500"
+              >
+                <X size={9} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 text-slate-300">
+              <Upload size={14} />
+            </div>
+          )}
+          <div>
+            <button
+              type="button"
+              onClick={() => favRef.current?.click()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+            >
+              {form.favicon ? 'Replace favicon' : 'Upload favicon'}
+            </button>
+            <p className="mt-1 text-[11px] text-slate-400">Square PNG or ICO, 32–64px — shows in the browser tab</p>
+            <input
+              ref={favRef}
+              type="file"
+              accept="image/*,.ico"
+              className="hidden"
+              onChange={(e) => handleFaviconFile(e.target.files?.[0])}
             />
           </div>
         </div>
@@ -848,13 +902,14 @@ export default function AdminPanel() {
     ? {
         companyName:    brandingTarget.name            || '',
         logo:           brandingTarget.logo            || null,
+        favicon:        brandingTarget.favicon         || null,
         primaryColor:   brandingTarget.primary_color    || '#2563eb',
         accentColor:    brandingTarget.accent_color     || '#1e40af',
         secondaryColor: brandingTarget.secondary_color  || '#0891b2',
         uiTheme:        brandingTarget.ui_theme         || 'bold',
         sidebarStyle:   brandingTarget.sidebar_style    || 'gradient',
       }
-    : { companyName: '', logo: null, primaryColor: '#2563eb', accentColor: '#1e40af', secondaryColor: '#0891b2', uiTheme: 'bold', sidebarStyle: 'gradient' };
+    : { companyName: '', logo: null, favicon: null, primaryColor: '#2563eb', accentColor: '#1e40af', secondaryColor: '#0891b2', uiTheme: 'bold', sidebarStyle: 'gradient' };
 
   const saveSuperBranding = async (form) => {
     if (!supabase || !brandingTargetId) return;
@@ -863,6 +918,7 @@ export default function AdminPanel() {
       .update({
         name:            form.companyName,
         logo:            form.logo ?? null,
+        favicon:         form.favicon ?? null,
         primary_color:   form.primaryColor,
         accent_color:    form.accentColor,
         secondary_color: form.secondaryColor,
@@ -872,6 +928,10 @@ export default function AdminPanel() {
       .eq('id', brandingTargetId);
     if (error) throw error;
     await refresh();
+    // Editing the team the super admin belongs to must also refresh the
+    // cached session company, or BrandingVars/Sidebar keep the old look
+    // until a full reload (same fix the company-admin path got).
+    if (brandingTargetId === company?.id) await refreshSession?.().catch(() => {});
   };
 
   return (

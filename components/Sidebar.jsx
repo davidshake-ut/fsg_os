@@ -64,7 +64,7 @@ function NavLink({ href, icon: Icon, label, active, onClick }) {
 
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
-  const { isAdmin, isSuperAdmin, role, configured, session, user, signOut } = useSession();
+  const { isAdmin, isSuperAdmin, role, configured, session, user, company, signOut } = useSession();
   const { isEnabled } = useModules();
 
   const visibleItems = NAV_ITEMS.filter((item) => {
@@ -78,12 +78,20 @@ export default function Sidebar({ onClose }) {
       className="flex h-screen w-56 shrink-0 flex-col border-r"
       style={{ background: 'var(--ui-sidebar-bg)', borderColor: 'var(--ui-sidebar-border)' }}
     >
-      {/* Logo */}
+      {/* Team identity — the app wears the team's name and logo */}
       <div className="flex h-14 items-center gap-2.5 border-b px-4" style={{ borderColor: 'var(--ui-sidebar-border)' }}>
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg text-white" style={{ background: 'var(--ui-sidebar-logo-bg)' }}>
-          <Layers size={14} />
+        {company?.logo?.dataUrl ? (
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/90 p-0.5">
+            <img src={company.logo.dataUrl} alt="" className="max-h-full max-w-full object-contain" />
+          </span>
+        ) : (
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: 'var(--ui-sidebar-logo-bg)' }}>
+            <Layers size={14} />
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate text-sm font-bold tracking-tight text-[var(--ui-sidebar-ink-strong)]" title={company?.name || 'FSG OS'}>
+          {company?.name || 'FSG OS'}
         </span>
-        <span className="flex-1 text-sm font-bold tracking-tight text-[var(--ui-sidebar-ink-strong)]">FSG OS</span>
         <NotificationBell />
         {onClose && (
           <button
