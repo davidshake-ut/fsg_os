@@ -1,15 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   TrendingUp, Users, FolderKanban, DollarSign, AlertCircle,
   FileText, FileCheck, GitPullRequest, Receipt, LifeBuoy, Inbox,
-  Send, ArrowRight, Workflow,
+  Send, ArrowRight, Workflow, SlidersHorizontal, GripVertical, X, Plus,
 } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
-import { Card } from '@/components/ui/primitives';
+import { getSupabase } from '@/lib/supabase/client';
+import { Card, Button } from '@/components/ui/primitives';
 import ProjectStatusBadge, { STATUS_STRIPE } from '@/components/projects/ProjectStatusBadge';
 import ProjectProgressBar from '@/components/projects/ProjectProgressBar';
 import AvatarStack from '@/components/projects/AvatarStack';
@@ -23,6 +28,8 @@ import { useProjects } from '@/hooks/useProjects';
 import { useResources } from '@/hooks/useResources';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import { toneClasses, tileClasses } from '@/lib/statusColors';
+import { KPI_CARDS, PANEL_CARDS, resolveDashboardConfig } from '@/lib/dashboardConfig';
+import { cn } from '@/lib/utils';
 
 const ACTIVITY_META = {
   quote:        { icon: FileCheck,      tone: 'info'     },
@@ -141,8 +148,37 @@ function KpiCard({ label, icon: Icon, value, sub, loading, tone = 'info' }) {
   );
 }
 
+// In customize mode every card gets a drag chip + remove button; outside it,
+// the card renders untouched.
+function SortableCard({ id, editing, label, onRemove, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !editing });
+  if (!editing) return children;
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn('relative', isDragging && 'z-30 opacity-90')}
+    >
+      <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl ring-2 ring-blue-400/50" />
+      <div className="absolute -top-2.5 left-3 z-20 flex items-center gap-1">
+        <button type="button" {...attributes} {...listeners}
+          className="flex cursor-grab items-center gap-1 rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-600 shadow-sm active:cursor-grabbing">
+          <GripVertical size={10} /> {label}
+        </button>
+        <button type="button" onClick={onRemove} aria-label={`Remove ${label}`}
+          className="rounded-full border border-rose-200 bg-white p-1 text-rose-500 shadow-sm hover:bg-rose-50">
+          <X size={10} />
+        </button>
+      </div>
+      {/* Freeze the card's own interactions while rearranging */}
+      <div className="pointer-events-none select-none">{children}</div>
+    </div>
+  );
+}
+
 function DashboardContent() {
-  const { session, company, user } = useSession();
+  const supabase = getSupabase();
+  const { session, company, user, isAdmin, refresh: refreshSession } = useSession();
 
   const { accounts,  loading: loadingCrm      } = useCRMAccounts(session, company, user);
   const { projects: psaProjects, loading: loadingPsa } = usePSAProjects(session, company, user);
@@ -151,6 +187,42 @@ function DashboardContent() {
   const { projects: savedProjects, } = useProjects(session, company, user);
   const { resources, loading: loadingResources } = useResources(session, company, user);
   const { entries: activity, loading: loadingActivity } = useActivityLog(session, company);
+
+  // ── Per-team layout: saved config + admin customize mode ────────────────
+  const config = resolveDashboardConfig(company?.dashboard_config);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const editing = draft != null;
+  const layout = draft ?? config;
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  const saveLayout = async () => {
+    if (!supabase || !company?.id || !draft) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('companies').update({ dashboard_config: draft }).eq('id', company.id);
+      if (!error) {
+        await refreshSession?.().catch(() => {});
+        setDraft(null);
+      }
+    } finally { setSaving(false); }
+  };
+
+  const removeCard = (kind, id) => setDraft((d) => ({ ...d, [kind]: d[kind].filter((x) => x !== id) }));
+  const addCard = (kind, id) => setDraft((d) => ({ ...d, [kind]: [...d[kind], id] }));
+  const onDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    setDraft((d) => {
+      if (!d) return d;
+      for (const kind of ['kpis', 'panels']) {
+        const from = d[kind].indexOf(active.id);
+        const to = d[kind].indexOf(over.id);
+        if (from !== -1 && to !== -1) return { ...d, [kind]: arrayMove(d[kind], from, to) };
+      }
+      return d;
+    });
+  };
 
   const activeProjects = psaProjects.filter(
     (p) => p.status === 'planning' || p.status === 'active',
@@ -221,116 +293,56 @@ function DashboardContent() {
     (t) => (t.status === 'open' || t.status === 'in_progress') && !t.assigned_to,
   ).length;
 
-  const kpis = [
-    {
-      label: 'Total Customers',
-      icon: Users,
-      value: accounts.length,
-      sub: 'CRM accounts',
-      loading: loadingCrm,
-      tone: 'info',
-    },
-    {
-      label: 'Active Projects',
-      icon: FolderKanban,
-      value: activeProjects,
-      sub: 'Planning + active',
-      loading: loadingPsa,
-      tone: 'progress',
-    },
-    {
-      label: 'Revenue Collected',
-      icon: DollarSign,
-      value: fmtMoney(revenueCollected),
-      sub: 'All paid invoices',
-      loading: loadingInv,
-      tone: 'success',
-    },
-    {
-      label: 'Open Tickets',
-      icon: AlertCircle,
-      value: openTickets,
-      sub: 'Open + in progress',
-      loading: loadingTickets,
-      tone: 'danger',
-    },
-    {
-      label: 'Builder Proposals',
-      icon: TrendingUp,
-      value: savedProjects.length,
-      sub: 'Saved quotes',
-      loading: false,
-      tone: 'warning',
-    },
-    {
-      label: 'Documents',
-      icon: FileText,
-      value: resources.length,
-      sub: `${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'}`,
-      loading: loadingResources,
-      tone: 'orange',
-    },
-  ];
+  const kpiById = {
+    customers: { label: 'Total Customers',   icon: Users,        value: accounts.length,          sub: 'CRM accounts',        loading: loadingCrm,       tone: 'info'     },
+    projects:  { label: 'Active Projects',   icon: FolderKanban, value: activeProjects,           sub: 'Planning + active',   loading: loadingPsa,       tone: 'progress' },
+    revenue:   { label: 'Revenue Collected', icon: DollarSign,   value: fmtMoney(revenueCollected), sub: 'All paid invoices', loading: loadingInv,       tone: 'success'  },
+    tickets:   { label: 'Open Tickets',      icon: AlertCircle,  value: openTickets,              sub: 'Open + in progress',  loading: loadingTickets,   tone: 'danger'   },
+    proposals: { label: 'Builder Proposals', icon: TrendingUp,   value: savedProjects.length,     sub: 'Saved quotes',        loading: false,            tone: 'warning'  },
+    documents: { label: 'Documents',         icon: FileText,     value: resources.length,         sub: `${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'}`, loading: loadingResources, tone: 'orange' },
+  };
 
-  return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Real-time KPIs and business metrics across all FSG OS modules.
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi) => (
-          <KpiCard key={kpi.label} {...kpi} />
-        ))}
-      </div>
-
-      <div className="grid items-start gap-6 lg:grid-cols-[1.55fr_1fr]">
-        <div className="min-w-0 space-y-6">
-          {/* Active Projects — status, timeline, progress, and crew for the
-              work in flight, one glance, no clicks */}
-          <Card className="p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                <FolderKanban size={15} className="text-slate-400" /> Active Projects
-                {spotlight.length > 0 && (
-                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">{spotlight.length}</span>
-                )}
-              </h2>
-              <Link href="/projects" className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
-                View all <ArrowRight size={12} />
-              </Link>
-            </div>
-            {loadingPsa ? (
-              <div className="space-y-2">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-11 animate-pulse rounded-lg bg-slate-50" />
-                ))}
-              </div>
-            ) : spotlight.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
-                <FolderKanban size={22} className="text-slate-200" />
-                <p className="text-sm">Nothing in flight — accepted proposals become projects here.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {spotlight.map((p) => (
-                  <ActiveProjectRow key={p.id} project={p} vitals={vitals} />
-                ))}
-              </div>
+  const renderPanel = (id) => {
+    if (id === 'active_projects') return (
+      <Card className="p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+            <FolderKanban size={15} className="text-slate-400" /> Active Projects
+            {spotlight.length > 0 && (
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">{spotlight.length}</span>
             )}
-          </Card>
-
-          {/* Pipeline — where the flow is stuck, each queue linking to the page
-              with the push-to-next-stage action */}
-          <Card className="p-5">
-            <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-              <Workflow size={15} className="text-slate-400" /> Pipeline
-            </h2>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {queues.map((q) => (
+          </h2>
+          <Link href="/projects" className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
+            View all <ArrowRight size={12} />
+          </Link>
+        </div>
+        {loadingPsa ? (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-11 animate-pulse rounded-lg bg-slate-50" />
+            ))}
+          </div>
+        ) : spotlight.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
+            <FolderKanban size={22} className="text-slate-200" />
+            <p className="text-sm">Nothing in flight — accepted proposals become projects here.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {spotlight.map((p) => (
+              <ActiveProjectRow key={p.id} project={p} vitals={vitals} />
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+    if (id === 'pipeline') return (
+      <Card className="p-5">
+        <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+          <Workflow size={15} className="text-slate-400" /> Pipeline
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {queues.map((q) => (
             <Link
               key={q.label}
               href={q.href}
@@ -348,56 +360,54 @@ function DashboardContent() {
                 <span className="block text-[11px] text-slate-400">{q.sub}</span>
               </span>
             </Link>
-              ))}
-            </div>
-          </Card>
+          ))}
         </div>
-
-        <div className="min-w-0 space-y-6">
-          {/* Active Support Tickets — the support-desk pulse next to the
-              delivery pulse */}
-          <Card className="p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                <LifeBuoy size={15} className="text-slate-400" /> Active Tickets
-                {activeTickets.length > 0 && (
-                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">{activeTickets.length}</span>
-                )}
-              </h2>
-              <Link href="/support" className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
-                View all <ArrowRight size={12} />
-              </Link>
-            </div>
-            {unassignedOpen > 0 && (
-              <Link href="/support"
-                className="mb-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100">
-                <AlertCircle size={13} className="shrink-0" />
-                {unassignedOpen} open ticket{unassignedOpen !== 1 ? 's' : ''} unassigned — nobody owns {unassignedOpen !== 1 ? 'these' : 'it'} yet
-                <ArrowRight size={12} className="ml-auto shrink-0" />
-              </Link>
+      </Card>
+    );
+    if (id === 'active_tickets') return (
+      <Card className="p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+            <LifeBuoy size={15} className="text-slate-400" /> Active Tickets
+            {activeTickets.length > 0 && (
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">{activeTickets.length}</span>
             )}
-            {loadingTickets ? (
-              <div className="space-y-2">
-                {[0, 1].map((i) => (
-                  <div key={i} className="h-11 animate-pulse rounded-lg bg-slate-50" />
-                ))}
-              </div>
-            ) : activeTickets.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-6 text-slate-400">
-                <LifeBuoy size={22} className="text-slate-200" />
-                <p className="text-sm">No open tickets — inbox zero.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {activeTickets.map((t) => (
-                  <ActiveTicketRow key={t.id} ticket={t} />
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card className="p-5">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">Recent Activity</h2>
+          </h2>
+          <Link href="/support" className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
+            View all <ArrowRight size={12} />
+          </Link>
+        </div>
+        {unassignedOpen > 0 && (
+          <Link href="/support"
+            className="mb-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100">
+            <AlertCircle size={13} className="shrink-0" />
+            {unassignedOpen} open ticket{unassignedOpen !== 1 ? 's' : ''} unassigned — nobody owns {unassignedOpen !== 1 ? 'these' : 'it'} yet
+            <ArrowRight size={12} className="ml-auto shrink-0" />
+          </Link>
+        )}
+        {loadingTickets ? (
+          <div className="space-y-2">
+            {[0, 1].map((i) => (
+              <div key={i} className="h-11 animate-pulse rounded-lg bg-slate-50" />
+            ))}
+          </div>
+        ) : activeTickets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-6 text-slate-400">
+            <LifeBuoy size={22} className="text-slate-200" />
+            <p className="text-sm">No open tickets — inbox zero.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {activeTickets.map((t) => (
+              <ActiveTicketRow key={t.id} ticket={t} />
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+    if (id === 'activity') return (
+      <Card className="p-5">
+        <h2 className="mb-4 text-sm font-semibold text-slate-700">Recent Activity</h2>
         {loadingActivity ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
@@ -430,9 +440,101 @@ function DashboardContent() {
             })}
           </div>
         )}
-          </Card>
+      </Card>
+    );
+    return null;
+  };
+
+  const visibleKpis = layout.kpis.filter((id) => kpiById[id]);
+  const leftPanels  = layout.panels.filter((id) => PANEL_CARDS[id]?.column === 'left');
+  const rightPanels = layout.panels.filter((id) => PANEL_CARDS[id]?.column === 'right');
+  const hiddenKpis   = Object.keys(KPI_CARDS).filter((id) => !layout.kpis.includes(id));
+  const hiddenPanels = Object.keys(PANEL_CARDS).filter((id) => !layout.panels.includes(id));
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {editing
+              ? 'Drag cards to rearrange, ✕ to remove, add hidden cards below — then save for your whole team.'
+              : 'Real-time KPIs and business metrics across all FSG OS modules.'}
+          </p>
         </div>
+        {isAdmin && (
+          editing ? (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setDraft(null)}>Cancel</Button>
+              <Button size="sm" onClick={saveLayout} disabled={saving}>
+                {saving ? 'Saving…' : 'Save Layout'}
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setDraft(config)}>
+              <SlidersHorizontal size={13} /> Customize
+            </Button>
+          )
+        )}
       </div>
+
+      {editing && (hiddenKpis.length > 0 || hiddenPanels.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50/60 px-3 py-2.5">
+          <span className="text-xs font-semibold text-blue-700">Add cards:</span>
+          {hiddenKpis.map((id) => (
+            <button key={id} type="button" onClick={() => addCard('kpis', id)}
+              className="flex items-center gap-1 rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-medium text-blue-600 shadow-sm hover:bg-blue-50">
+              <Plus size={11} /> {KPI_CARDS[id].label}
+            </button>
+          ))}
+          {hiddenPanels.map((id) => (
+            <button key={id} type="button" onClick={() => addCard('panels', id)}
+              className="flex items-center gap-1 rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-xs font-medium text-indigo-600 shadow-sm hover:bg-indigo-50">
+              <Plus size={11} /> {PANEL_CARDS[id].label} panel
+            </button>
+          ))}
+        </div>
+      )}
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        {visibleKpis.length > 0 && (
+          <SortableContext items={visibleKpis} strategy={rectSortingStrategy}>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {visibleKpis.map((id) => (
+                <SortableCard key={id} id={id} editing={editing} label={KPI_CARDS[id].label}
+                  onRemove={() => removeCard('kpis', id)}>
+                  <KpiCard {...kpiById[id]} />
+                </SortableCard>
+              ))}
+            </div>
+          </SortableContext>
+        )}
+
+        {(leftPanels.length > 0 || rightPanels.length > 0) && (
+          <div className="grid items-start gap-6 lg:grid-cols-[1.55fr_1fr]">
+            <div className="min-w-0 space-y-6">
+              <SortableContext items={leftPanels} strategy={verticalListSortingStrategy}>
+                {leftPanels.map((id) => (
+                  <SortableCard key={id} id={id} editing={editing} label={PANEL_CARDS[id].label}
+                    onRemove={() => removeCard('panels', id)}>
+                    {renderPanel(id)}
+                  </SortableCard>
+                ))}
+              </SortableContext>
+            </div>
+            <div className="min-w-0 space-y-6">
+              <SortableContext items={rightPanels} strategy={verticalListSortingStrategy}>
+                {rightPanels.map((id) => (
+                  <SortableCard key={id} id={id} editing={editing} label={PANEL_CARDS[id].label}
+                    onRemove={() => removeCard('panels', id)}>
+                    {renderPanel(id)}
+                  </SortableCard>
+                ))}
+              </SortableContext>
+            </div>
+          </div>
+        )}
+      </DndContext>
     </div>
   );
 }
