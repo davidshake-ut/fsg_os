@@ -7,16 +7,13 @@ import { Save, FolderKanban, CheckCircle2, X, Loader2, Building2, Sheet, FileDow
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
-import InputPanel from '@/components/InputPanel';
-import CameraInputPanel from '@/components/CameraInputPanel';
 import { useBranding } from '@/hooks/useBranding';
 import SummaryCards from '@/components/SummaryCards';
-import BOMTable from '@/components/BOMTable';
-import CameraSystems from '@/components/CameraSystems';
 import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
 import PropertyOverview from '@/components/builder/PropertyOverview';
 import TechnologyPage from '@/components/builder/TechnologyPage';
+import { getCalculator } from '@/components/builder/calculators';
 import CostSummary from '@/components/CostSummary';
 import { publishBuilderTechs } from '@/lib/builderNavStore';
 import { Button } from '@/components/ui/primitives';
@@ -48,8 +45,10 @@ import { cn } from '@/lib/utils';
 
 // Tabs are dynamic: Overview first, one tab per technology enabled on this
 // quote (registry order, company custom techs last), Product Database at the
-// end. Wi-Fi and Video Surveillance keep their calculators; other techs get
-// the generic TechnologyPage until their Tier-2 mini-calculator lands.
+// end. Each technology's design surface routes through the mini-calculator
+// registry (components/builder/calculators): a registered calculator renders
+// its own input panel + computed system; everything else gets the generic
+// TechnologyPage parts picker.
 
 // Prefer a company-owned template over the built-in system one for a given
 // technology, so a team's customized version wins once they've made one.
@@ -59,6 +58,12 @@ function pickTemplateForTech(allTemplates, technology) {
 }
 
 const PROPERTY_TYPE_LABELS = { hospitality: 'Hospitality', senior_living: 'Senior Living', multifamily: 'Multi-Family' };
+
+// Id for hand-added quote lines — only ever called from user-event handlers.
+const newCustomId = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `c-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 // Compact who/where strip shown under the sub-tabs on every technology page —
 // the property context travels with you; editing it happens on the Overview.
@@ -214,6 +219,22 @@ function Calculator() {
   const includeShipping = inputs.includeShipping !== false;
   const shippingPercent = inputs.shippingPercent ?? 7;
 
+  // Tier-2 mini-calculator design inputs, keyed by tech id inside the
+  // quote's inputs jsonb (inputs.techCalc) — save/load/revisions carry them
+  // like any other input. Defaults come from the calculator itself.
+  const techCalcValue = (techId) => ({
+    ...(getCalculator(techId)?.defaults ?? {}),
+    ...(inputs.techCalc?.[techId] ?? {}),
+  });
+  const setTechCalcInputs = (techId, patch) =>
+    setInputs((prev) => ({
+      ...prev,
+      techCalc: {
+        ...(prev.techCalc ?? {}),
+        [techId]: { ...(prev.techCalc?.[techId] ?? {}), ...patch },
+      },
+    }));
+
   // Company custom technologies (admin-managed, settings jsonb — same
   // pattern as productLineDiscounts).
   const saveCustomTechs = async (list) => {
@@ -236,16 +257,37 @@ function Calculator() {
     setTechEnabled(id, false);
   };
 
-  // BOM-shaped sections for generic (no-calculator) technology tabs. Cheap —
-  // just sums the quote's own line entries for each tech.
+  // Lines a registered mini-calculator derives from its design inputs —
+  // stamped with the tech id + fromCalculator so calculateTechBOM and the
+  // System Design table can tell them from hand-added lines.
+  const techCalcLines = useMemo(() => {
+    const out = {};
+    for (const t of techTabs) {
+      const calc = getCalculator(t.id);
+      if (!calc?.compute) continue;
+      const value = { ...(calc.defaults ?? {}), ...(inputs.techCalc?.[t.id] ?? {}) };
+      out[t.id] = (calc.compute(value, { products: allProducts }) ?? [])
+        .filter((l) => (Number(l.qty) || 0) > 0)
+        .map((l) => ({ ...l, system: t.id, fromCalculator: true }));
+    }
+    return out;
+  }, [techTabs, inputs, allProducts]);
+
+  // BOM-shaped sections for every non-legacy technology tab: the tech's
+  // calculator-derived lines (if any) plus the quote's own line entries.
+  // The two legacy engines (Wi-Fi/Camera) own their BOMs above.
   const techBoms = useMemo(() => {
     const out = {};
     for (const t of techTabs) {
-      if (t.calculator) continue;
-      out[t.id] = calculateTechBOM(t.id, customLineItems, { includeShipping, shippingPercent });
+      if (getCalculator(t.id)?.legacy) continue;
+      out[t.id] = calculateTechBOM(
+        t.id,
+        [...(techCalcLines[t.id] ?? []), ...customLineItems],
+        { includeShipping, shippingPercent }
+      );
     }
     return out;
-  }, [techTabs, customLineItems, includeShipping, shippingPercent]);
+  }, [techTabs, techCalcLines, customLineItems, includeShipping, shippingPercent]);
 
   const cameraBom = useMemo(
     () =>
@@ -270,19 +312,27 @@ function Calculator() {
     ]
   );
 
+  // Per-role labor hours contributed by registered mini-calculators.
+  const techLaborContributions = useMemo(() => {
+    const list = [];
+    for (const t of techTabs) {
+      const calc = getCalculator(t.id);
+      if (!calc?.laborHours || calc.legacy) continue;
+      const value = { ...(calc.defaults ?? {}), ...(inputs.techCalc?.[t.id] ?? {}) };
+      list.push(calc.laborHours(value, techBoms[t.id]));
+    }
+    return list;
+  }, [techTabs, inputs, techBoms]);
+
   const estimatedHours = useMemo(
-    () => estimateLaborHours({ wifiBom: bom, cameraBom, inputs, cameraInputs }),
-    [bom, cameraBom, inputs, cameraInputs]
+    () => estimateLaborHours({ wifiBom: bom, cameraBom, inputs, cameraInputs, techContributions: techLaborContributions }),
+    [bom, cameraBom, inputs, cameraInputs, techLaborContributions]
   );
   const labor = useMemo(
     () => calculateLabor(laborRoles, estimatedHours),
     [laborRoles, estimatedHours]
   );
 
-  const newCustomId = () =>
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `c-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const addCustomLine = (system, segment) =>
     setCustomLineItems((prev) => [
       ...prev,
@@ -319,8 +369,9 @@ function Calculator() {
   const subTab = activeTech && subTabState.techId === activeTech.id ? subTabState.id : 'overview';
   const setSubTab = (id) => setSubTabState({ techId: activeTech?.id ?? null, id });
 
-  const onCameras = activeTech?.calculator === 'camera';
-  const onWifi = activeTech?.calculator === 'wifi';
+  const activeCalc = activeTech ? getCalculator(activeTech.id) : null;
+  const onCameras = activeCalc?.legacy === 'camera';
+  const onWifi = activeCalc?.legacy === 'wifi';
   const dashView = onWifi ? 'wifi' : onCameras ? 'cameras' : 'both';
 
   // Keep the sidebar's Builder sub-nav in sync with this quote's toggles.
@@ -610,10 +661,11 @@ function Calculator() {
   // Overview summary, exportPDF, exportProposal, and exportCSV. The Wi-Fi
   // and Camera labels are kept for the proposal PDF's scope grouping.
   const sectionForTech = (t) => {
-    if (t.calculator === 'wifi') {
+    const legacy = getCalculator(t.id)?.legacy;
+    if (legacy === 'wifi') {
       return { title: t.label, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term) };
     }
-    if (t.calculator === 'camera') {
+    if (legacy === 'camera') {
       return cameraBom.totalCameras > 0
         ? { title: t.label, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom) }
         : null;
@@ -739,6 +791,20 @@ function Calculator() {
     });
   };
 
+  // Shared bag handed to calculator components — see the contract in
+  // components/builder/calculators/index.js.
+  const calcCtx = {
+    inputs, setInputs, term,
+    cameraInputs, setCameraInputs,
+    bom, cameraBom, labor,
+    showMargin, setShowMargin,
+    priceOverrides, setPriceOverrides,
+    editPrices, setEditPrices,
+    canViewMargin,
+    addCustomLine, updateCustomLine, removeCustomLine,
+    products: allProducts,
+  };
+
   // --brand/--brand-text are set app-wide by components/BrandingVars.jsx —
   // no need to set them again locally here.
   return (
@@ -811,13 +877,14 @@ function Calculator() {
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:flex-row">
-        {(onWifi || onCameras) && subTab === 'builder' && (
+        {activeCalc && subTab === 'builder' && (
           <aside className="w-full shrink-0 lg:w-[350px]">
-            {onCameras ? (
-              <CameraInputPanel cameraInputs={cameraInputs} setCameraInputs={setCameraInputs} />
-            ) : (
-              <InputPanel inputs={inputs} setInputs={setInputs} term={term} />
-            )}
+            <activeCalc.InputPanel
+              value={techCalcValue(activeTech.id)}
+              onChange={(patch) => setTechCalcInputs(activeTech.id, patch)}
+              products={allProducts}
+              ctx={calcCtx}
+            />
           </aside>
         )}
 
@@ -906,17 +973,6 @@ function Calculator() {
             </>
           )}
 
-          {(onWifi || onCameras) && subTab === 'builder' && (
-            <SummaryCards
-              view={dashView}
-              bom={bom}
-              cameraBom={cameraBom}
-              labor={labor}
-              term={term}
-              canViewMargin={canViewMargin}
-            />
-          )}
-
           {tab === 'overview' && (
             <PropertyOverview
               inputs={inputs}
@@ -948,48 +1004,23 @@ function Calculator() {
               busy={busy}
             />
           )}
-          {onWifi && subTab === 'builder' && (
-            <BOMTable
-              bom={bom}
-              showMargin={showMargin}
-              setShowMargin={setShowMargin}
-              priceOverrides={priceOverrides}
-              setPriceOverrides={setPriceOverrides}
-              editPrices={editPrices}
-              setEditPrices={setEditPrices}
-              canViewMargin={canViewMargin}
-              onAddCustom={(seg) => addCustomLine('wifi', seg)}
-              onUpdateCustom={updateCustomLine}
-              onRemoveCustom={removeCustomLine}
-            />
-          )}
-          {onCameras && subTab === 'builder' && (
-            <CameraSystems
-              cameraBom={cameraBom}
-              showMargin={showMargin}
-              setShowMargin={setShowMargin}
-              priceOverrides={priceOverrides}
-              setPriceOverrides={setPriceOverrides}
-              editPrices={editPrices}
-              setEditPrices={setEditPrices}
-              canViewMargin={canViewMargin}
-              onAddCustom={(seg) => addCustomLine('camera', seg)}
-              onUpdateCustom={updateCustomLine}
-              onRemoveCustom={removeCustomLine}
-            />
-          )}
-          {activeTech && !activeTech.calculator && subTab === 'builder' && (
-            <TechnologyPage
-              techId={activeTech.id}
-              label={activeTech.label}
-              products={allProducts}
-              lines={customLineItems.filter((c) => c.system === activeTech.id)}
-              bom={techBoms[activeTech.id]}
-              canViewMargin={canViewMargin}
-              onAddLine={(line) => addTechLine(activeTech.id, line)}
-              onUpdateLine={updateCustomLine}
-              onRemoveLine={removeCustomLine}
-            />
+          {activeTech && subTab === 'builder' && (
+            activeCalc?.Body ? (
+              <activeCalc.Body ctx={calcCtx} />
+            ) : (
+              <TechnologyPage
+                techId={activeTech.id}
+                label={activeTech.label}
+                products={allProducts}
+                computedLines={techCalcLines[activeTech.id] ?? []}
+                lines={customLineItems.filter((c) => c.system === activeTech.id)}
+                bom={techBoms[activeTech.id]}
+                canViewMargin={canViewMargin}
+                onAddLine={(line) => addTechLine(activeTech.id, line)}
+                onUpdateLine={updateCustomLine}
+                onRemoveLine={removeCustomLine}
+              />
+            )
           )}
           {activeTech && subTab === 'products' && (
             <ProductDatabase

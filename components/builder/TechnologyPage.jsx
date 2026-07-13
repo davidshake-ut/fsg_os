@@ -1,15 +1,17 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, Search, Trash2, Wrench, Package } from 'lucide-react';
+import { Plus, Search, Trash2, Wrench, Package, Calculator } from 'lucide-react';
 import { Card, Button, TextInput } from '@/components/ui/primitives';
 import { currency } from '@/lib/format';
 
-// Generic technology page — the quoting substrate for technologies without
-// a bespoke calculator yet (Tier-2 mini-calculators layer on top of this).
-// Pick SKUs from this technology's slice of the Product Database, set
-// quantities, or add free-form lines; hardware and services render as
-// separate sub-groups and roll into the quote via calculateTechBOM.
+// Generic technology page — the quoting substrate for every technology
+// without a legacy engine. Pick SKUs from this technology's slice of the
+// Product Database, set quantities, or add free-form lines; hardware and
+// services render as separate sub-groups and roll into the quote via
+// calculateTechBOM. When a Tier-2 mini-calculator is registered for the
+// tech, its derived parts show read-only in the System Design table on top
+// (quantities change via the design inputs in the left rail).
 
 function LineRow({ line, canViewMargin, onUpdate, onRemove }) {
   const qty = Number(line.qty) || 0;
@@ -97,11 +99,57 @@ function LinesTable({ title, icon: Icon, lines, canViewMargin, onUpdate, onRemov
   );
 }
 
+function SystemDesignTable({ lines, canViewMargin }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+          <Calculator size={14} className="text-slate-400" /> System Design
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">{lines.length}</span>
+        </h3>
+        <p className="text-[11px] text-slate-400">Derived from the design inputs — adjust them in the left panel.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
+              <th className="px-3 py-2 font-medium">SKU</th>
+              <th className="px-3 py-2 font-medium">Description</th>
+              <th className="px-3 py-2 text-right font-medium">Qty</th>
+              {canViewMargin && <th className="px-3 py-2 text-right font-medium">Unit Cost</th>}
+              <th className="px-3 py-2 text-right font-medium">Unit Price</th>
+              <th className="px-3 py-2 text-right font-medium">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, i) => {
+              const qty = Number(l.qty) || 0;
+              return (
+                <tr key={`${l.sku || 'line'}-${i}`} className="border-b border-slate-50 last:border-0">
+                  <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{l.sku || '—'}</td>
+                  <td className="px-3 py-1.5 text-sm text-slate-700">{l.description}</td>
+                  <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-700">{qty}</td>
+                  {canViewMargin && (
+                    <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-500">{currency(Number(l.cost) || 0)}</td>
+                  )}
+                  <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-700">{currency(Number(l.price) || 0)}</td>
+                  <td className="px-3 py-1.5 text-right text-sm font-medium tabular-nums text-slate-700">{currency(qty * (Number(l.price) || 0))}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 export default function TechnologyPage({
   techId,
   label,
   products = [],       // full merged catalog; filtered to this technology here
   lines = [],          // this tech's line entries (customLineItems, system === techId)
+  computedLines = [],  // mini-calculator output (read-only; qty from design inputs)
   bom,                 // calculateTechBOM output for the totals strip
   canViewMargin = false,
   onAddLine,           // (line) => void — page assigns id + system
@@ -188,6 +236,10 @@ export default function TechnologyPage({
           </div>
         )}
       </Card>
+
+      {computedLines.length > 0 && (
+        <SystemDesignTable lines={computedLines} canViewMargin={canViewMargin} />
+      )}
 
       <LinesTable
         title="Hardware & Equipment"

@@ -55,4 +55,34 @@ describe('estimateLaborHours', () => {
     });
     expect(both['install-tech']).toBe(32 + 14); // wifi 32 + camera 14
   });
+
+  it('calculator contributions stand alone — Wi-Fi baselines and inputs must not leak', () => {
+    const est = estimateLaborHours({
+      // Wi-Fi-design inputs present but no Wi-Fi/Camera system quoted:
+      inputs: { b2bConnectionType: 'fiber', b2bConnectionQty: 2, cat6Required: true, cat6Drops: 50 },
+      techContributions: [{ 'install-tech': 10, 'project-manager': 2 }],
+    });
+    expect(est['install-tech']).toBe(10); // no b2b/cat6 leak-through
+    expect(est['project-manager']).toBe(2); // no flat PM baseline
+    expect(est['network-engineer']).toBe(0);
+    expect(est['system-designer']).toBe(0);
+    expect(est['admin-overhead']).toBe(0);
+  });
+
+  it('contributions add on top of the Wi-Fi estimate and sum across techs', () => {
+    const base = {
+      wifiBom: { totalAPs: 50, totalIdfSwitches: 2, needsAggSwitch: true },
+      inputs: { numberOfIDFs: 2 },
+    };
+    const est = estimateLaborHours({
+      ...base,
+      techContributions: [{ 'install-tech': 4 }, { 'install-tech': 6 }],
+    });
+    expect(est['install-tech']).toBe(32 + 10);
+  });
+
+  it('unknown role keys in contributions are ignored', () => {
+    const est = estimateLaborHours({ techContributions: [{ 'made-up-role': 5 }] });
+    for (const k of ROLES) expect(est[k]).toBe(0);
+  });
 });
