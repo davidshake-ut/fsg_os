@@ -23,7 +23,7 @@ export function useCRMAccount(accountId, session) {
     setLoading(true);
     const [accRes, conRes, quoteRes, propRes, ticketRes, invoiceRes] = await Promise.all([
       supabase.from('crm_accounts').select('*').eq('id', accountId).single(),
-      supabase.from('crm_contacts').select('*').eq('account_id', accountId).order('first_name'),
+      supabase.from('crm_contacts').select('*, crm_contact_properties(property_id)').eq('account_id', accountId).order('first_name'),
       supabase.from('saved_projects').select('id, project_name, status, version, total_price, total_cost, updated_at, property_id')
         .eq('crm_account_id', accountId).order('updated_at', { ascending: false }),
       supabase.from('properties').select('*').eq('crm_account_id', accountId).order('name'),
@@ -152,8 +152,27 @@ export function useCRMAccount(accountId, session) {
     await refresh();
   }, [supabase, refresh]);
 
+  // Replace a contact's property associations wholesale — the form submits
+  // the full checked set, so delete-then-insert beats diffing at this scale.
+  const setContactProperties = useCallback(async (contactId, propertyIds) => {
+    if (!supabase || !accountCompanyId) return;
+    const { error: delErr } = await supabase
+      .from('crm_contact_properties')
+      .delete()
+      .eq('contact_id', contactId);
+    if (delErr) throw delErr;
+    if (propertyIds.length > 0) {
+      const { error: insErr } = await supabase
+        .from('crm_contact_properties')
+        .insert(propertyIds.map((pid) => ({ contact_id: contactId, property_id: pid, company_id: accountCompanyId })));
+      if (insErr) throw insErr;
+    }
+    await refresh();
+  }, [supabase, accountCompanyId, refresh]);
+
   return {
     account, contacts, quotes, properties, projects, tickets, invoices, loading, refresh,
     updateAccount, createContact, updateContact, deleteContact, createProperty, updateProperty,
+    setContactProperties,
   };
 }

@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { Button, Field, TextInput, Select } from '@/components/ui/primitives';
+import { CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
 
-const EMPTY = { title: '', description: '', priority: 'medium', account_id: '', project_id: '', asset_id: '' };
+const EMPTY = { title: '', description: '', priority: 'medium', category: 'other', account_id: '', project_id: '', asset_id: '' };
 
 export default function NewTicketModal({ open, onClose, onSave, accounts = [], projects = [] }) {
   const supabase = getSupabase();
@@ -61,6 +62,7 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
         title:       form.title.trim(),
         description: form.description.trim() || null,
         priority:    form.priority,
+        category:    form.category,
         account_id:  form.account_id || null,
         project_id:  form.project_id || null,
         asset_id:    form.asset_id || null,
@@ -95,6 +97,13 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
                 <option value="critical">Critical</option>
+              </Select>
+            </Field>
+            <Field label="Category">
+              <Select value={form.category} onChange={(e) => set('category', e.target.value)}>
+                {Object.entries(CATEGORY_CONFIG).map(([val, cfg]) => (
+                  <option key={val} value={val}>{cfg.label}</option>
+                ))}
               </Select>
             </Field>
             {accounts.length > 0 && (

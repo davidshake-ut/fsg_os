@@ -9,7 +9,7 @@ import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useSupportTicket } from '@/hooks/useSupportTicket';
 import { useConversations } from '@/hooks/useConversations';
-import TicketPriorityBadge, { TicketStatusBadge, STATUS_CONFIG } from '@/components/support/TicketPriorityBadge';
+import TicketPriorityBadge, { TicketStatusBadge, TicketCategoryBadge, STATUS_CONFIG, PRIORITY_CONFIG, CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
 import CommentThread from '@/components/support/CommentThread';
 import InstalledEquipment from '@/components/projects/InstalledEquipment';
 import { Select, Button } from '@/components/ui/primitives';
@@ -97,6 +97,7 @@ function TicketDetail() {
                 Message Team
               </Button>
             )}
+            <TicketCategoryBadge category={ticket.category} />
             <TicketPriorityBadge priority={ticket.priority} />
             <Select className="h-8 w-36 text-xs" value={ticket.status}
               onChange={(e) => updateTicket({ status: e.target.value })}>
@@ -123,7 +124,28 @@ function TicketDetail() {
             <div className="rounded-xl border border-slate-200 bg-white p-5">
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Details</h2>
               <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div><dt className="text-xs text-slate-400">Priority</dt><dd className="mt-0.5"><TicketPriorityBadge priority={ticket.priority} /></dd></div>
+                <div>
+                  <dt className="text-xs text-slate-400">Priority</dt>
+                  <dd className="mt-0.5">
+                    <Select className="h-8 w-full text-xs" value={ticket.priority}
+                      onChange={(e) => updateTicket({ priority: e.target.value })}>
+                      {Object.entries(PRIORITY_CONFIG).map(([val, cfg]) => (
+                        <option key={val} value={val}>{cfg.label}</option>
+                      ))}
+                    </Select>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-400">Category</dt>
+                  <dd className="mt-0.5">
+                    <Select className="h-8 w-full text-xs" value={ticket.category ?? 'other'}
+                      onChange={(e) => updateTicket({ category: e.target.value })}>
+                      {Object.entries(CATEGORY_CONFIG).map(([val, cfg]) => (
+                        <option key={val} value={val}>{cfg.label}</option>
+                      ))}
+                    </Select>
+                  </dd>
+                </div>
                 <div><dt className="text-xs text-slate-400">Status</dt><dd className="mt-0.5"><TicketStatusBadge status={ticket.status} /></dd></div>
                 {ticket.crm_accounts?.name && (
                   <div className="col-span-2">

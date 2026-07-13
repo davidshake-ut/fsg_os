@@ -18,6 +18,20 @@ export const STATUS_CONFIG = {
   closed:      { label: 'Closed',      tone: 'neutral'  },
 };
 
+// What kind of problem this is — routes differently even at equal priority
+// (a failed camera is a truck roll; a feature request is a backlog entry).
+export const CATEGORY_CONFIG = {
+  hardware:        { label: 'Hardware',          tone: 'orange'   },
+  network:         { label: 'Network',           tone: 'info'     },
+  software_bug:    { label: 'Bug',               tone: 'danger'   },
+  configuration:   { label: 'Configuration',     tone: 'progress' },
+  feature_request: { label: 'Feature Request',   tone: 'success'  },
+  training:        { label: 'Training / How-To', tone: 'neutral'  },
+  billing:         { label: 'Billing',           tone: 'warning'  },
+  maintenance:     { label: 'Maintenance',       tone: 'neutral'  },
+  other:           { label: 'Other',             tone: 'neutral'  },
+};
+
 export default function TicketPriorityBadge({ priority, className }) {
   const cfg = PRIORITY_CONFIG[priority] ?? PRIORITY_CONFIG.medium;
   return <StatusBadge tone={cfg.tone} className={className}>{cfg.label}</StatusBadge>;
@@ -25,5 +39,10 @@ export default function TicketPriorityBadge({ priority, className }) {
 
 export function TicketStatusBadge({ status, className }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.open;
+  return <StatusBadge tone={cfg.tone} className={className}>{cfg.label}</StatusBadge>;
+}
+
+export function TicketCategoryBadge({ category, className }) {
+  const cfg = CATEGORY_CONFIG[category] ?? CATEGORY_CONFIG.other;
   return <StatusBadge tone={cfg.tone} className={className}>{cfg.label}</StatusBadge>;
 }

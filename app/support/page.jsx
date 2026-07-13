@@ -10,7 +10,7 @@ import { useSupportTickets } from '@/hooks/useSupportTickets';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import NewTicketModal from '@/components/support/NewTicketModal';
-import TicketPriorityBadge, { TicketStatusBadge, STATUS_CONFIG } from '@/components/support/TicketPriorityBadge';
+import TicketPriorityBadge, { TicketStatusBadge, TicketCategoryBadge, STATUS_CONFIG } from '@/components/support/TicketPriorityBadge';
 import { Card, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
@@ -126,6 +126,7 @@ function SupportContent() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <TicketCategoryBadge category={t.category} className="hidden sm:inline-flex" />
                   <TicketPriorityBadge priority={t.priority} />
                   <TicketStatusBadge status={t.status} />
                 </div>

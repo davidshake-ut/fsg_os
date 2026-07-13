@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Building2, Phone, Globe, MapPin, FileText, Loader2, AlertCircle, Pencil, Check, X, FolderKanban, LifeBuoy, Receipt, Plus } from 'lucide-react';
+import { ArrowLeft, Building2, Phone, Globe, MapPin, FileText, Loader2, AlertCircle, Pencil, Check, X, FolderKanban, LifeBuoy, Receipt, Plus, Users } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -148,7 +148,7 @@ function EditableTextarea({ label, value, onSave, placeholder }) {
 
 // One property card: its proposals, its project (once one exists), and the
 // per-property "New Proposal" push into the Builder.
-function PropertyCard({ property, accountId, quotes, project }) {
+function PropertyCard({ property, accountId, quotes, project, contacts = [] }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
@@ -158,6 +158,12 @@ function PropertyCard({ property, accountId, quotes, project }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-slate-800">{property.name}</p>
           {property.address && <p className="truncate text-xs text-slate-400">{property.address}</p>}
+          {contacts.length > 0 && (
+            <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-400">
+              <Users size={10} className="shrink-0" />
+              {contacts.map((c) => `${c.first_name}${c.last_name ? ` ${c.last_name}` : ''}`).join(' · ')}
+            </p>
+          )}
         </div>
         {project ? (
           <Link href={`/projects/${project.id}`}
@@ -220,7 +226,7 @@ function AddPropertyForm({ onCreate }) {
 function AccountDetail() {
   const { id } = useParams();
   const { session } = useSession();
-  const { account, contacts, quotes, properties, projects, tickets, invoices, loading, updateAccount, createContact, deleteContact, createProperty } = useCRMAccount(id, session);
+  const { account, contacts, quotes, properties, projects, tickets, invoices, loading, updateAccount, createContact, updateContact, deleteContact, createProperty, setContactProperties } = useCRMAccount(id, session);
   const [tab, setTab] = useState('contacts');
   const TAB_COUNTS = { contacts: contacts.length, properties: properties.length, quotes: quotes.length, projects: projects.length, tickets: tickets.length, invoices: invoices.length };
   const [toast, setToast] = useState(null);
@@ -285,7 +291,9 @@ function AccountDetail() {
 
       <div className="flex-1 p-6">
         {tab === 'contacts' && (
-          <ContactSection contacts={contacts} onAdd={createContact} onDelete={deleteContact} />
+          <ContactSection contacts={contacts} properties={properties}
+            onAdd={createContact} onUpdate={updateContact} onDelete={deleteContact}
+            onSetProperties={setContactProperties} />
         )}
 
         {tab === 'properties' && (
@@ -303,6 +311,7 @@ function AccountDetail() {
                   accountId={id}
                   quotes={quotes.filter((q) => q.property_id === prop.id)}
                   project={projects.find((p) => p.property_id === prop.id) ?? null}
+                  contacts={contacts.filter((c) => (c.crm_contact_properties ?? []).some((l) => l.property_id === prop.id))}
                 />
               ))
             )}
