@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, AlertCircle, Building2, Calendar, ExternalLink, MessageSquare, History } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Building2, Calendar, ExternalLink, MessageSquare, History, UserRound } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -34,7 +34,7 @@ function TicketDetail() {
   const router = useRouter();
   const { session, company, user } = useSession();
   const {
-    ticket, comments, projects, projectAssets, priorTickets, bomSnapshot,
+    ticket, comments, projects, members, projectAssets, priorTickets, bomSnapshot,
     loading, updateTicket, addComment, deleteComment,
   } = useSupportTicket(id, session, company);
   const { openProjectChannel } = useConversations(session, company, user);
@@ -88,6 +88,11 @@ function TicketDetail() {
                 </Link>
               )}
               <span className="flex items-center gap-1"><Calendar size={12} /> {fmtDate(ticket.created_at)}</span>
+              {ticket.opened_by && (
+                <span className="flex items-center gap-1">
+                  <UserRound size={12} /> Opened by {ticket.opened_by.full_name || ticket.opened_by.email}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -146,7 +151,31 @@ function TicketDetail() {
                     </Select>
                   </dd>
                 </div>
+                <div>
+                  <dt className="text-xs text-slate-400">Assigned to</dt>
+                  <dd className="mt-0.5">
+                    <Select className="h-8 w-full text-xs" value={ticket.assigned_to ?? ''}
+                      onChange={(e) => updateTicket({ assigned_to: e.target.value || null })}>
+                      <option value="">— unassigned —</option>
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>{m.full_name || m.email}</option>
+                      ))}
+                    </Select>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-400">Due by</dt>
+                  <dd className="mt-0.5">
+                    <input type="date" value={ticket.due_date ?? ''}
+                      onChange={(e) => updateTicket({ due_date: e.target.value || null })}
+                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                    {ticket.due_date && ticket.due_date < new Date().toISOString().slice(0, 10) && ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+                      <p className="mt-1 text-xs font-semibold text-rose-500">Overdue</p>
+                    )}
+                  </dd>
+                </div>
                 <div><dt className="text-xs text-slate-400">Status</dt><dd className="mt-0.5"><TicketStatusBadge status={ticket.status} /></dd></div>
+                <div><dt className="text-xs text-slate-400">Opened on</dt><dd className="mt-0.5 text-slate-800">{fmtDate(ticket.created_at)}</dd></div>
                 {ticket.crm_accounts?.name && (
                   <div className="col-span-2">
                     <dt className="text-xs text-slate-400">Account</dt>

@@ -26,7 +26,7 @@ export function useSupportTickets(session, company, user) {
     setLoading(true);
     const { data, error, count } = await supabase
       .from('support_tickets')
-      .select('*, crm_accounts(name)', { count: 'exact' })
+      .select('*, crm_accounts(name), assignee:users!support_tickets_assigned_to_fkey(full_name)', { count: 'exact' })
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .range(0, limit - 1);

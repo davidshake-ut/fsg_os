@@ -28,6 +28,7 @@ import InstalledEquipment from '@/components/projects/InstalledEquipment';
 import CreateInvoiceModal from '@/components/invoices/CreateInvoiceModal';
 import { useInvoices } from '@/hooks/useInvoices';
 import { Select, Button } from '@/components/ui/primitives';
+import { EditableField, EditableTextarea } from '@/components/ui/EditableFields';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TECHNOLOGIES } from '@/lib/templates/index';
 import { cn } from '@/lib/utils';
@@ -531,59 +532,45 @@ function ProjectDetail() {
           <div className="grid gap-4 lg:grid-cols-2">
           <div className="max-w-lg space-y-4">
             <div className="rounded-xl border border-slate-200 bg-white p-5">
-              <h2 className="mb-3 text-sm font-semibold text-slate-700">Project Details</h2>
-              <dl className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Name</dt>
-                  <dd className="font-medium text-slate-800">{project.name}</dd>
+              <h2 className="mb-4 text-sm font-semibold text-slate-700">Project Details</h2>
+              <div className="space-y-4">
+                <EditableField label="Name" value={project.name}
+                  onSave={(v) => { if (v) return updateProject({ name: v }); }} placeholder="Project name" />
+                <EditableField label="Customer" value={project.customer_name}
+                  onSave={(v) => updateProject({ customer_name: v })} placeholder="Customer name" />
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-400">Status</p>
+                  <Select className="h-8 w-40 text-xs" value={project.status}
+                    onChange={(e) => updateProject({ status: e.target.value })}>
+                    {Object.entries(STATUS_CONFIG).map(([val, cfg]) => (
+                      <option key={val} value={val}>{cfg.label}</option>
+                    ))}
+                  </Select>
                 </div>
-                {project.customer_name && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">Customer</dt>
-                    <dd className="font-medium text-slate-800">{project.customer_name}</dd>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Status</dt>
-                  <dd><ProjectStatusBadge status={project.status} /></dd>
+                <div className="grid grid-cols-2 gap-4">
+                  <EditableField label="Start" value={project.start_date}
+                    onSave={(v) => updateProject({ start_date: v })} type="date" />
+                  <EditableField label="End" value={project.end_date}
+                    onSave={(v) => updateProject({ end_date: v })} type="date" />
                 </div>
-                {project.start_date && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">Start</dt>
-                    <dd className="font-medium text-slate-800">{fmtDate(project.start_date)}</dd>
-                  </div>
-                )}
-                {project.end_date && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">End</dt>
-                    <dd className="font-medium text-slate-800">{fmtDate(project.end_date)}</dd>
-                  </div>
-                )}
-                {project.budget && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">Budget</dt>
-                    <dd className="font-medium text-slate-800">{fmt(project.budget)}</dd>
-                  </div>
-                )}
+                <EditableField label="Budget" value={project.budget}
+                  onSave={(v) => updateProject({ budget: v ? Number(v) : null })} type="number" placeholder="$0" />
                 {project.saved_projects?.project_name && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">Linked Quote</dt>
-                    <dd className="font-medium text-blue-600">
-                      <Link href={`/builder?project=${project.quote_id}`} className="hover:underline">
-                        {project.saved_projects.project_name}
-                      </Link>
-                    </dd>
+                  <div>
+                    <p className="mb-0.5 text-xs font-medium text-slate-400">Linked Quote</p>
+                    <Link href={`/builder?project=${project.quote_id}`} className="text-sm font-medium text-blue-600 hover:underline">
+                      {project.saved_projects.project_name}
+                    </Link>
                   </div>
                 )}
-              </dl>
+              </div>
             </div>
 
-            {project.description && (
-              <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <h2 className="mb-2 text-sm font-semibold text-slate-700">Description</h2>
-                <p className="whitespace-pre-wrap text-sm text-slate-600">{project.description}</p>
-              </div>
-            )}
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <h2 className="mb-2 text-sm font-semibold text-slate-700">Description</h2>
+              <EditableTextarea label="" value={project.description}
+                onSave={(v) => updateProject({ description: v })} placeholder="What this project covers…" />
+            </div>
 
             <InstalledEquipment bomSnapshot={project.saved_projects?.bom_snapshot} />
           </div>

@@ -18,7 +18,10 @@ import { useSession } from '@/components/SessionProvider';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import { useProjects } from '@/hooks/useProjects';
 import { useInvoices } from '@/hooks/useInvoices';
-import ProjectStatusBadge, { STATUS_CONFIG } from '@/components/projects/ProjectStatusBadge';
+import ProjectStatusBadge, { STATUS_CONFIG, STATUS_STRIPE } from '@/components/projects/ProjectStatusBadge';
+import ProjectProgressBar from '@/components/projects/ProjectProgressBar';
+import AvatarStack from '@/components/projects/AvatarStack';
+import { useProjectVitals } from '@/hooks/useProjectVitals';
 import NewProjectModal from '@/components/projects/NewProjectModal';
 import CreateInvoiceModal from '@/components/invoices/CreateInvoiceModal';
 import { Card, Button } from '@/components/ui/primitives';
@@ -39,11 +42,22 @@ function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Schedule pulse for in-flight projects: overdue in red, closing-in in amber.
+function dueChip(p) {
+  if (!p.end_date || p.status === 'complete' || p.status === 'cancelled') return null;
+  const days = Math.ceil((new Date(p.end_date + 'T00:00:00').getTime() - Date.now()) / 86400000);
+  if (days < 0) return { text: `${-days}d overdue`, cls: 'bg-rose-50 text-rose-600 border-rose-200' };
+  if (days === 0) return { text: 'due today', cls: 'bg-amber-50 text-amber-600 border-amber-200' };
+  if (days <= 14) return { text: `due in ${days}d`, cls: 'bg-amber-50 text-amber-600 border-amber-200' };
+  return null;
+}
+
 function ProjectsContent() {
   const { session, company, user } = useSession();
   const { projects, loading, loadError, refresh, createProject, deleteProject } = usePSAProjects(session, company, user);
   const { projects: quotes } = useProjects(session, company, user);
   const { createInvoice } = useInvoices(session, company, user);
+  const vitals = useProjectVitals(session, company, projects);
 
   const [statusFilter,  setStatusFilter]  = useState('all');
   const [modalOpen,     setModalOpen]     = useState(false);
@@ -138,31 +152,64 @@ function ProjectsContent() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {filtered.map((proj) => (
+          {filtered.map((proj) => {
+            const v = vitals[proj.id];
+            const due = dueChip(proj);
+            const who = proj.crm_accounts?.name ?? proj.customer_name;
+            const where = proj.properties?.name;
+            return (
             <Card
               key={proj.id}
-              className="group flex items-center gap-4 px-5 py-4 transition-shadow hover:shadow-md"
+              className="group relative flex items-center gap-4 overflow-hidden py-4 pl-6 pr-5 transition-shadow hover:shadow-md"
             >
+              <span className={`absolute inset-y-0 left-0 w-1 ${STATUS_STRIPE[proj.status] ?? 'bg-slate-200'}`} />
               <Link href={`/projects/${proj.id}`} className="flex flex-1 items-center gap-4 min-w-0">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-slate-900">{proj.name}</p>
-                  {proj.customer_name && (
-                    <p className="truncate text-xs text-slate-500">{proj.customer_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-blue-700">{proj.name}</p>
+                    {due && (
+                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${due.cls}`}>{due.text}</span>
+                    )}
+                  </div>
+                  {(who || where) && (
+                    <p className="mt-0.5 truncate text-xs text-slate-500">
+                      {who}{who && where ? ' · ' : ''}{where}
+                    </p>
                   )}
                 </div>
 
-                <div className="hidden items-center gap-1 text-xs text-slate-400 sm:flex">
-                  <Calendar size={12} />
-                  {proj.start_date ? fmtDate(proj.start_date) : '—'}
-                  {proj.end_date && <> – {fmtDate(proj.end_date)}</>}
+                <div className="hidden w-44 shrink-0 lg:block">
+                  <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Calendar size={12} className="shrink-0 text-slate-400" />
+                    {proj.start_date ? fmtDate(proj.start_date) : '—'}
+                    {proj.end_date && <> – {fmtDate(proj.end_date)}</>}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                    <DollarSign size={12} className="shrink-0 text-slate-400" />
+                    {fmt(proj.budget)}
+                  </p>
                 </div>
 
-                <div className="hidden items-center gap-1 text-xs text-slate-500 sm:flex">
-                  <DollarSign size={12} />
-                  {fmt(proj.budget)}
+                <div className="hidden w-36 shrink-0 sm:block">
+                  {v && v.total > 0 ? (
+                    <>
+                      <div className="flex items-baseline justify-between text-[11px]">
+                        <span className="text-slate-400">
+                          {v.done}/{v.total} tasks
+                          {v.overdue > 0 && <span className="font-semibold text-rose-500"> · {v.overdue} late</span>}
+                        </span>
+                        <span className="font-bold tabular-nums text-slate-600">{v.pct}%</span>
+                      </div>
+                      <ProjectProgressBar pct={v.pct} className="mt-1" />
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-slate-300">No tasks yet</p>
+                  )}
                 </div>
 
-                <ProjectStatusBadge status={proj.status} />
+                <AvatarStack members={v?.members ?? []} max={3} size={24} className="hidden shrink-0 md:flex" />
+
+                <ProjectStatusBadge status={proj.status} className="shrink-0" />
               </Link>
 
               <button
@@ -182,7 +229,8 @@ function ProjectsContent() {
                 <Trash2 size={15} />
               </button>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

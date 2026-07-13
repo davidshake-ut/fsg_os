@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getSupportSnapshot, getSupportServerSnapshot, subscribeSupport, writeSupport, newSupportId } from '@/lib/supportLocalStore';
+import { notify } from '@/lib/notify';
 
 export function useSupportTicket(ticketId, session, company) {
   const supabase = getSupabase();
@@ -12,6 +13,7 @@ export function useSupportTicket(ticketId, session, company) {
   const [remoteTicket,   setRemoteTicket]   = useState(null);
   const [remoteComments, setRemoteComments] = useState([]);
   const [projects,       setProjects]       = useState([]);
+  const [members,        setMembers]        = useState([]);
   const [projectAssets,  setProjectAssets]  = useState([]);
   const [priorTickets,   setPriorTickets]   = useState([]);
   const [bomSnapshot,    setBomSnapshot]    = useState(null);
@@ -20,16 +22,20 @@ export function useSupportTicket(ticketId, session, company) {
   const refresh = useCallback(async () => {
     if (!supabase || !ticketId) return;
     setLoading(true);
-    const [tRes, cRes, pRes] = await Promise.all([
+    const [tRes, cRes, pRes, mRes] = await Promise.all([
       supabase.from('support_tickets')
-        .select('*, crm_accounts(name), psa_projects(name, quote_id, crm_account_id)')
+        // Two FKs point at users, so the opener/assignee embeds are
+        // disambiguated by constraint name.
+        .select('*, crm_accounts(name), psa_projects(name, quote_id, crm_account_id), opened_by:users!support_tickets_created_by_fkey(full_name, email), assignee:users!support_tickets_assigned_to_fkey(full_name, email)')
         .eq('id', ticketId).single(),
       supabase.from('support_comments').select('*, users(full_name, email)').eq('ticket_id', ticketId).order('created_at'),
       companyId ? supabase.from('psa_projects').select('id, name, crm_account_id').eq('company_id', companyId).order('name') : Promise.resolve({ data: [] }),
+      companyId ? supabase.from('users').select('id, full_name, email').eq('company_id', companyId).order('full_name') : Promise.resolve({ data: [] }),
     ]);
     setRemoteTicket(tRes.data ?? null);
     setRemoteComments(cRes.data ?? []);
     setProjects(pRes.data ?? []);
+    setMembers(mRes.data ?? []);
 
     // The support bundle — everything a tech needs to know what they're
     // looking at: the project's full asset details, the account's prior
@@ -74,8 +80,17 @@ export function useSupportTicket(ticketId, session, company) {
     }
     const { error } = await supabase.from('support_tickets').update({ ...data, ...extra, updated_at: now }).eq('id', ticketId);
     if (error) throw error;
+    // Same assignment ping as the list hook — the assignee finds out either way.
+    if (data.assigned_to && remoteTicket && remoteTicket.assigned_to !== data.assigned_to) {
+      await notify(supabase, {
+        companyId, userId: data.assigned_to,
+        verb: 'ticket.assigned', entityType: 'ticket', entityId: ticketId,
+        label: `Ticket assigned to you: ${remoteTicket.title}`,
+        href: `/support/${ticketId}`,
+      });
+    }
     await refresh();
-  }, [supabase, ticketId, refresh]);
+  }, [supabase, ticketId, refresh, remoteTicket, companyId]);
 
   const addComment = useCallback(async (body, userId) => {
     const now = new Date().toISOString();
@@ -104,5 +119,5 @@ export function useSupportTicket(ticketId, session, company) {
     await refresh();
   }, [supabase, refresh]);
 
-  return { ticket, comments, projects, projectAssets, priorTickets, bomSnapshot, loading, refresh, updateTicket, addComment, deleteComment };
+  return { ticket, comments, projects, members, projectAssets, priorTickets, bomSnapshot, loading, refresh, updateTicket, addComment, deleteComment };
 }

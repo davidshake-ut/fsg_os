@@ -9,6 +9,17 @@ export const STATUS_CONFIG = {
   cancelled: { label: 'Cancelled', tone: 'danger'   },
 };
 
+// Status accent stripe for project rows — active carries the team's brand
+// color (arbitrary [background:...] so the CSS var works); the rest follow
+// the badge tone family.
+export const STATUS_STRIPE = {
+  planning:  'bg-amber-400',
+  active:    '[background:var(--brand,#4f46e5)]',
+  on_hold:   'bg-slate-300',
+  complete:  'bg-emerald-400',
+  cancelled: 'bg-rose-300',
+};
+
 export const TASK_STATUS_CONFIG = {
   todo:        { label: 'To Do',       tone: 'neutral'  },
   in_progress: { label: 'In Progress', tone: 'info'     },

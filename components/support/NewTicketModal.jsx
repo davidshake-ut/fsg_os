@@ -6,7 +6,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { Button, Field, TextInput, Select } from '@/components/ui/primitives';
 import { CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
 
-const EMPTY = { title: '', description: '', priority: 'medium', category: 'other', account_id: '', project_id: '', asset_id: '' };
+const EMPTY = { title: '', description: '', priority: 'medium', category: 'other', due_date: '', account_id: '', project_id: '', asset_id: '' };
 
 export default function NewTicketModal({ open, onClose, onSave, accounts = [], projects = [] }) {
   const supabase = getSupabase();
@@ -63,6 +63,7 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
         description: form.description.trim() || null,
         priority:    form.priority,
         category:    form.category,
+        due_date:    form.due_date || null,
         account_id:  form.account_id || null,
         project_id:  form.project_id || null,
         asset_id:    form.asset_id || null,
@@ -105,6 +106,9 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
                   <option key={val} value={val}>{cfg.label}</option>
                 ))}
               </Select>
+            </Field>
+            <Field label="Due by (optional)">
+              <TextInput type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
             </Field>
             {accounts.length > 0 && (
               <Field label="Account (optional)">

@@ -29,7 +29,7 @@ export function usePSAProjects(session, company, user) {
     setLoading(true);
     const { data, error } = await supabase
       .from('psa_projects')
-      .select('*, saved_projects(project_name)')
+      .select('*, saved_projects(project_name), crm_accounts(name), properties(name)')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
     setLoadError(error?.message ?? null);

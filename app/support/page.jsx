@@ -121,8 +121,17 @@ function SupportContent() {
               <Link href={`/support/${t.id}`} className="flex flex-1 items-center gap-4 min-w-0">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{t.title}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="truncate text-xs text-slate-400">
                     {t.crm_accounts?.name ?? 'No account'} · {timeAgo(t.created_at)}
+                    {' · '}
+                    {t.assignee?.full_name
+                      ? t.assignee.full_name
+                      : <span className={t.status === 'open' || t.status === 'in_progress' ? 'font-medium text-rose-400' : undefined}>Unassigned</span>}
+                    {t.due_date && (
+                      <span className={t.due_date < new Date().toISOString().slice(0, 10) && t.status !== 'resolved' && t.status !== 'closed' ? ' font-semibold text-rose-500' : undefined}>
+                        {' '}· due {new Date(t.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
