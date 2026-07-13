@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, SlidersHorizontal, DollarSign } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, SlidersHorizontal, DollarSign, Pencil } from 'lucide-react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { useBranding } from '@/hooks/useBranding';
@@ -275,7 +275,53 @@ function BrandingForm({ initial, onSave }) {
 
 // ── Members table ─────────────────────────────────────────────────────────
 
-function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign, superAdmin }) {
+// Slide-down profile editor for one member: name, title, notes.
+function MemberProfileEditor({ member, onSave, onCancel }) {
+  const [form, setForm] = useState({
+    full_name: member.full_name ?? '',
+    title: member.title ?? '',
+    notes: member.notes ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave({
+        full_name: form.full_name.trim() || null,
+        title: form.title.trim() || null,
+        notes: form.notes.trim() || null,
+      });
+      onCancel();
+    } finally { setSaving(false); }
+  };
+  return (
+    <form onSubmit={submit} className="my-1 space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Name">
+          <TextInput autoFocus value={form.full_name} onChange={(e) => set('full_name', e.target.value)} placeholder="Jane Smith" />
+        </Field>
+        <Field label="Title">
+          <TextInput value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Field Technician" />
+        </Field>
+        <Field label="Notes" className="sm:col-span-2">
+          <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3}
+            placeholder="Certifications, territories, schedule notes…"
+            className="h-auto w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+        </Field>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" type="button" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save Member'}</Button>
+      </div>
+    </form>
+  );
+}
+
+function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign, onSaveProfile, superAdmin }) {
+  const [editingId, setEditingId] = useState(null);
+  const cols = superAdmin ? 5 : 4;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -293,10 +339,13 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign
             const isSelf  = m.id === selfId;
             const isSuper = m.role === 'super_admin';
             return (
-              <tr key={m.id} className="border-b border-slate-50">
+              <Fragment key={m.id}>
+              <tr className="border-b border-slate-50">
                 <td className="py-2 pr-2 text-slate-700">
-                  {m.full_name || '—'}
+                  <span className="font-medium">{m.full_name || '—'}</span>
                   {isSelf && <span className="ml-1 text-xs text-slate-400">(you)</span>}
+                  {m.title && <span className="block text-xs text-slate-400">{m.title}</span>}
+                  {m.notes && <span className="block max-w-[280px] truncate text-xs italic text-slate-300" title={m.notes}>{m.notes}</span>}
                 </td>
                 <td className="py-2 pr-2 text-slate-500">{m.email}</td>
                 {superAdmin && (
@@ -328,22 +377,43 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign
                   )}
                 </td>
                 <td className="py-2 text-right">
-                  {!isSelf && !isSuper && (
+                  <div className="flex items-center justify-end gap-0.5">
                     <button
-                      onClick={() => onRemove(m)}
-                      title="Remove from team"
-                      className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      onClick={() => setEditingId(editingId === m.id ? null : m.id)}
+                      title="Edit member profile"
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
                     >
-                      <Trash2 size={15} />
+                      <Pencil size={14} />
                     </button>
-                  )}
+                    {!isSelf && !isSuper && (
+                      <button
+                        onClick={() => onRemove(m)}
+                        title="Remove from team"
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
+              {editingId === m.id && (
+                <tr className="border-b border-slate-50">
+                  <td colSpan={cols} className="pb-2">
+                    <MemberProfileEditor
+                      member={m}
+                      onSave={(patch) => onSaveProfile(m.id, patch)}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
           {members.length === 0 && (
             <tr>
-              <td colSpan={superAdmin ? 5 : 4} className="py-6 text-center text-sm text-slate-400">
+              <td colSpan={cols} className="py-6 text-center text-sm text-slate-400">
                 No members yet.
               </td>
             </tr>
@@ -696,6 +766,17 @@ export default function AdminPanel() {
   };
 
   const setRole      = (userId, role)      => api('/api/members', 'PATCH',  { userId, role });
+
+  // Profile fields (name/title/notes) go straight through RLS — the
+  // users_update policy already scopes company_admins to their own team.
+  const saveProfile = async (userId, patch) => {
+    const { error } = await supabase.from('users').update(patch).eq('id', userId);
+    if (error) return flash('err', error.message);
+    flash('ok', 'Member updated.');
+    await refresh();
+    // Editing your own row: the sidebar/name chip reads the cached session.
+    if (userId === user?.id) await refreshSession?.().catch(() => {});
+  };
   const removeMember = (m) => {
     setConfirmState({
       title: 'Remove member',
@@ -1069,6 +1150,7 @@ export default function AdminPanel() {
                   onRole={setRole}
                   onRemove={removeMember}
                   onReassign={isSuperAdmin ? reassignTeam : undefined}
+                  onSaveProfile={saveProfile}
                   superAdmin={isSuperAdmin}
                 />
               </div>
