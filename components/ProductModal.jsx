@@ -4,16 +4,18 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { Card, Button, Field, TextInput, NumberInput, Select } from '@/components/ui/primitives';
 import { PRODUCT_CATEGORIES } from '@/lib/catalog';
+import { BUILTIN_TECHNOLOGIES, companyTechnologies } from '@/lib/technologies';
 
-const EMPTY = { sku: '', description: '', category: 'Access Point', cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '' };
+const EMPTY = { sku: '', description: '', category: 'Access Point', technology: 'managed_wifi', cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '' };
 
 // product === null → Add mode; otherwise Edit (SKU locked for base products).
-function initialForm(product) {
-  if (!product) return EMPTY;
+function initialForm(product, defaultTechnology) {
+  if (!product) return { ...EMPTY, technology: defaultTechnology || EMPTY.technology };
   return {
     sku: product.sku,
     description: product.desc ?? product.description ?? '',
     category: product.category,
+    technology: product.technology || 'managed_wifi',
     cost: product.cost,
     price: product.price,
     vendor: product.vendor ?? '',
@@ -24,8 +26,8 @@ function initialForm(product) {
 
 // The modal is mounted only while open (see page.jsx), so initializing form
 // state from `product` here resets it correctly each time it opens — no effect.
-export default function ProductModal({ open, product, clone = false, onClose, onSave }) {
-  const [form, setForm] = useState(() => initialForm(product));
+export default function ProductModal({ open, product, clone = false, onClose, onSave, company = null, defaultTechnology = '' }) {
+  const [form, setForm] = useState(() => initialForm(product, defaultTechnology));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -83,7 +85,16 @@ export default function ProductModal({ open, product, clone = false, onClose, on
           <Field label="Description">
             <TextInput value={form.description} onChange={(e) => set('description', e.target.value)} required />
           </Field>
-          <Field label="Category">
+          <Field label="Category" sub="Which technology this part belongs to">
+            <Select value={form.technology} onChange={(e) => set('technology', e.target.value)}>
+              {(company ? companyTechnologies(company) : BUILTIN_TECHNOLOGIES).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Subcategory" sub="What the part is — drives BOM grouping, equipment lists, and assets">
             <Select value={form.category} onChange={(e) => set('category', e.target.value)}>
               {PRODUCT_CATEGORIES.map((c) => (
                 <option key={c} value={c}>

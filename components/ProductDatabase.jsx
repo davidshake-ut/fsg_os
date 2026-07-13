@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Card, Button, Badge, TextInput } from '@/components/ui/primitives';
 import { CORE_SKUS, CATEGORY_ORDER } from '@/lib/catalog';
+import { companyTechnologies, techLabel } from '@/lib/technologies';
 import { parseCatalogCSV } from '@/lib/csv';
 import { exportCatalogCSV } from '@/lib/exportCSV';
 import { currency } from '@/lib/format';
@@ -30,13 +31,15 @@ export default function ProductDatabase({
   productLineDiscounts = {},
   canManageCatalog = false,
   canViewMargin = true,
+  company = null, // resolves custom-technology labels
   teams = null, // super-admin only: [{ id, name }] to enable the team filter
   teamFilter = 'all',
   onTeamFilterChange,
 }) {
   const [search, setSearch] = useState('');
+  const [techFilter, setTechFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [sortKey, setSortKey] = useState(null); // 'sku' | 'desc' | 'category'
+  const [sortKey, setSortKey] = useState(null); // 'sku' | 'desc' | 'category' | 'technology'
   const [sortDir, setSortDir] = useState('asc');
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState(null); // { type: 'error'|'success', message: string }
@@ -58,7 +61,7 @@ export default function ProductDatabase({
     setImporting(true);
     try {
       const text = await file.text();
-      const { products, errors } = parseCatalogCSV(text);
+      const { products, errors } = parseCatalogCSV(text, { technologies: companyTechnologies(company) });
       if (products.length === 0) {
         setNotice({ type: 'error', message: `No products imported. ${errors.join(' ') || 'No valid rows found.'}` });
         return;
@@ -86,6 +89,8 @@ export default function ProductDatabase({
     });
   }, [allProducts]);
 
+  const labelOf = (p) => techLabel(p.technology || 'managed_wifi', company);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = allProducts;
@@ -94,19 +99,22 @@ export default function ProductDatabase({
         (p) =>
           p.sku.toLowerCase().includes(q) ||
           p.desc.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q)
+          p.category.toLowerCase().includes(q) ||
+          labelOf(p).toLowerCase().includes(q)
       );
     }
+    if (techFilter) list = list.filter((p) => (p.technology || 'managed_wifi') === techFilter);
     if (categoryFilter) list = list.filter((p) => p.category === categoryFilter);
     if (sortKey) {
       const dir = sortDir === 'asc' ? 1 : -1;
-      const val = (p) => (sortKey === 'desc' ? p.desc : p[sortKey]) || '';
+      const val = (p) => (sortKey === 'desc' ? p.desc : sortKey === 'technology' ? labelOf(p) : p[sortKey]) || '';
       list = [...list].sort(
         (a, b) => dir * val(a).localeCompare(val(b), undefined, { numeric: true, sensitivity: 'base' })
       );
     }
     return list;
-  }, [allProducts, search, categoryFilter, sortKey, sortDir]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allProducts, search, techFilter, categoryFilter, sortKey, sortDir, company]);
 
   const sortHeader = (key, label, align = 'left') => (
     <th className={`px-4 py-2 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
@@ -143,11 +151,23 @@ export default function ProductDatabase({
             />
           </div>
           <select
+            value={techFilter}
+            onChange={(e) => setTechFilter(e.target.value)}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="">All Categories</option>
+            {companyTechnologies(company).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
             className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           >
-            <option value="">All Categories</option>
+            <option value="">All Subcategories</option>
             {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -171,7 +191,7 @@ export default function ProductDatabase({
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportCatalogCSV(allProducts, { includeCost: canViewMargin })}>
+          <Button variant="outline" size="sm" onClick={() => exportCatalogCSV(allProducts, { includeCost: canViewMargin, techLabelOf: labelOf })}>
             <Download size={14} /> Export CSV
           </Button>
           {canManageCatalog && (
@@ -216,7 +236,8 @@ export default function ProductDatabase({
             <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
               {sortHeader('sku', 'SKU')}
               {sortHeader('desc', 'Description')}
-              {sortHeader('category', 'Category')}
+              {sortHeader('technology', 'Category')}
+              {sortHeader('category', 'Subcategory')}
               <th className="px-4 py-2 text-left font-medium">Product Line</th>
               {canViewMargin && <th className="px-4 py-2 text-right font-medium">Cost</th>}
               <th className="px-4 py-2 text-right font-medium">Price</th>
@@ -226,7 +247,7 @@ export default function ProductDatabase({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">
                   No products match the current search/filter.
                 </td>
               </tr>
@@ -245,6 +266,9 @@ export default function ProductDatabase({
                   {p.preferred_vendor && (
                     <div className="mt-0.5 text-xs text-slate-400">via {p.preferred_vendor}</div>
                   )}
+                </td>
+                <td className="px-4 py-2">
+                  <Badge className="border-indigo-200 bg-indigo-50 text-indigo-600">{labelOf(p)}</Badge>
                 </td>
                 <td className="px-4 py-2">
                   <Badge className="border-slate-200 bg-slate-50 text-slate-500">{p.category}</Badge>

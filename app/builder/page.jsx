@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getSupabase } from '@/lib/supabase/client';
-import { FileDown, FileText, Sheet, Save, FolderKanban, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { Save, FolderKanban, CheckCircle2, X, Loader2 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -12,11 +12,11 @@ import CameraInputPanel from '@/components/CameraInputPanel';
 import { useBranding } from '@/hooks/useBranding';
 import SummaryCards from '@/components/SummaryCards';
 import BOMTable from '@/components/BOMTable';
-import LaborTable from '@/components/LaborTable';
-import CostSummary from '@/components/CostSummary';
 import CameraSystems from '@/components/CameraSystems';
 import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
+import PropertyOverview from '@/components/builder/PropertyOverview';
+import TechnologyPage from '@/components/builder/TechnologyPage';
 import { Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import QuoteLifecycleMenu from '@/components/QuoteLifecycleMenu';
@@ -24,8 +24,10 @@ import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { calculateBOM } from '@/lib/calculateBOM';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
+import { calculateTechBOM } from '@/lib/calculateTechBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
 import { estimateLaborHours } from '@/lib/estimateLaborHours';
+import { companyTechnologies, resolveEnabledTechnologies, LEGACY_TEMPLATE_TECH } from '@/lib/technologies';
 import { useProducts } from '@/hooks/useProducts';
 import { useProjects } from '@/hooks/useProjects';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
@@ -42,13 +44,10 @@ import { exportCSV } from '@/lib/exportCSV';
 import { buildScopeOfWork } from '@/lib/scopeOfWork';
 import { cn } from '@/lib/utils';
 
-const TABS = [
-  { id: 'hardware', label: 'Managed Wi-Fi' },
-  { id: 'cameras', label: 'Camera Systems' },
-  { id: 'services', label: 'Services' },
-  { id: 'summary', label: 'Summary' },
-  { id: 'products', label: 'Product Database' },
-];
+// Tabs are dynamic: Overview first, one tab per technology enabled on this
+// quote (registry order, company custom techs last), Product Database at the
+// end. Wi-Fi and Video Surveillance keep their calculators; other techs get
+// the generic TechnologyPage until their Tier-2 mini-calculator lands.
 
 // Prefer a company-owned template over the built-in system one for a given
 // technology, so a team's customized version wins once they've made one.
@@ -67,7 +66,7 @@ function Calculator() {
   const [serviceOverrides, setServiceOverrides] = useState({});
   const [customLineItems, setCustomLineItems] = useState([]);
   const [laborRoles, setLaborRoles] = useState(DEFAULT_LABOR_ROLES);
-  const [activeTab, setActiveTab] = useState('hardware');
+  const [activeTab, setActiveTab] = useState('overview');
   const [showMargin, setShowMargin] = useState(false);
   const [editPrices, setEditPrices] = useState(false);
   // Cost/margin/profit are internal figures — a plain 'user' role never sees
@@ -164,10 +163,60 @@ function Calculator() {
     [inputs, priceOverrides, serviceOverrides, allProducts, customLineItems, catalogSnapshot]
   );
 
-  const wifiEnabled = inputs.includeWifi !== false;
-  const camerasEnabled = inputs.includeCameras !== false;
+  // Per-technology enablement (registry ids). Legacy quotes derive it from
+  // includeWifi/includeCameras; toggling writes the map AND mirrors the two
+  // legacy flags so automations/older readers keep working through Tier 1.
+  const enabledTechMap = useMemo(() => resolveEnabledTechnologies(inputs), [inputs]);
+  const allTechs = useMemo(() => companyTechnologies(company), [company]);
+  const techTabs = useMemo(() => allTechs.filter((t) => enabledTechMap[t.id]), [allTechs, enabledTechMap]);
+  const setTechEnabled = (techId, enabled) =>
+    setInputs((prev) => {
+      const map = { ...resolveEnabledTechnologies(prev), [techId]: enabled };
+      return {
+        ...prev,
+        technologies: map,
+        includeWifi: map.managed_wifi === true,
+        includeCameras: map.video_surveillance === true,
+      };
+    });
+
+  const wifiEnabled = enabledTechMap.managed_wifi === true;
+  const camerasEnabled = enabledTechMap.video_surveillance === true;
   const includeShipping = inputs.includeShipping !== false;
   const shippingPercent = inputs.shippingPercent ?? 7;
+
+  // Company custom technologies (admin-managed, settings jsonb — same
+  // pattern as productLineDiscounts).
+  const saveCustomTechs = async (list) => {
+    const supabase = getSupabase();
+    if (!supabase || !company?.id) return;
+    const settings = { ...(company.settings ?? {}), customTechnologies: list };
+    const { error } = await supabase.from('companies').update({ settings }).eq('id', company.id);
+    if (error) { setToast({ type: 'error', message: error.message }); return; }
+    await refresh?.().catch(() => {});
+  };
+  const addCustomTech = async (label) => {
+    const id = `custom_${(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 8)}`;
+    await saveCustomTechs([...(company?.settings?.customTechnologies ?? []), { id, label }]);
+    setTechEnabled(id, true);
+  };
+  const renameCustomTech = async (id, label) =>
+    saveCustomTechs((company?.settings?.customTechnologies ?? []).map((t) => (t.id === id ? { ...t, label } : t)));
+  const removeCustomTech = async (id) => {
+    await saveCustomTechs((company?.settings?.customTechnologies ?? []).filter((t) => t.id !== id));
+    setTechEnabled(id, false);
+  };
+
+  // BOM-shaped sections for generic (no-calculator) technology tabs. Cheap —
+  // just sums the quote's own line entries for each tech.
+  const techBoms = useMemo(() => {
+    const out = {};
+    for (const t of techTabs) {
+      if (t.calculator) continue;
+      out[t.id] = calculateTechBOM(t.id, customLineItems, { includeShipping, shippingPercent });
+    }
+    return out;
+  }, [techTabs, customLineItems, includeShipping, shippingPercent]);
 
   const cameraBom = useMemo(
     () =>
@@ -214,19 +263,27 @@ function Calculator() {
     setCustomLineItems((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   const removeCustomLine = (id) =>
     setCustomLineItems((prev) => prev.filter((c) => c.id !== id));
+  // Generic technology pages store their picked/custom lines in the same
+  // customLineItems bucket, keyed by the tech's registry id (the two
+  // calculators keep their legacy 'wifi'/'camera' keys for saved quotes).
+  const addTechLine = (techId, line) =>
+    setCustomLineItems((prev) => [
+      ...prev,
+      { id: newCustomId(), system: techId, segment: 'Accessories', ...line },
+    ]);
   const term = getTerminology(inputs.propertyType);
 
-  const visibleTabs = TABS.filter((t) => {
-    if (t.id === 'hardware') return wifiEnabled;
-    if (t.id === 'cameras') return camerasEnabled;
-    return true;
-  });
-  const tab = visibleTabs.some((t) => t.id === activeTab)
-    ? activeTab
-    : visibleTabs[0]?.id || 'summary';
+  const visibleTabs = [
+    { id: 'overview', label: 'Overview' },
+    ...techTabs.map((t) => ({ id: t.id, label: t.label })),
+    { id: 'products', label: 'Product Database' },
+  ];
+  const tab = visibleTabs.some((t) => t.id === activeTab) ? activeTab : 'overview';
 
-  const onCameras = tab === 'cameras';
-  const dashView = tab === 'hardware' ? 'wifi' : onCameras ? 'cameras' : 'both';
+  const activeTech = techTabs.find((t) => t.id === tab) ?? null;
+  const onCameras = activeTech?.calculator === 'camera';
+  const onWifi = activeTech?.calculator === 'wifi';
+  const dashView = onWifi ? 'wifi' : onCameras ? 'cameras' : 'both';
 
   const hasChanges = useMemo(() => {
     if (!savedSnapshot) {
@@ -283,10 +340,18 @@ function Calculator() {
   // ?project=<id>            load that proposal (account 360°, ⌘K, project pages)
   // ?project=<id>&createProject=1  …and open the Create Project modal
   // ?account=<id>[&property=<id>]  pre-seed a NEW proposal for that customer
+  // ?tab=<id>                open a specific builder tab (sidebar sub-nav)
   // Each applies exactly once, after the data it needs has loaded.
   const searchParams = useSearchParams();
   const urlApplied = useRef(false);
   const [pendingCreateProject, setPendingCreateProject] = useState(false);
+
+  // Re-applies on every change (not once): the sidebar sub-nav navigates by
+  // ?tab= while already on /builder.
+  const tabParam = searchParams.get('tab');
+  useEffect(() => {
+    if (tabParam) setActiveTab(tabParam);
+  }, [tabParam]);
   useEffect(() => {
     if (urlApplied.current) return;
     const projectParam = searchParams.get('project');
@@ -312,6 +377,8 @@ function Calculator() {
   }, [searchParams, projects, crmAccounts]);
 
   const round2 = (n) => Math.round(n * 100) / 100;
+  const genericPrice = Object.values(techBoms).reduce((s, tb) => s + (tb.grandTotalPrice ?? 0), 0);
+  const genericCost  = Object.values(techBoms).reduce((s, tb) => s + (tb.grandTotalCost ?? 0), 0);
   const buildStatePayload = () => ({
     projectName: inputs.propertyName,
     inputs,
@@ -322,9 +389,30 @@ function Calculator() {
     laborRoles,
     crmAccountId: currentCrmAccountId,
     propertyId: currentPropertyId,
-    totalPrice: round2((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0)),
-    totalCost:  round2((bom.grandTotalCost ?? 0) + (cameraBom.grandTotalCost ?? 0)),
+    totalPrice: round2((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0) + genericPrice),
+    totalCost:  round2((bom.grandTotalCost ?? 0) + (cameraBom.grandTotalCost ?? 0) + genericCost),
   });
+
+  // The Project/Property Name IS the property: find it (case-insensitive)
+  // among the chosen customer's properties, or create it on the fly. Keeps
+  // the Account -> Property -> Proposal chain without a separate picker.
+  const resolvePropertyId = async () => {
+    if (!currentCrmAccountId) return null;
+    const name = (inputs.propertyName || '').trim();
+    if (!name) return null;
+    const existing = properties.find((p) => p.name?.trim().toLowerCase() === name.toLowerCase());
+    if (existing) return existing.id;
+    try {
+      const created = await createProperty({
+        crmAccountId: currentCrmAccountId,
+        name,
+        address: (inputs.propertyAddress || '').trim() || null,
+      });
+      return created?.id ?? null;
+    } catch {
+      return null; // property linkage is best-effort; the save itself must not fail on it
+    }
+  };
 
   // Prefill + open the Create Project modal for the loaded proposal. Shared
   // by the header "→ Project" button and the ?createProject=1 deep-link.
@@ -366,6 +454,7 @@ function Calculator() {
           sku: p.sku,
           desc: p.desc,
           category: p.category,
+          technology: p.technology,
           cost: p.cost,
           price: p.price,
           vendor: p.vendor,
@@ -381,9 +470,12 @@ function Calculator() {
     if (!currentQuote) return;
     setBusy(true);
     try {
+      const propertyId = (await resolvePropertyId()) ?? currentPropertyId;
+      setCurrentPropertyId(propertyId);
       const saved = await saveProject({
         id: null,
         ...buildStatePayload(),
+        propertyId,
         version: (currentQuote.version ?? 1) + 1,
         parentQuoteId: currentQuote.parent_quote_id ?? currentQuote.id,
       });
@@ -403,8 +495,11 @@ function Calculator() {
   // (lib/calculateBOM.js) remains the source of truth while drafting.
   const buildBomSnapshot = () => {
     const lines = [
-      ...bom.items.map((i) => ({ ...i, system: 'wifi' })),
-      ...cameraBom.items.map((i) => ({ ...i, system: 'camera' })),
+      ...bom.items.map((i) => ({ ...i, system: 'managed_wifi' })),
+      ...cameraBom.items.map((i) => ({ ...i, system: 'video_surveillance' })),
+      ...Object.entries(techBoms).flatMap(([techId, tb]) =>
+        tb.items.map((i) => ({ ...i, system: techId }))
+      ),
     ];
     return lines
       .filter((i) => (i.qty ?? 0) > 0)
@@ -450,9 +545,12 @@ function Calculator() {
     }
     setBusy(true);
     try {
+      const propertyId = (await resolvePropertyId()) ?? currentPropertyId;
+      setCurrentPropertyId(propertyId);
       const saved = await saveProject({
         id: currentProjectId,
         ...buildStatePayload(),
+        propertyId,
       });
       setCurrentProjectId(saved.id);
       snapshotCurrent();
@@ -464,15 +562,25 @@ function Calculator() {
     }
   };
 
+  // One section per enabled technology with content, in registry order,
+  // Professional Labor last. This array is the single seam feeding the
+  // Overview summary, exportPDF, exportProposal, and exportCSV. The Wi-Fi
+  // and Camera labels are kept for the proposal PDF's scope grouping.
   const exportSections = () => {
-    const list = [{ title: 'Managed Wi-Fi', label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term) }];
-    if (cameraBom.totalCameras > 0) {
-      list.push({
-        title: 'Camera Systems',
-        label: 'Camera',
-        bom: cameraBom,
-        kpis: cameraKpis(cameraBom),
-      });
+    const list = [];
+    for (const t of techTabs) {
+      if (t.calculator === 'wifi') {
+        list.push({ title: t.label, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term) });
+      } else if (t.calculator === 'camera') {
+        if (cameraBom.totalCameras > 0) {
+          list.push({ title: t.label, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom) });
+        }
+      } else {
+        const tb = techBoms[t.id];
+        if (tb && (tb.items.length > 0 || tb.serviceItems.length > 0)) {
+          list.push({ title: t.label, label: t.label, bom: tb });
+        }
+      }
     }
     if (labor.serviceItems.length > 0) {
       list.push({ title: 'Professional Labor', label: 'Labor', isLabor: true, bom: labor });
@@ -480,14 +588,10 @@ function Calculator() {
     return list;
   };
 
-  const hasCameras = cameraBom.totalCameras > 0;
-  const hasWifi = bom.items.length > 0;
-  const systemsTitle =
-    hasWifi && hasCameras
-      ? 'Wi-Fi & Camera Systems'
-      : hasCameras
-        ? 'Camera Systems'
-        : 'Managed Wi-Fi';
+  const presentTitles = exportSections().filter((s) => !s.isLabor).map((s) => s.title);
+  const systemsTitle = presentTitles.length > 2
+    ? `${presentTitles[0]} + ${presentTitles.length - 1} more systems`
+    : presentTitles.join(' & ') || 'System';
 
   const handleExportCSV = () =>
     exportCSV(inputs, exportSections(), { fileSuffix: 'Quote', companyName: branding.companyName });
@@ -511,20 +615,23 @@ function Calculator() {
     }
     setBusy(true);
     try {
+      const propertyId = (await resolvePropertyId()) ?? currentPropertyId;
+      setCurrentPropertyId(propertyId);
       let saved;
       if (!currentProjectId) {
-        saved = await saveProject({ id: null, ...buildStatePayload() });
+        saved = await saveProject({ id: null, ...buildStatePayload(), propertyId });
         setCurrentProjectId(saved.id);
       } else if (quoteLocked || currentQuote?.pdf_path) {
         saved = await saveProject({
           id: null,
           ...buildStatePayload(),
+          propertyId,
           version: (currentQuote?.version ?? 1) + 1,
           parentQuoteId: currentQuote?.parent_quote_id ?? currentQuote?.id ?? null,
         });
         setCurrentProjectId(saved.id);
       } else {
-        saved = await saveProject({ id: currentProjectId, ...buildStatePayload() });
+        saved = await saveProject({ id: currentProjectId, ...buildStatePayload(), propertyId });
       }
       snapshotCurrent();
 
@@ -637,43 +744,20 @@ function Calculator() {
                 </button>
               )
             )}
-            <Button variant="outline" size="sm" onClick={handleExportCSV}>
-              <Sheet size={14} /> CSV
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleExportPDF}>
-              <FileDown size={14} /> PDF
-            </Button>
-            <Button size="sm" onClick={handleCreateProposal} disabled={busy}
-              title="Save this version, generate the customer PDF (proposal + scope of work), and file it on the Proposals tab">
-              <FileText size={14} /> Create Proposal
-            </Button>
           </div>
         </div>
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:flex-row">
-        <aside className="w-full shrink-0 lg:w-[350px]">
-          {onCameras ? (
-            <CameraInputPanel cameraInputs={cameraInputs} setCameraInputs={setCameraInputs} />
-          ) : (
-            <InputPanel
-              inputs={inputs}
-              setInputs={setInputs}
-              term={term}
-              crmAccounts={crmAccounts}
-              crmAccountId={currentCrmAccountId}
-              onSelectAccount={(id) => { setCurrentCrmAccountId(id); setCurrentPropertyId(null); }}
-              onCreateAccount={createCrmAccount}
-              properties={properties}
-              propertyId={currentPropertyId}
-              onSelectProperty={setCurrentPropertyId}
-              onCreateProperty={({ name, address }) => createProperty({ crmAccountId: currentCrmAccountId, name, address })}
-              projects={projects}
-              currentProjectId={currentProjectId}
-              onSelectProject={selectProject}
-            />
-          )}
-        </aside>
+        {(onWifi || onCameras) && (
+          <aside className="w-full shrink-0 lg:w-[350px]">
+            {onCameras ? (
+              <CameraInputPanel cameraInputs={cameraInputs} setCameraInputs={setCameraInputs} />
+            ) : (
+              <InputPanel inputs={inputs} setInputs={setInputs} term={term} />
+            )}
+          </aside>
+        )}
 
         <main className="flex-1 space-y-4">
           <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
@@ -693,16 +777,49 @@ function Calculator() {
             ))}
           </div>
 
-          <SummaryCards
-            view={dashView}
-            bom={bom}
-            cameraBom={cameraBom}
-            labor={labor}
-            term={term}
-            canViewMargin={canViewMargin}
-          />
+          {tab !== 'overview' && (
+            <SummaryCards
+              view={dashView}
+              bom={bom}
+              cameraBom={cameraBom}
+              labor={labor}
+              term={term}
+              canViewMargin={canViewMargin}
+            />
+          )}
 
-          {tab === 'hardware' && (
+          {tab === 'overview' && (
+            <PropertyOverview
+              inputs={inputs}
+              setInputs={setInputs}
+              company={company}
+              isAdmin={configured ? isAdmin : true}
+              crmAccounts={crmAccounts}
+              crmAccountId={currentCrmAccountId}
+              onSelectAccount={(id) => { setCurrentCrmAccountId(id); setCurrentPropertyId(null); }}
+              onCreateAccount={createCrmAccount}
+              properties={properties}
+              projects={projects}
+              currentProjectId={currentProjectId}
+              onSelectProject={selectProject}
+              enabledTechs={enabledTechMap}
+              onToggleTech={setTechEnabled}
+              onAddCustomTech={addCustomTech}
+              onRenameCustomTech={renameCustomTech}
+              onRemoveCustomTech={removeCustomTech}
+              sections={exportSections()}
+              scope={buildScopeOfWork({ inputs, cameraInputs, wifiBom: bom, cameraBom, term })}
+              canViewMargin={canViewMargin}
+              laborRoles={laborRoles}
+              setLaborRoles={setLaborRoles}
+              estimatedHours={estimatedHours}
+              onCreateProposal={handleCreateProposal}
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+              busy={busy}
+            />
+          )}
+          {onWifi && (
             <BOMTable
               bom={bom}
               showMargin={showMargin}
@@ -717,36 +834,7 @@ function Calculator() {
               onRemoveCustom={removeCustomLine}
             />
           )}
-          {tab === 'services' && (
-            <div className="space-y-4">
-              {canViewMargin && (
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setShowMargin((s) => !s)}>
-                    {showMargin ? 'Hide Cost & Margin' : 'Show Cost & Margin'}
-                  </Button>
-                </div>
-              )}
-              <LaborTable
-                roles={laborRoles}
-                setRoles={setLaborRoles}
-                showMargin={showMargin}
-                canViewMargin={canViewMargin}
-                estimatedHours={estimatedHours}
-              />
-              <p className="px-1 text-xs italic text-slate-400">
-                Set hours and rates per worker level — this drives all professional labor on the
-                Wi-Fi, camera, and combined quotes.
-              </p>
-            </div>
-          )}
-          {tab === 'summary' && (
-            <CostSummary
-              sections={exportSections()}
-              scope={buildScopeOfWork({ inputs, cameraInputs, wifiBom: bom, cameraBom, term })}
-              canViewMargin={canViewMargin}
-            />
-          )}
-          {tab === 'cameras' && (
+          {onCameras && (
             <CameraSystems
               cameraBom={cameraBom}
               showMargin={showMargin}
@@ -761,11 +849,25 @@ function Calculator() {
               onRemoveCustom={removeCustomLine}
             />
           )}
+          {activeTech && !activeTech.calculator && (
+            <TechnologyPage
+              techId={activeTech.id}
+              label={activeTech.label}
+              products={allProducts}
+              lines={customLineItems.filter((c) => c.system === activeTech.id)}
+              bom={techBoms[activeTech.id]}
+              canViewMargin={canViewMargin}
+              onAddLine={(line) => addTechLine(activeTech.id, line)}
+              onUpdateLine={updateCustomLine}
+              onRemoveLine={removeCustomLine}
+            />
+          )}
           {tab === 'products' && (
             <ProductDatabase
               allProducts={allProducts}
               canManageCatalog={canManageCatalog}
               canViewMargin={canViewMargin}
+              company={company}
               teams={isSuperAdmin ? teams : null}
               teamFilter={catalogTeamId}
               onTeamFilterChange={setCatalogTeamId}
@@ -788,6 +890,8 @@ function Calculator() {
           open={modal.open}
           product={modal.product}
           clone={modal.clone}
+          company={company}
+          defaultTechnology={activeTech && !activeTech.calculator ? activeTech.id : 'managed_wifi'}
           onClose={() => setModal({ open: false, product: null })}
           onSave={saveCatalog}
         />
@@ -838,10 +942,7 @@ function Calculator() {
               </div>
 
               {(() => {
-                const techs = [
-                  ...(wifiEnabled ? ['Managed Wi-Fi'] : []),
-                  ...(camerasEnabled ? ['Camera Systems'] : []),
-                ];
+                const techs = [...new Set(techTabs.map((t) => LEGACY_TEMPLATE_TECH[t.id] ?? 'Other'))];
                 const matched = techs
                   .map((t) => ({ tech: t, template: pickTemplateForTech(allTemplates, t) }))
                   .filter((m) => m.template);
@@ -868,10 +969,7 @@ function Calculator() {
                   if (!toProjectForm.name.trim()) return;
                   setToProjectBusy(true);
                   try {
-                    const techs = [
-                      ...(wifiEnabled ? ['Managed Wi-Fi'] : []),
-                      ...(camerasEnabled ? ['Camera Systems'] : []),
-                    ];
+                    const techs = [...new Set(techTabs.map((t) => LEGACY_TEMPLATE_TECH[t.id] ?? 'Other'))];
                     const templatesByTechnology = toProjectForm.useTemplate
                       ? Object.fromEntries(
                           techs

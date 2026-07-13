@@ -620,6 +620,7 @@ function PricingDiscountsForm() {
             sku: p.sku,
             description: p.desc,
             category: p.category,
+            technology: p.technology,
             cost: newCost,
             price: p.price,
             vendor: p.vendor,

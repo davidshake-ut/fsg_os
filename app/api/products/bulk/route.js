@@ -39,6 +39,7 @@ export async function PATCH(request) {
       sku: r.sku,
       description: r.description,
       category: r.category,
+      technology: r.technology ?? '',
       cost: Number(r.cost) || 0,
       price: Number(r.price) || 0,
       vendor: r.vendor ?? '',

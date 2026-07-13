@@ -33,7 +33,7 @@ export async function POST(request) {
   const { error, svc, companyId } = await requireManager(request);
   if (error) return error;
   const body = await request.json();
-  const { sku, description, category, cost, price, vendor = '', preferred_vendor = '', product_line = '' } = body;
+  const { sku, description, category, cost, price, vendor = '', preferred_vendor = '', product_line = '', technology = '' } = body;
   if (!sku || !description || !category) return json({ error: 'Missing fields' }, 400);
 
   // Reject only SKUs that are currently live for this team. A base product is
@@ -55,7 +55,7 @@ export async function POST(request) {
   const { data, error: dbErr } = await svc
     .from('custom_products')
     .upsert(
-      { company_id: companyId, sku, description, category, cost, price, vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
+      { company_id: companyId, sku, description, category, technology, cost, price, vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
       { onConflict: 'company_id,sku' }
     )
     .select()
@@ -90,6 +90,9 @@ export async function PATCH(request) {
         vendor,
         preferred_vendor,
         ...('product_line' in body ? { product_line: body.product_line } : {}),
+        // Same preserve-guard as product_line: only touch technology when the
+        // caller sent it, so legacy CSV re-imports never blank it.
+        ...('technology' in body ? { technology: body.technology } : {}),
         is_custom: !isBase,
         is_deleted: false,
       },

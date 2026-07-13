@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -17,12 +18,14 @@ import {
   Zap,
   MessageSquare,
   FileCheck,
+  ChevronDown,
   X,
 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
 import { useModules } from '@/hooks/useModules';
 import NotificationBell from '@/components/NotificationBell';
 import CommandPalette from '@/components/CommandPalette';
+import { companyTechnologies } from '@/lib/technologies';
 import { cn, initials } from '@/lib/utils';
 
 // `group: null` renders with no header (top-level); consecutive items
@@ -66,6 +69,7 @@ export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const { isAdmin, isSuperAdmin, role, configured, session, user, company, signOut } = useSession();
   const { isEnabled } = useModules();
+  const [builderOpen, setBuilderOpen] = useState(false);
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.key === 'templates' || item.key === 'automations') return isEnabled('projects');
@@ -113,6 +117,8 @@ export default function Sidebar({ onClose }) {
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {visibleItems.map(({ key, label, href, icon, group }, i) => {
           const showHeader = group && group !== visibleItems[i - 1]?.group;
+          const isBuilder = key === 'builder';
+          const builderExpanded = isBuilder && (pathname === '/builder' || builderOpen);
           return (
             <div key={key}>
               {showHeader && (
@@ -123,13 +129,56 @@ export default function Sidebar({ onClose }) {
                   {group}
                 </p>
               )}
-              <NavLink
-                href={href}
-                icon={icon}
-                label={label}
-                active={pathname === href || pathname.startsWith(href + '/')}
-                onClick={onClose}
-              />
+              {isBuilder ? (
+                <div className="flex items-center">
+                  <div className="min-w-0 flex-1">
+                    <NavLink
+                      href={href}
+                      icon={icon}
+                      label={label}
+                      active={pathname === href || pathname.startsWith(href + '/')}
+                      onClick={onClose}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBuilderOpen((o) => !o)}
+                    aria-label="Toggle System Builder pages"
+                    className="rounded p-1 text-[var(--ui-sidebar-ink)] hover:bg-[var(--ui-sidebar-active-bg)]"
+                  >
+                    <ChevronDown size={13} className={cn('transition-transform', builderExpanded && 'rotate-180')} />
+                  </button>
+                </div>
+              ) : (
+                <NavLink
+                  href={href}
+                  icon={icon}
+                  label={label}
+                  active={pathname === href || pathname.startsWith(href + '/')}
+                  onClick={onClose}
+                />
+              )}
+              {builderExpanded && (
+                <div
+                  className="ml-5 mt-0.5 space-y-0.5 border-l pl-2"
+                  style={{ borderColor: 'var(--ui-sidebar-border)' }}
+                >
+                  {[
+                    { id: 'overview', label: 'Overview' },
+                    ...companyTechnologies(company).map((t) => ({ id: t.id, label: t.label })),
+                    { id: 'products', label: 'Product Database' },
+                  ].map((sub) => (
+                    <Link
+                      key={sub.id}
+                      href={`/builder?tab=${sub.id}`}
+                      onClick={onClose}
+                      className="block truncate rounded-md px-2.5 py-1 text-[12px] font-medium text-[var(--ui-sidebar-ink)] transition-colors hover:bg-[var(--ui-sidebar-active-bg)] hover:text-[var(--ui-sidebar-active-ink)]"
+                    >
+                      {sub.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

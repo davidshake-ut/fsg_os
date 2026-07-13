@@ -112,7 +112,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
   );
 
   // --- local-mode mutations (mirror the API handlers) ---
-  const addLocal = ({ sku, description, category, cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
+  const addLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
     if (!sku || !description || !category) throw new Error('Missing fields');
     const rows = readLocalArray();
     const existing = rows.find((r) => r.sku === sku);
@@ -123,16 +123,16 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     }
     writeLocal([
       ...rows.filter((r) => r.sku !== sku),
-      { sku, description, category, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
     ]);
   };
 
-  const editLocal = ({ sku, description, category, cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
+  const editLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
     if (!sku) throw new Error('Missing sku');
     const isBase = baseSkus.has(sku);
     writeLocal([
       ...readLocalArray().filter((r) => r.sku !== sku),
-      { sku, description, category, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
     ]);
   };
 
@@ -161,6 +161,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         sku: r.sku,
         description: r.description,
         category: r.category,
+        technology: r.technology ?? (bySku.get(r.sku)?.technology ?? ''),
         cost: Number(r.cost),
         price: Number(r.price),
         vendor: r.vendor ?? '',
@@ -187,6 +188,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         sku: r.sku,
         description: r.description,
         category: r.category,
+        technology: r.technology ?? '',
         cost: Number(r.cost),
         price: Number(r.price),
         vendor: r.vendor ?? '',
@@ -218,6 +220,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         vendor: r.vendor ?? '',
         preferred_vendor: r.preferred_vendor ?? '',
         ...(r.product_line ? { product_line: r.product_line } : {}),
+        ...(r.technology ? { technology: r.technology } : {}),
       });
       if (baseSkus.has(r.sku)) updated++;
       else added++;
