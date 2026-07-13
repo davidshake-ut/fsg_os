@@ -37,10 +37,12 @@
 
 import { wifiCalculator } from './wifi';
 import { cameraCalculator } from './camera';
+import { smartApartmentCalculator } from './smartApartment';
 
 const CALCULATORS = {
   managed_wifi: wifiCalculator,
   video_surveillance: cameraCalculator,
+  smart_apartment: smartApartmentCalculator,
 };
 
 export function getCalculator(techId) {
