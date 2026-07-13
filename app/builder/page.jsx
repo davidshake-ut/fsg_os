@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getSupabase } from '@/lib/supabase/client';
-import { Save, FolderKanban, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { Save, FolderKanban, CheckCircle2, X, Loader2, Building2, Sheet, FileDown } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -17,6 +17,8 @@ import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
 import PropertyOverview from '@/components/builder/PropertyOverview';
 import TechnologyPage from '@/components/builder/TechnologyPage';
+import CostSummary from '@/components/CostSummary';
+import { publishBuilderTechs } from '@/lib/builderNavStore';
 import { Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import QuoteLifecycleMenu from '@/components/QuoteLifecycleMenu';
@@ -54,6 +56,33 @@ import { cn } from '@/lib/utils';
 function pickTemplateForTech(allTemplates, technology) {
   const matches = allTemplates.filter((t) => t.technology === technology);
   return matches.find((t) => !t.isSystem) ?? matches.find((t) => t.isSystem) ?? null;
+}
+
+const PROPERTY_TYPE_LABELS = { hospitality: 'Hospitality', senior_living: 'Senior Living', multifamily: 'Multi-Family' };
+
+// Compact who/where strip shown under the sub-tabs on every technology page —
+// the property context travels with you; editing it happens on the Overview.
+function BuilderContextBar({ inputs, accountName, onEditOverview }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-200/70 bg-white px-4 py-2 text-xs shadow-sm shadow-slate-900/[0.03]">
+      <Building2 size={13} className="shrink-0 text-slate-400" />
+      {accountName && <span className="font-medium text-slate-600">{accountName}</span>}
+      {accountName && <span className="text-slate-300">·</span>}
+      <span className="font-semibold text-slate-800">{inputs.propertyName || 'Untitled property'}</span>
+      <span className="text-slate-300">·</span>
+      <span className="text-slate-500">{PROPERTY_TYPE_LABELS[inputs.propertyType] ?? inputs.propertyType}</span>
+      {inputs.propertyAddress && (
+        <>
+          <span className="text-slate-300">·</span>
+          <span className="truncate text-slate-500">{inputs.propertyAddress}</span>
+        </>
+      )}
+      <button type="button" onClick={onEditOverview}
+        className="ml-auto shrink-0 font-medium text-blue-600 hover:underline">
+        Edit on Overview
+      </button>
+    </div>
+  );
 }
 
 function Calculator() {
@@ -281,9 +310,23 @@ function Calculator() {
   const tab = visibleTabs.some((t) => t.id === activeTab) ? activeTab : 'overview';
 
   const activeTech = techTabs.find((t) => t.id === tab) ?? null;
+
+  // Each technology page has its own sub-tabs: Overview (that tech's
+  // summary + exports), the design surface (named after the tech), and a
+  // Product Database preset to that tech. Keyed by tech id so switching
+  // technologies always lands on the sub-overview.
+  const [subTabState, setSubTabState] = useState({ techId: null, id: 'overview' });
+  const subTab = activeTech && subTabState.techId === activeTech.id ? subTabState.id : 'overview';
+  const setSubTab = (id) => setSubTabState({ techId: activeTech?.id ?? null, id });
+
   const onCameras = activeTech?.calculator === 'camera';
   const onWifi = activeTech?.calculator === 'wifi';
   const dashView = onWifi ? 'wifi' : onCameras ? 'cameras' : 'both';
+
+  // Keep the sidebar's Builder sub-nav in sync with this quote's toggles.
+  useEffect(() => {
+    publishBuilderTechs(techTabs.map((t) => t.id));
+  }, [techTabs]);
 
   const hasChanges = useMemo(() => {
     if (!savedSnapshot) {
@@ -566,22 +609,22 @@ function Calculator() {
   // Professional Labor last. This array is the single seam feeding the
   // Overview summary, exportPDF, exportProposal, and exportCSV. The Wi-Fi
   // and Camera labels are kept for the proposal PDF's scope grouping.
-  const exportSections = () => {
-    const list = [];
-    for (const t of techTabs) {
-      if (t.calculator === 'wifi') {
-        list.push({ title: t.label, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term) });
-      } else if (t.calculator === 'camera') {
-        if (cameraBom.totalCameras > 0) {
-          list.push({ title: t.label, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom) });
-        }
-      } else {
-        const tb = techBoms[t.id];
-        if (tb && (tb.items.length > 0 || tb.serviceItems.length > 0)) {
-          list.push({ title: t.label, label: t.label, bom: tb });
-        }
-      }
+  const sectionForTech = (t) => {
+    if (t.calculator === 'wifi') {
+      return { title: t.label, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term) };
     }
+    if (t.calculator === 'camera') {
+      return cameraBom.totalCameras > 0
+        ? { title: t.label, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom) }
+        : null;
+    }
+    const tb = techBoms[t.id];
+    return tb && (tb.items.length > 0 || tb.serviceItems.length > 0)
+      ? { title: t.label, label: t.label, bom: tb }
+      : null;
+  };
+  const exportSections = () => {
+    const list = techTabs.map(sectionForTech).filter(Boolean);
     if (labor.serviceItems.length > 0) {
       list.push({ title: 'Professional Labor', label: 'Labor', isLabor: true, bom: labor });
     }
@@ -603,6 +646,25 @@ function Calculator() {
       fileSuffix: 'Quote',
       branding,
     });
+
+  // Per-technology documents from a tech page's sub-overview — just that
+  // system's section (labor stays on the whole-proposal exports).
+  const techFileSuffix = (t) => `${t.label.replace(/[^a-zA-Z0-9]/g, '')}_Quote`;
+  const handleExportTechCSV = (t) => {
+    const s = sectionForTech(t);
+    if (!s) { setToast({ type: 'error', message: `Nothing on the ${t.label} quote yet.` }); return; }
+    exportCSV(inputs, [s], { fileSuffix: techFileSuffix(t), companyName: branding.companyName });
+  };
+  const handleExportTechPDF = (t) => {
+    const s = sectionForTech(t);
+    if (!s) { setToast({ type: 'error', message: `Nothing on the ${t.label} quote yet.` }); return; }
+    exportPDF(inputs, [s], {
+      title: `${t.label} — Budgetary Quote`,
+      footerLabel: t.label,
+      fileSuffix: techFileSuffix(t),
+      branding,
+    });
+  };
 
   // "Create Proposal" = persist the version + generate the customer PDF
   // (proposal + scope of work) + attach a copy to the proposal record so it
@@ -749,7 +811,7 @@ function Calculator() {
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:flex-row">
-        {(onWifi || onCameras) && (
+        {(onWifi || onCameras) && subTab === 'builder' && (
           <aside className="w-full shrink-0 lg:w-[350px]">
             {onCameras ? (
               <CameraInputPanel cameraInputs={cameraInputs} setCameraInputs={setCameraInputs} />
@@ -760,24 +822,91 @@ function Calculator() {
         )}
 
         <main className="flex-1 space-y-4">
-          <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
-            {visibleTabs.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                className={cn(
-                  'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all',
-                  tab === t.id
-                    ? 'bg-[var(--brand,#2563eb)] text-[var(--brand-text,#fff)] shadow-sm'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {activeTech ? (
+            /* Per-technology sub-tabs: this tech's overview, its design
+               surface, and its slice of the Product Database. Switching
+               technologies happens in the left sidebar. */
+            <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
+              {[
+                { id: 'overview', label: 'Overview' },
+                { id: 'builder', label: activeTech.label },
+                { id: 'products', label: 'Product Database' },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSubTab(t.id)}
+                  className={cn(
+                    'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all',
+                    subTab === t.id
+                      ? 'bg-[var(--brand,#2563eb)] text-[var(--brand-text,#fff)] shadow-sm'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
+              {visibleTabs.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  className={cn(
+                    'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all',
+                    tab === t.id
+                      ? 'bg-[var(--brand,#2563eb)] text-[var(--brand-text,#fff)] shadow-sm'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-          {tab !== 'overview' && (
+          {activeTech && (
+            <BuilderContextBar
+              inputs={inputs}
+              accountName={crmAccounts.find((a) => a.id === currentCrmAccountId)?.name ?? null}
+              onEditOverview={() => setActiveTab('overview')}
+            />
+          )}
+
+          {activeTech && subTab === 'overview' && (
+            <>
+              {(onWifi || onCameras) && (
+                <SummaryCards
+                  view={dashView}
+                  bom={bom}
+                  cameraBom={cameraBom}
+                  labor={labor}
+                  term={term}
+                  canViewMargin={canViewMargin}
+                />
+              )}
+              {(() => {
+                const s = sectionForTech(activeTech);
+                return s ? (
+                  <CostSummary sections={[s]} canViewMargin={canViewMargin} />
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+                    Nothing quoted for {activeTech.label} yet — open the {activeTech.label} tab to start designing.
+                  </div>
+                );
+              })()}
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleExportTechCSV(activeTech)}>
+                  <Sheet size={14} /> {activeTech.label} CSV
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleExportTechPDF(activeTech)}>
+                  <FileDown size={14} /> {activeTech.label} PDF
+                </Button>
+              </div>
+            </>
+          )}
+
+          {(onWifi || onCameras) && subTab === 'builder' && (
             <SummaryCards
               view={dashView}
               bom={bom}
@@ -819,7 +948,7 @@ function Calculator() {
               busy={busy}
             />
           )}
-          {onWifi && (
+          {onWifi && subTab === 'builder' && (
             <BOMTable
               bom={bom}
               showMargin={showMargin}
@@ -834,7 +963,7 @@ function Calculator() {
               onRemoveCustom={removeCustomLine}
             />
           )}
-          {onCameras && (
+          {onCameras && subTab === 'builder' && (
             <CameraSystems
               cameraBom={cameraBom}
               showMargin={showMargin}
@@ -849,7 +978,7 @@ function Calculator() {
               onRemoveCustom={removeCustomLine}
             />
           )}
-          {activeTech && !activeTech.calculator && (
+          {activeTech && !activeTech.calculator && subTab === 'builder' && (
             <TechnologyPage
               techId={activeTech.id}
               label={activeTech.label}
@@ -860,6 +989,28 @@ function Calculator() {
               onAddLine={(line) => addTechLine(activeTech.id, line)}
               onUpdateLine={updateCustomLine}
               onRemoveLine={removeCustomLine}
+            />
+          )}
+          {activeTech && subTab === 'products' && (
+            <ProductDatabase
+              key={`techdb-${activeTech.id}`}
+              initialTechFilter={activeTech.id}
+              allProducts={allProducts}
+              canManageCatalog={canManageCatalog}
+              canViewMargin={canViewMargin}
+              company={company}
+              teams={isSuperAdmin ? teams : null}
+              teamFilter={catalogTeamId}
+              onTeamFilterChange={setCatalogTeamId}
+              onAdd={() => setModal({ open: true, product: null })}
+              onEdit={(p) => setModal({ open: true, product: p })}
+              onClone={(p) =>
+                setModal({ open: true, product: { ...p, sku: `${p.sku}-COPY` }, clone: true })
+              }
+              onDelete={removeCatalog}
+              onImport={importProducts}
+              onBulkUpdate={canManageCatalog ? bulkUpdateProducts : undefined}
+              productLineDiscounts={company?.settings?.productLineDiscounts ?? {}}
             />
           )}
           {tab === 'products' && (
@@ -891,7 +1042,7 @@ function Calculator() {
           product={modal.product}
           clone={modal.clone}
           company={company}
-          defaultTechnology={activeTech && !activeTech.calculator ? activeTech.id : 'managed_wifi'}
+          defaultTechnology={activeTech ? activeTech.id : 'managed_wifi'}
           onClose={() => setModal({ open: false, product: null })}
           onSave={saveCatalog}
         />

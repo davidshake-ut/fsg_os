@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -26,6 +26,7 @@ import { useModules } from '@/hooks/useModules';
 import NotificationBell from '@/components/NotificationBell';
 import CommandPalette from '@/components/CommandPalette';
 import { companyTechnologies } from '@/lib/technologies';
+import { subscribeBuilderTechs, getBuilderTechsSnapshot, getBuilderTechsServerSnapshot } from '@/lib/builderNavStore';
 import { cn, initials } from '@/lib/utils';
 
 // `group: null` renders with no header (top-level); consecutive items
@@ -69,7 +70,14 @@ export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const { isAdmin, isSuperAdmin, role, configured, session, user, company, signOut } = useSession();
   const { isEnabled } = useModules();
-  const [builderOpen, setBuilderOpen] = useState(false);
+  // Manual chevron override; null = auto (open while on /builder).
+  const [builderManual, setBuilderManual] = useState(null);
+  // The Builder publishes the current quote's enabled techs; before it has,
+  // fall back to the default-on pair.
+  const { enabledIds } = useSyncExternalStore(subscribeBuilderTechs, getBuilderTechsSnapshot, getBuilderTechsServerSnapshot);
+  const builderSubTechs = companyTechnologies(company).filter((t) =>
+    enabledIds ? enabledIds.includes(t.id) : (t.id === 'managed_wifi' || t.id === 'video_surveillance')
+  );
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.key === 'templates' || item.key === 'automations') return isEnabled('projects');
@@ -118,7 +126,7 @@ export default function Sidebar({ onClose }) {
         {visibleItems.map(({ key, label, href, icon, group }, i) => {
           const showHeader = group && group !== visibleItems[i - 1]?.group;
           const isBuilder = key === 'builder';
-          const builderExpanded = isBuilder && (pathname === '/builder' || builderOpen);
+          const builderExpanded = isBuilder && (builderManual ?? pathname === '/builder');
           return (
             <div key={key}>
               {showHeader && (
@@ -142,7 +150,7 @@ export default function Sidebar({ onClose }) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setBuilderOpen((o) => !o)}
+                    onClick={() => setBuilderManual(!builderExpanded)}
                     aria-label="Toggle System Builder pages"
                     className="rounded p-1 text-[var(--ui-sidebar-ink)] hover:bg-[var(--ui-sidebar-active-bg)]"
                   >
@@ -165,7 +173,7 @@ export default function Sidebar({ onClose }) {
                 >
                   {[
                     { id: 'overview', label: 'Overview' },
-                    ...companyTechnologies(company).map((t) => ({ id: t.id, label: t.label })),
+                    ...builderSubTechs.map((t) => ({ id: t.id, label: t.label })),
                     { id: 'products', label: 'Product Database' },
                   ].map((sub) => (
                     <Link

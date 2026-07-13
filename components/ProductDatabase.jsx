@@ -32,12 +32,13 @@ export default function ProductDatabase({
   canManageCatalog = false,
   canViewMargin = true,
   company = null, // resolves custom-technology labels
+  initialTechFilter = '', // per-tech sub pages preset this (remount via key)
   teams = null, // super-admin only: [{ id, name }] to enable the team filter
   teamFilter = 'all',
   onTeamFilterChange,
 }) {
   const [search, setSearch] = useState('');
-  const [techFilter, setTechFilter] = useState('');
+  const [techFilter, setTechFilter] = useState(initialTechFilter);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [sortKey, setSortKey] = useState(null); // 'sku' | 'desc' | 'category' | 'technology'
   const [sortDir, setSortDir] = useState('asc');
