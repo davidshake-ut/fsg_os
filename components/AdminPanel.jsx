@@ -804,7 +804,8 @@ export default function AdminPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { flash('err', data.error || 'Request failed'); return false; }
       await refresh();
-      return true;
+      // Truthy for boolean call sites; carries the payload for those that care.
+      return data && typeof data === 'object' ? data : true;
     } catch {
       flash('err', 'Network error — check your connection and try again.');
       return false;
@@ -813,8 +814,13 @@ export default function AdminPanel() {
 
   const sendInvite = async (e, body) => {
     e.preventDefault();
-    if (await api('/api/invite', 'POST', body)) {
-      flash('ok', `Invitation sent to ${body.email}.`);
+    const out = await api('/api/invite', 'POST', body);
+    if (out) {
+      flash('ok', out.mode === 'reattached'
+        ? `${body.email} re-added to the team — their existing login still works.`
+        : out.mode === 'reinvited'
+          ? `Fresh invitation sent to ${body.email} (their old invite was cleared).`
+          : `Invitation sent to ${body.email}.`);
       setInvite({ email: '', role: 'user', companyId: '' });
     }
   };

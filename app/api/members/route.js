@@ -56,7 +56,11 @@ export async function PATCH(request) {
   return json({ ok: true });
 }
 
-// Remove a member from their team (keeps their login; they become teamless).
+// Remove a member from their team. Someone who never signed in (invited,
+// never accepted) is deleted outright — auth record included — so the email
+// can be re-invited fresh later. Anyone with real history keeps their login
+// and just becomes teamless (their old work keeps its attribution); the
+// invite route re-attaches teamless accounts.
 export async function DELETE(request) {
   const { userId } = await request.json();
   const { error, svc, target } = await resolve(request, userId);
@@ -65,6 +69,17 @@ export async function DELETE(request) {
   if (await isLastAdmin(svc, target)) {
     return json({ error: 'Cannot remove the last Admin of a team' }, 400);
   }
+
+  const { data: authUser } = await svc.auth.admin.getUserById(userId);
+  const neverSignedIn = authUser?.user && !authUser.user.last_sign_in_at;
+  if (neverSignedIn) {
+    const { error: rowErr } = await svc.from('users').delete().eq('id', userId);
+    if (rowErr) return json({ error: rowErr.message }, 400);
+    const { error: authErr } = await svc.auth.admin.deleteUser(userId);
+    if (authErr) return json({ error: authErr.message }, 400);
+    return json({ ok: true, deleted: true });
+  }
+
   const { error: dbErr } = await svc
     .from('users')
     .update({ company_id: null, role: 'user' })
