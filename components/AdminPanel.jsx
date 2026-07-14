@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, DollarSign, Pencil } from 'lucide-react';
+import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, DollarSign, Pencil, Send } from 'lucide-react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { useBranding } from '@/hooks/useBranding';
@@ -372,7 +372,7 @@ function MemberProfileEditor({ member, onSave, onCancel }) {
   );
 }
 
-function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign, onSaveProfile, superAdmin }) {
+function MembersTable({ members, companies, selfId, onRole, onRemove, onResend, onReassign, onSaveProfile, superAdmin }) {
   const [editingId, setEditingId] = useState(null);
   const cols = superAdmin ? 5 : 4;
   return (
@@ -440,13 +440,22 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign
                       <Pencil size={14} />
                     </button>
                     {!isSelf && !isSuper && (
-                      <button
-                        onClick={() => onRemove(m)}
-                        title="Remove from team"
-                        className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => onResend(m)}
+                          title="Resend invite / send set-password link"
+                          className="rounded-md p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                        >
+                          <Send size={14} />
+                        </button>
+                        <button
+                          onClick={() => onRemove(m)}
+                          title="Remove from team"
+                          className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>
@@ -731,17 +740,34 @@ export default function AdminPanel() {
     }
   };
 
+  const inviteFlash = (out, email) =>
+    flash('ok', out.mode === 'recovery_sent'
+      ? `${email} already has an account — sent them a link to set their password.`
+      : out.mode === 'reattached'
+        ? `${email} re-added to the team${out.recoverySent ? ' and sent a link to set their password' : ' — their existing login still works'}.`
+        : out.mode === 'reinvited'
+          ? `Fresh invitation sent to ${email} (their old invite was cleared).`
+          : `Invitation sent to ${email}.`);
+
   const sendInvite = async (e, body) => {
     e.preventDefault();
     const out = await api('/api/invite', 'POST', body);
     if (out) {
-      flash('ok', out.mode === 'reattached'
-        ? `${body.email} re-added to the team — their existing login still works.`
-        : out.mode === 'reinvited'
-          ? `Fresh invitation sent to ${body.email} (their old invite was cleared).`
-          : `Invitation sent to ${body.email}.`);
+      inviteFlash(out, body.email);
       setInvite({ email: '', role: 'user', companyId: '' });
     }
+  };
+
+  // Per-row "Resend invite": pending members get a fresh invite email;
+  // members who already accepted get a set-password link instead.
+  const resendInvite = async (m) => {
+    const companyId = m.company_id || null;
+    if (!companyId && isSuperAdmin) {
+      flash('err', 'Assign this member to a team first (Team column), then resend.');
+      return;
+    }
+    const out = await api('/api/invite', 'POST', { email: m.email, role: m.role, companyId, resend: true });
+    if (out) inviteFlash(out, m.email);
   };
 
   const setRole      = (userId, role)      => api('/api/members', 'PATCH',  { userId, role });
@@ -762,7 +788,12 @@ export default function AdminPanel() {
       message: `Remove ${m.email} from their team? They will lose access immediately.`,
       confirmLabel: 'Remove',
       onConfirm: async () => {
-        if (await api('/api/members', 'DELETE', { userId: m.id })) flash('ok', `${m.email} removed.`);
+        const out = await api('/api/members', 'DELETE', { userId: m.id });
+        if (out) {
+          flash('ok', out.deleted
+            ? `${m.email} removed — that address can be invited fresh.`
+            : `${m.email} removed from their team. Their account remains; use the resend button (✉) to bring them onto a team again.`);
+        }
       },
     });
   };
@@ -1131,6 +1162,7 @@ export default function AdminPanel() {
                   selfId={user?.id}
                   onRole={setRole}
                   onRemove={removeMember}
+                  onResend={resendInvite}
                   onReassign={isSuperAdmin ? reassignTeam : undefined}
                   onSaveProfile={saveProfile}
                   superAdmin={isSuperAdmin}

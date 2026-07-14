@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Wifi, Loader2 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
-import { getSupabase } from '@/lib/supabase/client';
+import { getSupabase, getInitialAuthHash } from '@/lib/supabase/client';
 import { Card, Button, TextInput, Field } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
@@ -245,6 +246,19 @@ function LoginScreen() {
 
 export default function AuthGuard({ children, requireSuperAdmin = false, requireAdmin = false }) {
   const { configured, loading, session, error, isSuperAdmin, isAdmin, signOut } = useSession();
+  const router = useRouter();
+
+  // Invite and password-recovery links are supposed to land on /welcome, but
+  // when Supabase's redirect allowlist rejects that URL it falls back to the
+  // Site URL and the tokens (or the failed-link error) arrive on whatever
+  // page that is. Forward those landings to /welcome so the person always
+  // gets the set-password screen — or a clear explanation — instead of being
+  // silently dropped into the app.
+  useEffect(() => {
+    if (/type=(invite|recovery)|error_description=/.test(getInitialAuthHash())) {
+      router.replace('/welcome');
+    }
+  }, [router]);
 
   // Local mode — no backend configured. Calculator is fully usable.
   if (!configured) return children;

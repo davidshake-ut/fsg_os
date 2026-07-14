@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Wifi, Loader2, CheckCircle2 } from 'lucide-react';
-import { getSupabase } from '@/lib/supabase/client';
+import { getSupabase, getInitialAuthHash } from '@/lib/supabase/client';
 import { Card, Button, TextInput, Field } from '@/components/ui/primitives';
 
 // Landing page for invite (and password-recovery) links. The link establishes a
@@ -21,6 +21,21 @@ export default function WelcomePage() {
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+
+  // When a link fails (expired, already used), Supabase reports why in the
+  // URL hash — surface the reason instead of only the generic message. The
+  // hash is fixed for the life of the page, so this derives on render (it
+  // only shows inside the post-hydration !hasSession branch).
+  const linkError = (() => {
+    const h = getInitialAuthHash() || (typeof window !== 'undefined' ? window.location.hash : '');
+    const m = /error_description=([^&]+)/.exec(h);
+    if (!m) return null;
+    try {
+      return decodeURIComponent(m[1].replace(/\+/g, ' '));
+    } catch {
+      return null;
+    }
+  })();
 
   useEffect(() => {
     if (!supabase) return;
@@ -79,6 +94,11 @@ export default function WelcomePage() {
           </div>
         ) : !hasSession ? (
           <div className="space-y-3">
+            {linkError && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {linkError}
+              </p>
+            )}
             <p className="text-sm text-slate-600">
               This link is invalid or has expired. Request a new invite or password reset, or sign in
               with an email login code.
