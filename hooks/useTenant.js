@@ -3,6 +3,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
+// Fire-and-forget visit tracking (throttled to at most one row per user per
+// hour via localStorage) — powers the Members table's activity column
+// (migration 0051). Must never interfere with session resolution.
+function logVisit(supabase, profile) {
+  if (!supabase || !profile?.company_id) return;
+  try {
+    const key = `fsg_visit_logged:${profile.id}`;
+    const last = Number(localStorage.getItem(key) || 0);
+    if (Date.now() - last < 60 * 60 * 1000) return;
+    localStorage.setItem(key, String(Date.now()));
+    void supabase
+      .from('access_log')
+      .insert({ company_id: profile.company_id, user_id: profile.id })
+      .then(() => {});
+    void supabase
+      .from('users')
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq('id', profile.id)
+      .then(() => {});
+  } catch {
+    // tracking is best-effort
+  }
+}
+
 // Resolves the signed-in user, their role, and their team (company).
 //   1. load public.users (role, company_id)
 //   2. super_admin → no single team (sees all)
@@ -47,6 +71,7 @@ export function useTenant() {
         if (pErr) throw pErr;
         if (!fresh()) return;
         setUser(profile);
+        logVisit(supabase, profile);
 
         // Resolve the team for ANY role with a company_id (a super admin may
         // also belong to a team to use the per-team features). A non-super user

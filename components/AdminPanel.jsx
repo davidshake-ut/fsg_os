@@ -372,9 +372,22 @@ function MemberProfileEditor({ member, onSave, onCancel }) {
   );
 }
 
-function MembersTable({ members, companies, selfId, onRole, onRemove, onResend, onReassign, onSaveProfile, superAdmin }) {
+// Compact relative timestamp for the members activity column.
+function lastSeenLabel(iso) {
+  if (!iso) return 'never';
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function MembersTable({ members, companies, selfId, visitCounts = {}, onRole, onRemove, onResend, onReassign, onSaveProfile, superAdmin }) {
   const [editingId, setEditingId] = useState(null);
-  const cols = superAdmin ? 5 : 4;
+  const cols = superAdmin ? 6 : 5;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -384,6 +397,7 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onResend, 
             <th className="py-2 pr-2">Email</th>
             {superAdmin && <th className="py-2 pr-2">Team</th>}
             <th className="py-2 pr-2">Role</th>
+            <th className="py-2 pr-2">Activity</th>
             <th />
           </tr>
         </thead>
@@ -429,6 +443,13 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onResend, 
                       <option value="viewer">View Only</option>
                     </Select>
                   )}
+                </td>
+                <td className="py-2 pr-2">
+                  <span className="font-medium tabular-nums text-slate-700">{visitCounts[m.id] || 0}</span>
+                  <span className="text-xs text-slate-400"> visits</span>
+                  <span className="block text-xs text-slate-400">
+                    {m.last_seen_at ? `last ${lastSeenLabel(m.last_seen_at)}` : 'no visits recorded'}
+                  </span>
                 </td>
                 <td className="py-2 text-right">
                   <div className="flex items-center justify-end gap-0.5">
@@ -697,6 +718,8 @@ export default function AdminPanel() {
 
   const [invite,  setInvite]  = useState({ email: '', role: 'user', companyId: '' });
   const [newTeam, setNewTeam] = useState({ name: '', adminEmail: '' });
+  const [activityPeriod, setActivityPeriod] = useState('7d');
+  const [visitCounts, setVisitCounts] = useState({});
 
   const [confirmState, setConfirmState] = useState(null);
 
@@ -771,6 +794,23 @@ export default function AdminPanel() {
   };
 
   const setRole      = (userId, role)      => api('/api/members', 'PATCH',  { userId, role });
+
+  // Visit counts for the Members activity column (access_log, 0051). RLS
+  // scopes the rows: team admins see their team, super admins see all.
+  const loadVisits = useCallback(async () => {
+    if (!supabase) return;
+    const days = activityPeriod === '24h' ? 1 : activityPeriod === '30d' ? 30 : 7;
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    const { data } = await supabase
+      .from('access_log')
+      .select('user_id')
+      .gte('seen_at', since)
+      .limit(20000);
+    const counts = {};
+    (data || []).forEach((r) => { counts[r.user_id] = (counts[r.user_id] || 0) + 1; });
+    setVisitCounts(counts);
+  }, [supabase, activityPeriod]);
+  useEffect(() => { void loadVisits(); }, [loadVisits]);
 
   // Profile fields (name/title/notes) go straight through RLS — the
   // users_update policy already scopes company_admins to their own team.
@@ -1153,13 +1193,28 @@ export default function AdminPanel() {
               </div>
 
               <div>
-                <h2 className="mb-3 text-sm font-semibold text-slate-800">
-                  {isSuperAdmin ? 'All Members' : 'Team Members'}
-                </h2>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-slate-800">
+                    {isSuperAdmin ? 'All Members' : 'Team Members'}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Visits over</span>
+                    <Segmented
+                      value={activityPeriod}
+                      onChange={setActivityPeriod}
+                      options={[
+                        { value: '24h', label: '24 hrs' },
+                        { value: '7d', label: '7 days' },
+                        { value: '30d', label: '30 days' },
+                      ]}
+                    />
+                  </div>
+                </div>
                 <MembersTable
                   members={isSuperAdmin ? members : members.filter((m) => m.company_id === company?.id)}
                   companies={companies}
                   selfId={user?.id}
+                  visitCounts={visitCounts}
                   onRole={setRole}
                   onRemove={removeMember}
                   onResend={resendInvite}
