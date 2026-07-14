@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Wifi, Loader2 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
-import { getSupabase, getInitialAuthHash } from '@/lib/supabase/client';
+import { getSupabase, getInitialAuthHash, clearInitialAuthHash } from '@/lib/supabase/client';
 import { Card, Button, TextInput, Field } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
@@ -256,6 +256,10 @@ export default function AuthGuard({ children, requireSuperAdmin = false, require
   // silently dropped into the app.
   useEffect(() => {
     if (/type=(invite|recovery)|error_description=/.test(getInitialAuthHash())) {
+      // One-shot: clear before redirecting, or the captured hash bounces the
+      // user back to /welcome on every later in-app navigation (SPA module
+      // state survives router.push) — the set-password loop Justin hit.
+      clearInitialAuthHash();
       router.replace('/welcome');
     }
   }, [router]);

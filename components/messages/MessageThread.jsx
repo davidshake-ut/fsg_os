@@ -36,14 +36,22 @@ function headerName(conversation, currentUserId) {
 }
 
 // Message body with @mentions highlighted (lib/mentions.js does the parsing).
-function MessageBody({ body, members }) {
+// Text color inherits from the bubble: own messages ride the info tone
+// (solid brand blue with white text in "bold" mode), so hardcoding a slate
+// ink here would render dark-on-dark. Mentions invert on dark bubbles.
+function MessageBody({ body, members, onDark = false }) {
   if (!body) return null;
   const segments = splitMentions(body, members);
   return (
-    <p className="whitespace-pre-wrap text-sm text-slate-800">
+    <p className="whitespace-pre-wrap text-sm">
       {segments.map((s, i) =>
         s.mention
-          ? <span key={i} className="rounded bg-[var(--brand,#2563eb)]/10 px-0.5 font-semibold text-[var(--brand,#2563eb)]">{s.text}</span>
+          ? (
+            <span key={i} className={cn('rounded px-0.5 font-semibold',
+              onDark ? 'bg-white/20' : 'bg-[var(--brand,#2563eb)]/10 text-[var(--brand,#2563eb)]')}>
+              {s.text}
+            </span>
+          )
           : <span key={i}>{s.text}</span>
       )}
     </p>
@@ -275,8 +283,8 @@ export default function MessageThread({ conversation, members, memberStates, mes
                   <span className="text-sm font-semibold text-slate-800">{author}</span>
                   <span className="text-[11px] text-slate-400">{timeLabel(m.created_at)}</span>
                 </p>
-                <div className={cn('mt-0.5 inline-block max-w-full rounded-xl rounded-tl-sm px-3.5 py-2', isOwn ? toneClasses('info', { border: false }) : 'bg-slate-50')}>
-                  <MessageBody body={m.body} members={members} />
+                <div className={cn('mt-0.5 inline-block max-w-full rounded-xl rounded-tl-sm px-3.5 py-2', isOwn ? toneClasses('info', { border: false }) : 'bg-slate-50 text-slate-800')}>
+                  <MessageBody body={m.body} members={members} onDark={isOwn} />
                   {m.attachment_path && <Attachment message={m} />}
                 </div>
               </div>
