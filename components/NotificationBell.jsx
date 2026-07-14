@@ -31,7 +31,7 @@ function fmtDue(iso) {
 
 export default function NotificationBell() {
   const { configured, session, company, user } = useSession();
-  const { notifications, dueTasks, unreadCount, loading, markRead, markAllRead } = useNotifications(session, company, user);
+  const { notifications, dueTasks, unreadCount, loading, markRead } = useNotifications(session, company, user);
   const [open, setOpen] = useState(false);
 
   if (!configured || !session) return null;
@@ -56,13 +56,10 @@ export default function NotificationBell() {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute left-full top-0 z-50 ml-2 max-h-[28rem] w-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2.5">
+            {/* No "mark all read" — a notification clears only when its owner
+                clicks through to the item it points at (David, 2026-07-14). */}
+            <div className="border-b border-slate-100 px-3 py-2.5">
               <p className="text-sm font-semibold text-slate-800">Notifications</p>
-              {notifications.some((n) => !n.is_read) && (
-                <button type="button" onClick={markAllRead} className="text-xs font-medium text-blue-600 hover:underline">
-                  Mark all read
-                </button>
-              )}
             </div>
 
             {loading && notifications.length === 0 && dueTasks.length === 0 ? (
