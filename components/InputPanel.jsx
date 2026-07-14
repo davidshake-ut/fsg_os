@@ -110,7 +110,7 @@ export function ProjectNameField({ value, onChange, projects, currentProjectId, 
             </>
           ) : (
             <p className="px-2.5 py-2 text-xs text-slate-400">
-              No saved projects yet — name this one and click Save Project.
+              No saved proposals yet — name this one and click Save Proposal.
             </p>
           )}
         </div>

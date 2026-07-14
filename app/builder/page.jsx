@@ -622,7 +622,7 @@ function Calculator() {
       });
       setCurrentProjectId(saved.id);
       snapshotCurrent();
-      setToast({ type: 'success', message: 'Project saved.' });
+      setToast({ type: 'success', message: 'Proposal saved.' });
     } catch (e) {
       setToast({ type: 'error', message: `Save failed: ${e.message}` });
     } finally {
@@ -827,10 +827,10 @@ function Calculator() {
             <Button
               size="sm"
               disabled={!hasChanges || busy || isViewer || (configured && !company)}
-              title={isViewer ? 'View-only role — saving is disabled' : configured && !company ? 'Join a team to save projects' : undefined}
+              title={isViewer ? 'View-only role — saving is disabled' : configured && !company ? 'Join a team to save proposals' : undefined}
               onClick={handleSave}
             >
-              <Save size={14} /> {quoteLocked ? 'Save as Revision' : currentProjectId ? 'Update Project' : 'Save Project'}
+              <Save size={14} /> {quoteLocked ? 'Save as Revision' : currentProjectId ? 'Update Proposal' : 'Save Proposal'}
             </Button>
             {currentProjectId && (
               linkedProject ? (

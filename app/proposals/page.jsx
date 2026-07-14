@@ -53,7 +53,7 @@ function PdfChip({ path, className }) {
 }
 
 function ProposalsContent() {
-  const { session, company, user } = useSession();
+  const { session, company, user, canWrite } = useSession();
   const { projects: proposals, loading, loadError, refresh, setQuoteStatus } = useProjects(session, company, user);
   const { accounts } = useCRMAccounts(session, company, user);
   const { properties } = useProperties(session, company);
@@ -217,20 +217,26 @@ function ProposalsContent() {
 
                   <div className="flex shrink-0 items-center gap-2">
                     {p.pdf_path && <PdfChip path={p.pdf_path} />}
+                    {!project && (
+                      <Link href={`/builder?project=${p.id}`}
+                        className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50">
+                        <ExternalLink size={13} /> Open in Builder
+                      </Link>
+                    )}
                     {project ? (
                       <Link href={`/projects/${project.id}`}
                         className="flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100">
                         <CheckCircle2 size={13} /> View Project
                       </Link>
-                    ) : isAccepted ? (
+                    ) : canWrite && (
+                      /* Any proposal can become the project; accepted ones get
+                         the loud treatment since that's the natural next step. */
                       <Link href={`/builder?project=${p.id}&createProject=1`}
-                        className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-sm [background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] hover:brightness-110 transition-all">
+                        className={cn('flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all',
+                          isAccepted
+                            ? 'shadow-sm [background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] hover:brightness-110'
+                            : 'border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100')}>
                         <FolderKanban size={13} /> Create Project
-                      </Link>
-                    ) : (
-                      <Link href={`/builder?project=${p.id}`}
-                        className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50">
-                        <ExternalLink size={13} /> Open in Builder
                       </Link>
                     )}
                   </div>
