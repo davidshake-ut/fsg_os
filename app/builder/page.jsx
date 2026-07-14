@@ -26,7 +26,7 @@ import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
 import { calculateTechBOM } from '@/lib/calculateTechBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
 import { estimateLaborHours } from '@/lib/estimateLaborHours';
-import { companyTechnologies, resolveEnabledTechnologies, LEGACY_TEMPLATE_TECH } from '@/lib/technologies';
+import { companyTechnologies, resolveEnabledTechnologies } from '@/lib/technologies';
 import { useProducts } from '@/hooks/useProducts';
 import { useProjects } from '@/hooks/useProjects';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
@@ -35,7 +35,6 @@ import { useProperties } from '@/hooks/useProperties';
 import { useTemplates } from '@/hooks/useTemplates';
 import { systemTemplatesForTech } from '@/lib/templates/index';
 import { DEFAULT_INPUTS, DEFAULT_CAMERA_INPUTS, DEFAULT_LABOR_ROLES } from '@/lib/defaults';
-import { resolveBuilderDefaults } from '@/lib/builderDefaults';
 import { getTerminology } from '@/lib/terminology';
 import { exportPDF, wifiKpis, cameraKpis } from '@/lib/exportPDF';
 import { exportProposalPDF } from '@/lib/exportProposal';
@@ -97,7 +96,6 @@ function Calculator() {
   const [inputs, setInputs] = useState(DEFAULT_INPUTS);
   const [cameraInputs, setCameraInputs] = useState(DEFAULT_CAMERA_INPUTS);
   const [priceOverrides, setPriceOverrides] = useState({});
-  const [serviceOverrides, setServiceOverrides] = useState({});
   const [customLineItems, setCustomLineItems] = useState([]);
   const [laborRoles, setLaborRoles] = useState(DEFAULT_LABOR_ROLES);
   const [activeTab, setActiveTab] = useState('overview');
@@ -124,24 +122,6 @@ function Calculator() {
       setTeams(data || []);
     })();
   }, [isSuperAdmin, session]);
-
-  // Apply team/user builder defaults once, when the session resolves (or
-  // immediately in local mode). Never re-applies over a loaded project.
-  const defaultsApplied = useRef(false);
-  useEffect(() => {
-    if (defaultsApplied.current) return;
-    if (configured && !user && !company) return; // session still resolving
-    defaultsApplied.current = true;
-    if (currentProjectId) return;
-    const d = resolveBuilderDefaults({ user, company, configured });
-    setInputs((prev) => ({
-      ...prev,
-      includeWifi:     d.includeWifi,
-      includeCameras:  d.includeCameras,
-      includeShipping: d.includeShipping,
-      shippingPercent: d.shippingPercent,
-    }));
-  }, [configured, user, company, currentProjectId]);
 
   const { branding, setBranding } = useBranding({ configured, company, onSaved: refresh });
   const { accounts: crmAccounts, createAccount: createCrmAccount } = useCRMAccounts(session, company, user);
@@ -189,12 +169,12 @@ function Calculator() {
       calculateBOM(
         inputs,
         priceOverrides,
-        serviceOverrides,
+        {}, // legacy serviceOverrides slot — ignored by the engine
         allProducts,
         customLineItems.filter((c) => c.system === 'wifi'),
         catalogSnapshot
       ),
-    [inputs, priceOverrides, serviceOverrides, allProducts, customLineItems, catalogSnapshot]
+    [inputs, priceOverrides, allProducts, customLineItems, catalogSnapshot]
   );
 
   // Per-technology enablement (registry ids). Legacy quotes derive it from
@@ -294,7 +274,7 @@ function Calculator() {
       calculateCameraBOM(
         camerasEnabled ? cameraInputs : {},
         priceOverrides,
-        serviceOverrides,
+        {}, // legacy serviceOverrides slot — ignored by the engine
         allProducts,
         camerasEnabled ? customLineItems.filter((c) => c.system === 'camera') : [],
         { includeShipping, shippingPercent, catalogSnapshot }
@@ -303,7 +283,6 @@ function Calculator() {
       camerasEnabled,
       cameraInputs,
       priceOverrides,
-      serviceOverrides,
       allProducts,
       customLineItems,
       includeShipping,
@@ -383,7 +362,6 @@ function Calculator() {
     if (!savedSnapshot) {
       return (
         Object.keys(priceOverrides).length > 0 ||
-        Object.keys(serviceOverrides).length > 0 ||
         customLineItems.length > 0 ||
         JSON.stringify(inputs) !== JSON.stringify(DEFAULT_INPUTS) ||
         JSON.stringify(cameraInputs) !== JSON.stringify(DEFAULT_CAMERA_INPUTS) ||
@@ -394,19 +372,17 @@ function Calculator() {
       JSON.stringify(inputs) !== JSON.stringify(savedSnapshot.inputs) ||
       JSON.stringify(cameraInputs) !== JSON.stringify(savedSnapshot.cameraInputs) ||
       JSON.stringify(priceOverrides) !== JSON.stringify(savedSnapshot.priceOverrides) ||
-      JSON.stringify(serviceOverrides) !== JSON.stringify(savedSnapshot.serviceOverrides) ||
       JSON.stringify(customLineItems) !== JSON.stringify(savedSnapshot.customLineItems) ||
       JSON.stringify(laborRoles) !== JSON.stringify(savedSnapshot.laborRoles ?? DEFAULT_LABOR_ROLES)
     );
-  }, [inputs, cameraInputs, priceOverrides, serviceOverrides, customLineItems, laborRoles, savedSnapshot]);
+  }, [inputs, cameraInputs, priceOverrides, customLineItems, laborRoles, savedSnapshot]);
 
   const selectProject = (id) => {
     setNewPsaProjectId(null);
     if (!id) {
-      setInputs({ ...DEFAULT_INPUTS, ...resolveBuilderDefaults({ user, company, configured }) });
+      setInputs(DEFAULT_INPUTS);
       setCameraInputs(DEFAULT_CAMERA_INPUTS);
       setPriceOverrides({});
-      setServiceOverrides({});
       setCustomLineItems([]);
       setLaborRoles(DEFAULT_LABOR_ROLES);
       setCurrentProjectId(null);
@@ -423,7 +399,6 @@ function Calculator() {
     setInputs(loaded.inputs);
     setCameraInputs(loaded.cameraInputs);
     setPriceOverrides(loaded.priceOverrides);
-    setServiceOverrides(loaded.serviceOverrides);
     setCustomLineItems(loaded.customLineItems);
     setLaborRoles(loaded.laborRoles);
     setCurrentProjectId(project.id);
@@ -478,7 +453,6 @@ function Calculator() {
     inputs,
     cameraInputs,
     priceOverrides,
-    serviceOverrides,
     customLineItems,
     laborRoles,
     crmAccountId: currentCrmAccountId,
@@ -533,7 +507,7 @@ function Calculator() {
   }, [pendingCreateProject, currentProjectId]);
 
   const snapshotCurrent = () =>
-    setSavedSnapshot({ inputs, cameraInputs, priceOverrides, serviceOverrides, customLineItems, laborRoles });
+    setSavedSnapshot({ inputs, cameraInputs, priceOverrides, customLineItems, laborRoles });
 
   // Freezes every catalog SKU used by the current (live) bom/cameraBom, right
   // before a quote is first locked (marked Sent). Persisted as catalog_snapshot
@@ -1124,7 +1098,7 @@ function Calculator() {
               </div>
 
               {(() => {
-                const techs = [...new Set(techTabs.map((t) => LEGACY_TEMPLATE_TECH[t.id] ?? 'Other'))];
+                const techs = [...new Set(techTabs.map((t) => t.label))];
                 const matched = techs
                   .map((t) => ({ tech: t, template: pickTemplateForTech(allTemplates, t) }))
                   .filter((m) => m.template);
@@ -1151,7 +1125,7 @@ function Calculator() {
                   if (!toProjectForm.name.trim()) return;
                   setToProjectBusy(true);
                   try {
-                    const techs = [...new Set(techTabs.map((t) => LEGACY_TEMPLATE_TECH[t.id] ?? 'Other'))];
+                    const techs = [...new Set(techTabs.map((t) => t.label))];
                     const templatesByTechnology = toProjectForm.useTemplate
                       ? Object.fromEntries(
                           techs

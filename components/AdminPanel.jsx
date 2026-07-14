@@ -1,15 +1,14 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, SlidersHorizontal, DollarSign, Pencil } from 'lucide-react';
+import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, DollarSign, Pencil } from 'lucide-react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { useBranding } from '@/hooks/useBranding';
 import { useProducts } from '@/hooks/useProducts';
-import { Card, Button, Field, TextInput, Select, Badge, Toggle, NumberInput, Segmented } from '@/components/ui/primitives';
+import { Card, Button, Field, TextInput, Select, Badge, Segmented } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ModulesPanel from '@/components/ModulesPanel';
-import { resolveBuilderDefaults, BUILDER_DEFAULTS_KEY } from '@/lib/builderDefaults';
 import { costFromDiscount, DEFAULT_PRODUCT_LINE_DISCOUNTS } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 
@@ -21,21 +20,20 @@ const SA_TABS = [
   { key: 'branding', label: 'Team Branding',   Icon: Palette            },
   { key: 'pricing',  label: 'Pricing',         Icon: DollarSign         },
   { key: 'members',  label: 'Members',         Icon: Users              },
-  { key: 'builder',  label: 'Builder',         Icon: SlidersHorizontal  },
 ];
 
 // Module visibility is platform-level policy: only the super admin manages
 // it (SA_TABS 'modules'); team admins don't get the tab (David, 2026-07-13).
+// The old Builder-defaults tab is gone too — technology toggles and the
+// shipping estimate live on the Builder's Overview page per quote now.
 const CA_TABS = [
   { key: 'branding', label: 'Branding', Icon: Palette           },
   { key: 'pricing',  label: 'Pricing',  Icon: DollarSign        },
   { key: 'members',  label: 'Members',  Icon: Users             },
-  { key: 'builder',  label: 'Builder',  Icon: SlidersHorizontal },
 ];
 
-const USER_TABS = [
-  { key: 'builder', label: 'Builder', Icon: SlidersHorizontal },
-];
+// Non-admin members have nothing to configure here (see empty state below).
+const USER_TABS = [];
 
 // ── Branding form (shared by super admin + company admin) ─────────────────
 
@@ -480,88 +478,6 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign
   );
 }
 
-// ── Builder defaults ──────────────────────────────────────────────────────
-
-function BuilderDefaultsForm() {
-  const supabase = getSupabase();
-  const { user, company, isAdmin, refresh: refreshSession } = useSession();
-  // Admins edit the team-wide default; regular users edit a personal override.
-  const teamScope = isAdmin && !!company;
-
-  const [form, setForm] = useState(() =>
-    resolveBuilderDefaults({ user, company, configured: isSupabaseConfigured })
-  );
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [err, setErr] = useState(null);
-
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  const save = async () => {
-    setSaving(true);
-    setErr(null);
-    try {
-      if (!supabase) {
-        localStorage.setItem(BUILDER_DEFAULTS_KEY, JSON.stringify(form));
-      } else if (teamScope) {
-        const settings = { ...(company.settings ?? {}), builderDefaults: form };
-        const { error } = await supabase.from('companies').update({ settings }).eq('id', company.id);
-        if (error) throw error;
-      } else {
-        const preferences = { ...(user?.preferences ?? {}), builderDefaults: form };
-        const { error } = await supabase.rpc('set_own_preferences', { prefs: preferences });
-        if (error) throw error;
-      }
-      await refreshSession?.().catch(() => {});
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (ex) {
-      setErr(ex.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-5">
-      {err && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>
-      )}
-      <p className="text-xs text-slate-400">
-        {teamScope
-          ? 'These defaults apply to everyone on your team when starting a new project.'
-          : 'These defaults apply to you when starting a new project (they override your team defaults).'}
-      </p>
-      <div>
-        <h3 className="mb-0.5 text-sm font-semibold text-slate-800">Technologies</h3>
-        <p className="text-xs text-slate-400">Which systems are enabled by default when starting a new project.</p>
-      </div>
-      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-3">
-        <Toggle checked={form.includeWifi} onChange={(v) => set('includeWifi', v)} label="Managed Wi-Fi" />
-        <Toggle checked={form.includeCameras} onChange={(v) => set('includeCameras', v)} label="Camera Systems" />
-      </div>
-      <div>
-        <h3 className="mb-0.5 text-sm font-semibold text-slate-800">Shipping</h3>
-        <p className="text-xs text-slate-400">Default shipping estimate for new projects.</p>
-      </div>
-      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-3">
-        <Toggle checked={form.includeShipping} onChange={(v) => set('includeShipping', v)} label="Add Shipping Estimate" />
-        {form.includeShipping && (
-          <Field label="Shipping (% of hardware)">
-            <NumberInput value={form.shippingPercent} onChange={(v) => set('shippingPercent', v)} />
-          </Field>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        <Button type="button" onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save Defaults'}
-        </Button>
-        {saved && <span className="text-sm text-emerald-600">Saved!</span>}
-      </div>
-    </div>
-  );
-}
-
 // ── Pricing / product-line discounts ───────────────────────────────────────
 
 // Cost is derived, never entered directly: cost = price × (1 − discount%) for
@@ -763,7 +679,7 @@ export default function AdminPanel() {
   const { session, isSuperAdmin, isAdmin, company, user, role, refresh: refreshSession } = useSession();
 
   const tabs = isSuperAdmin ? SA_TABS : isAdmin ? CA_TABS : USER_TABS;
-  const [activeTab, setActiveTab] = useState(tabs[0].key);
+  const [activeTab, setActiveTab] = useState(tabs[0]?.key ?? null);
 
   const [companies, setCompanies] = useState([]);
   const [members,   setMembers]   = useState([]);
@@ -1228,9 +1144,10 @@ export default function AdminPanel() {
             <PricingDiscountsForm />
           )}
 
-          {/* ── BUILDER DEFAULTS ───────────────────────────────────── */}
-          {activeTab === 'builder' && (
-            <BuilderDefaultsForm />
+          {tabs.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-400">
+              Nothing to configure for your role — team settings are managed by your admin.
+            </p>
           )}
         </div>
       </Card>

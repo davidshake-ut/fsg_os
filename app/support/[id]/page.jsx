@@ -26,7 +26,8 @@ function fmtDay(iso) {
 
 const ASSET_TYPE_LABELS = {
   access_point: 'Access Point', camera: 'Camera', switch: 'Switch',
-  gateway: 'Gateway', nvr: 'NVR', other: 'Other',
+  gateway: 'Gateway', nvr: 'NVR', smart_device: 'Smart Device',
+  door_controller: 'Door Controller', ev_charger: 'EV Charger', other: 'Other',
 };
 
 function TicketDetail() {

@@ -68,7 +68,7 @@ function NavLink({ href, icon: Icon, label, active, onClick }) {
 
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
-  const { isAdmin, isSuperAdmin, role, configured, session, user, company, signOut } = useSession();
+  const { isAdmin, isSuperAdmin, configured, session, user, company, signOut } = useSession();
   const { isEnabled } = useModules();
   // Manual chevron override; null = auto (open while on /builder).
   const [builderManual, setBuilderManual] = useState(null);
@@ -211,7 +211,7 @@ export default function Sidebar({ onClose }) {
             </div>
           </div>
         )}
-        {(isAdmin || role === 'user' || role === 'viewer') && (
+        {isAdmin && (
           <NavLink
             href="/admin"
             icon={Shield}

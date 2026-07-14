@@ -1,17 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, HardDrive, Wifi, Camera, Router, Server, PackageOpen, Loader2 } from 'lucide-react';
+import { Plus, Trash2, HardDrive, Wifi, Camera, Router, Server, PackageOpen, Loader2, Home, DoorOpen, PlugZap } from 'lucide-react';
 import { Card, Button, Field, TextInput, Select } from '@/components/ui/primitives';
 import { assetsFromSnapshot } from '@/lib/bomSnapshot';
 
 const ASSET_TYPES = [
-  { id: 'access_point', label: 'Access Point', icon: Wifi },
-  { id: 'camera',       label: 'Camera',       icon: Camera },
-  { id: 'switch',       label: 'Switch',        icon: Router },
-  { id: 'gateway',      label: 'Gateway',       icon: Router },
-  { id: 'nvr',          label: 'NVR',           icon: Server },
-  { id: 'other',        label: 'Other',         icon: HardDrive },
+  { id: 'access_point',    label: 'Access Point',    icon: Wifi },
+  { id: 'camera',          label: 'Camera',          icon: Camera },
+  { id: 'switch',          label: 'Switch',          icon: Router },
+  { id: 'gateway',         label: 'Gateway',         icon: Router },
+  { id: 'nvr',             label: 'NVR',             icon: Server },
+  { id: 'smart_device',    label: 'Smart Device',    icon: Home },
+  { id: 'door_controller', label: 'Door Controller', icon: DoorOpen },
+  { id: 'ev_charger',      label: 'EV Charger',      icon: PlugZap },
+  { id: 'other',           label: 'Other',           icon: HardDrive },
 ];
 const TYPE_MAP = Object.fromEntries(ASSET_TYPES.map((t) => [t.id, t]));
 
