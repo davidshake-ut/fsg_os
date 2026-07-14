@@ -452,7 +452,7 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
 const STATUS_TABS = ['all', 'draft', 'sent', 'paid', 'overdue', 'void'];
 
 function InvoicesContent() {
-  const { session, company, user } = useSession();
+  const { session, company, user, canWrite } = useSession();
   const { invoices, loading, loadError, hasMore, totalCount, loadMore, refresh, createInvoice, updateInvoice, deleteInvoice } =
     useInvoices(session, company, user);
   const { items: unbilled, unbilledProjects, totalValue: unbilledValue, refresh: refreshUnbilled } = useUnbilledWork(session, company);
@@ -499,10 +499,12 @@ function InvoicesContent() {
             )}
           </p>
         </div>
-        <button type="button" onClick={() => { setModalInitial({}); setModalOpen(true); }}
-          className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-blue-700">
-          <Plus size={14} /> New Invoice
-        </button>
+        {canWrite && (
+          <button type="button" onClick={() => { setModalInitial({}); setModalOpen(true); }}
+            className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            <Plus size={14} /> New Invoice
+          </button>
+        )}
       </div>
 
       {/* Unbilled work — approved COs and completed projects with no invoice */}
@@ -599,7 +601,7 @@ function InvoicesContent() {
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-slate-200 py-16 text-slate-400">
           <Receipt size={32} className="text-slate-200" />
           <p className="text-sm font-medium">No {statusFilter !== 'all' ? `${STATUS[statusFilter]?.label.toLowerCase()} ` : ''}invoices yet</p>
-          {statusFilter === 'all' && (
+          {statusFilter === 'all' && canWrite && (
             <button type="button" onClick={() => setModalOpen(true)}
               className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
               <Plus size={14} /> New Invoice

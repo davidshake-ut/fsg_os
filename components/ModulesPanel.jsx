@@ -50,14 +50,16 @@ function ModuleToggle({ label, description, checked, onChange, saving }) {
 }
 
 export default function ModulesPanel({ companies }) {
-  const { company, isSuperAdmin } = useSession();
+  const { isSuperAdmin } = useSession();
   const supabase = getSupabase();
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [moduleStates, setModuleStates] = useState({});
   const [savingKey, setSavingKey] = useState(null);
 
-  const targetId = isSuperAdmin ? selectedCompanyId : company?.id;
+  // Module visibility is platform-level policy — super admin only (the RLS
+  // company-admin policy was dropped in 0049; this guard matches it).
+  const targetId = isSuperAdmin ? selectedCompanyId : null;
 
   const loadModules = useCallback(
     async (cid) => {

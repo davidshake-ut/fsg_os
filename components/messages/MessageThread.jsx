@@ -145,7 +145,7 @@ function mentionTokenAt(text, caret) {
   return { partial: match[2], start: caret - match[2].length - 1 };
 }
 
-export default function MessageThread({ conversation, members, memberStates, messages, currentUserId, onSend, sending, onRefresh, loading }) {
+export default function MessageThread({ conversation, members, memberStates, messages, currentUserId, onSend, sending, onRefresh, loading, canWrite = true }) {
   const [body, setBody] = useState('');
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState(null);
@@ -287,6 +287,7 @@ export default function MessageThread({ conversation, members, memberStates, mes
         <div ref={bottomRef} />
       </div>
 
+      {canWrite && (
       <form onSubmit={handleSend} className="relative shrink-0 border-t border-slate-100 px-5 py-3">
         {mentionQuery && mentionMatches.length > 0 && (
           <div className="absolute bottom-full left-5 z-20 mb-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
@@ -355,6 +356,7 @@ export default function MessageThread({ conversation, members, memberStates, mes
           </Button>
         </div>
       </form>
+      )}
     </div>
   );
 }

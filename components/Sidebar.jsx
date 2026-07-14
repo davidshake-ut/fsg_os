@@ -211,7 +211,7 @@ export default function Sidebar({ onClose }) {
             </div>
           </div>
         )}
-        {(isAdmin || role === 'user') && (
+        {(isAdmin || role === 'user' || role === 'viewer') && (
           <NavLink
             href="/admin"
             icon={Shield}

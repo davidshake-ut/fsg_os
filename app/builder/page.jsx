@@ -91,7 +91,7 @@ function BuilderContextBar({ inputs, accountName, onEditOverview }) {
 }
 
 function Calculator() {
-  const { configured, session, company, user, isSuperAdmin, isAdmin, role, refresh } =
+  const { configured, session, company, user, isSuperAdmin, isAdmin, isViewer, role, refresh } =
     useSession();
 
   const [inputs, setInputs] = useState(DEFAULT_INPUTS);
@@ -817,7 +817,7 @@ function Calculator() {
 
       {/* Flow nudge: an accepted proposal is the one that becomes the
           project — make the next step unmissable. */}
-      {quoteStatus === 'accepted' && !linkedProject && (
+      {quoteStatus === 'accepted' && !linkedProject && !isViewer && (
         <div className="px-4 pt-3 sm:px-6">
           <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
             <p className="text-sm text-emerald-800">
@@ -839,7 +839,7 @@ function Calculator() {
               <h1 className="truncate text-sm font-semibold text-slate-900">
                 {inputs.propertyName || branding.companyName || 'Untitled Project'}
               </h1>
-              {currentQuote && (
+              {currentQuote && !isViewer && (
                 <QuoteLifecycleMenu
                   quote={currentQuote}
                   onTransition={handleQuoteStatus}
@@ -852,8 +852,8 @@ function Calculator() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
-              disabled={!hasChanges || busy || (configured && !company)}
-              title={configured && !company ? 'Join a team to save projects' : undefined}
+              disabled={!hasChanges || busy || isViewer || (configured && !company)}
+              title={isViewer ? 'View-only role — saving is disabled' : configured && !company ? 'Join a team to save projects' : undefined}
               onClick={handleSave}
             >
               <Save size={14} /> {quoteLocked ? 'Save as Revision' : currentProjectId ? 'Update Project' : 'Save Project'}
@@ -864,7 +864,7 @@ function Calculator() {
                   className="flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
                   <CheckCircle2 size={13} /> View Project
                 </a>
-              ) : (
+              ) : !isViewer && (
                 <button type="button"
                   onClick={openCreateProjectModal}
                   className="flex h-8 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors">

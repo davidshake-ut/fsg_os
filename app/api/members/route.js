@@ -41,14 +41,14 @@ async function isLastAdmin(svc, target) {
   return (count ?? 0) <= 1;
 }
 
-// Change a member's role (user <-> company_admin).
+// Change a member's role (user / company_admin / viewer).
 export async function PATCH(request) {
   const { userId, role } = await request.json();
-  if (!['user', 'company_admin'].includes(role)) return json({ error: 'Invalid role' }, 400);
+  if (!['user', 'company_admin', 'viewer'].includes(role)) return json({ error: 'Invalid role' }, 400);
   const { error, svc, target } = await resolve(request, userId);
   if (error) return error;
 
-  if (role === 'user' && (await isLastAdmin(svc, target))) {
+  if (role !== 'company_admin' && (await isLastAdmin(svc, target))) {
     return json({ error: 'Cannot demote the last Admin of a team' }, 400);
   }
   const { error: dbErr } = await svc.from('users').update({ role }).eq('id', userId);

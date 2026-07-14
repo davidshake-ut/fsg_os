@@ -17,7 +17,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner';
 import AppToast from '@/components/ui/AppToast';
 
 function MessagesContent() {
-  const { session, company, user } = useSession();
+  const { session, company, user, canWrite } = useSession();
   const supabase = getSupabase();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -126,6 +126,7 @@ function MessagesContent() {
             sending={sending}
             onRefresh={refreshThread}
             loading={threadLoading}
+            canWrite={canWrite}
           />
         )}
       </div>

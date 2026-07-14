@@ -24,9 +24,10 @@ const SA_TABS = [
   { key: 'builder',  label: 'Builder',         Icon: SlidersHorizontal  },
 ];
 
+// Module visibility is platform-level policy: only the super admin manages
+// it (SA_TABS 'modules'); team admins don't get the tab (David, 2026-07-13).
 const CA_TABS = [
   { key: 'branding', label: 'Branding', Icon: Palette           },
-  { key: 'modules',  label: 'Modules',  Icon: Puzzle            },
   { key: 'pricing',  label: 'Pricing',  Icon: DollarSign        },
   { key: 'members',  label: 'Members',  Icon: Users             },
   { key: 'builder',  label: 'Builder',  Icon: SlidersHorizontal },
@@ -427,6 +428,7 @@ function MembersTable({ members, companies, selfId, onRole, onRemove, onReassign
                     >
                       <option value="user">User</option>
                       <option value="company_admin">Admin</option>
+                      <option value="viewer">View Only</option>
                     </Select>
                   )}
                 </td>
@@ -1069,6 +1071,7 @@ export default function AdminPanel() {
                     >
                       <option value="user">User</option>
                       <option value="company_admin">Admin</option>
+                      <option value="viewer">View Only</option>
                     </Select>
                   </Field>
                   <Button type="submit">Send Invite</Button>
@@ -1077,19 +1080,13 @@ export default function AdminPanel() {
             </div>
           )}
 
-          {/* ── MODULE SETTINGS ────────────────────────────────────── */}
-          {activeTab === 'modules' && (
-            <div>
-              {isSuperAdmin ? (
-                <div className="space-y-1">
-                  <p className="text-sm text-slate-500">
-                    Select a team to configure which modules they can access.
-                  </p>
-                  <ModulesPanel companies={companies} />
-                </div>
-              ) : (
-                <ModulesPanel />
-              )}
+          {/* ── MODULE SETTINGS — super admin only ─────────────────── */}
+          {activeTab === 'modules' && isSuperAdmin && (
+            <div className="space-y-1">
+              <p className="text-sm text-slate-500">
+                Select a team to configure which modules they can access.
+              </p>
+              <ModulesPanel companies={companies} />
             </div>
           )}
 
@@ -1175,6 +1172,7 @@ export default function AdminPanel() {
                       >
                         <option value="user">User</option>
                         <option value="company_admin">Admin</option>
+                        <option value="viewer">View Only</option>
                       </Select>
                     </Field>
                     <Button type="submit">Send Invite</Button>
@@ -1199,6 +1197,7 @@ export default function AdminPanel() {
                       >
                         <option value="user">User</option>
                         <option value="company_admin">Admin</option>
+                        <option value="viewer">View Only</option>
                       </Select>
                     </Field>
                     <Button type="submit">Send Invite</Button>

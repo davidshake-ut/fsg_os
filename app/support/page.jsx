@@ -30,7 +30,7 @@ function timeAgo(iso) {
 }
 
 function SupportContent() {
-  const { session, company, user } = useSession();
+  const { session, company, user, canWrite } = useSession();
   const { tickets, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, deleteTicket } = useSupportTickets(session, company, user);
   const { accounts } = useCRMAccounts(session, company, user);
   const { projects } = usePSAProjects(session, company, user);
@@ -72,7 +72,7 @@ function SupportContent() {
           <h1 className="text-xl font-semibold text-slate-900">Customer Support</h1>
           <p className="mt-1 text-sm text-slate-500">{tickets.length} ticket{tickets.length !== 1 ? 's' : ''} total</p>
         </div>
-        <Button size="sm" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>
+        {canWrite && <Button size="sm" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>}
       </div>
 
       {/* Stats strip */}
@@ -112,7 +112,7 @@ function SupportContent() {
         <Card className="py-16 text-center">
           <Inbox size={32} className="mx-auto mb-3 text-slate-300" />
           <p className="text-sm font-medium text-slate-600">{statusFilter === 'all' ? 'No tickets yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} tickets`}</p>
-          {statusFilter === 'all' && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>}
+          {statusFilter === 'all' && canWrite && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>}
         </Card>
       ) : (
         <div className="space-y-2">

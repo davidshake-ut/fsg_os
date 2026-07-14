@@ -53,7 +53,7 @@ function dueChip(p) {
 }
 
 function ProjectsContent() {
-  const { session, company, user } = useSession();
+  const { session, company, user, canWrite } = useSession();
   const { projects, loading, loadError, refresh, createProject, deleteProject } = usePSAProjects(session, company, user);
   const { projects: quotes } = useProjects(session, company, user);
   const { createInvoice } = useInvoices(session, company, user);
@@ -97,9 +97,11 @@ function ProjectsContent() {
             {projects.length} project{projects.length !== 1 ? 's' : ''} total
           </p>
         </div>
-        <Button size="sm" onClick={() => setModalOpen(true)}>
-          <Plus size={14} /> New Project
-        </Button>
+        {canWrite && (
+          <Button size="sm" onClick={() => setModalOpen(true)}>
+            <Plus size={14} /> New Project
+          </Button>
+        )}
       </div>
 
       {/* Status filter tabs */}
@@ -144,7 +146,7 @@ function ProjectsContent() {
           <p className="mt-1 text-sm text-slate-400">
             {statusFilter === 'all' && 'Create your first project to get started.'}
           </p>
-          {statusFilter === 'all' && (
+          {statusFilter === 'all' && canWrite && (
             <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}>
               <Plus size={14} /> New Project
             </Button>

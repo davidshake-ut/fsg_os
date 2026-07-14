@@ -110,6 +110,11 @@ export function useTenant() {
     role: user?.role || null,
     isSuperAdmin: user?.role === 'super_admin',
     isAdmin: user?.role === 'company_admin' || user?.role === 'super_admin',
+    // 'viewer' = view-only member: sees the team's data, cannot create/edit/
+    // delete anything (enforced DB-side by 0049's triggers; UI hides the
+    // affordances). canWrite is true in local mode / for every other role.
+    isViewer: user?.role === 'viewer',
+    canWrite: user?.role !== 'viewer',
     loading,
     error,
     refresh,

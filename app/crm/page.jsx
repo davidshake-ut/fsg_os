@@ -29,7 +29,7 @@ const ACCOUNT_STATUS_TONE = {
 };
 
 function CRMContent() {
-  const { session, company, user } = useSession();
+  const { session, company, user, canWrite } = useSession();
   const { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, updateAccount, deleteAccount } = useCRMAccounts(session, company, user);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -61,9 +61,11 @@ function CRMContent() {
           <h1 className="text-xl font-semibold text-slate-900">CRM</h1>
           <p className="mt-1 text-sm text-slate-500">{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
         </div>
-        <Button size="sm" onClick={() => setModalOpen(true)}>
-          <Plus size={14} /> New Account
-        </Button>
+        {canWrite && (
+          <Button size="sm" onClick={() => setModalOpen(true)}>
+            <Plus size={14} /> New Account
+          </Button>
+        )}
       </div>
 
       {/* Search + status filter + view toggle */}
@@ -109,7 +111,7 @@ function CRMContent() {
         <Card className="py-16 text-center">
           <Building2 size={32} className="mx-auto mb-3 text-slate-300" />
           <p className="text-sm font-medium text-slate-600">{search ? 'No accounts match your search' : 'No accounts yet'}</p>
-          {!search && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Account</Button>}
+          {!search && canWrite && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Account</Button>}
         </Card>
       ) : (
         <div className="space-y-2">
