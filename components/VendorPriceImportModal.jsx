@@ -37,7 +37,16 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
       return;
     }
     const { matched: m, unmatched } = matchVendorRows(rows, allProducts);
-    const reviewRows = m.map(({ vendorRow, existing }) => {
+    // Price books often list a SKU more than once (sections, case/space
+    // variants) — one upsert can't touch the same row twice, so keep the
+    // LAST occurrence (the file's final word) and say so in the review.
+    const bySku = new Map();
+    for (const hit of m) bySku.set(hit.existing.sku, hit);
+    const dupCount = m.length - bySku.size;
+    const fileNotes = dupCount > 0
+      ? [...errors, `${dupCount} duplicate SKU row${dupCount !== 1 ? 's' : ''} in the file — the last occurrence was used.`]
+      : errors;
+    const reviewRows = [...bySku.values()].map(({ vendorRow, existing }) => {
       const productLine = vendorRow.productLine || existing.product_line || '';
       const hasDiscount = productLine && productLine in productLineDiscounts;
       return {
@@ -57,7 +66,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     setMatched(reviewRows);
     setUnmatchedCount(unmatched.length);
     setUnmatchedSkus(unmatched.map((r) => r.sku));
-    setParseErrors(errors);
+    setParseErrors(fileNotes);
     setStep('review');
   };
 

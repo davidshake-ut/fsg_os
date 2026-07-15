@@ -52,11 +52,16 @@ export async function PATCH(request) {
 
   if (upsertRows.length === 0) return json({ updated: 0, errors });
 
+  // Postgres rejects an upsert that touches the same (company_id, sku) row
+  // twice ("ON CONFLICT DO UPDATE command cannot affect row a second time"),
+  // so dedupe defensively for every caller — last occurrence wins.
+  const deduped = [...new Map(upsertRows.map((r) => [r.sku, r])).values()];
+
   const svc = getServiceClient();
   const { error: dbErr } = await svc
     .from('custom_products')
-    .upsert(upsertRows, { onConflict: 'company_id,sku' });
+    .upsert(deduped, { onConflict: 'company_id,sku' });
   if (dbErr) return json({ error: dbErr.message }, 400);
 
-  return json({ updated: upsertRows.length, errors });
+  return json({ updated: deduped.length, errors });
 }
