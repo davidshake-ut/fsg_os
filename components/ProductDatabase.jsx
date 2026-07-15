@@ -269,14 +269,20 @@ export default function ProductDatabase({
   const labelOf = (p) => techLabel(p.technology || 'managed_wifi', company);
 
   // Distinct vendor / source values present in the catalog (filter options).
-  const vendors = useMemo(
-    () => [...new Set(allProducts.map((p) => p.vendor).filter(Boolean))].sort(),
-    [allProducts]
-  );
-  const sources = useMemo(
-    () => [...new Set(allProducts.map((p) => p.preferred_vendor).filter(Boolean))].sort(),
-    [allProducts]
-  );
+  // The ACTIVE filter value is always included even when no product carries
+  // it (e.g. a vendor-tab preset before any products are tagged) — otherwise
+  // the select can't display it and silently filters everything out while
+  // showing "All Vendors".
+  const vendors = useMemo(() => {
+    const set = new Set(allProducts.map((p) => p.vendor).filter(Boolean));
+    if (vendorFilter) set.add(vendorFilter);
+    return [...set].sort();
+  }, [allProducts, vendorFilter]);
+  const sources = useMemo(() => {
+    const set = new Set(allProducts.map((p) => p.preferred_vendor).filter(Boolean));
+    if (sourceFilter) set.add(sourceFilter);
+    return [...set].sort();
+  }, [allProducts, sourceFilter]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
