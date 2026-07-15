@@ -12,13 +12,142 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { Card, Button, Badge, TextInput } from '@/components/ui/primitives';
-import { CORE_SKUS, CATEGORY_ORDER } from '@/lib/catalog';
+import { Card, Button, Badge, TextInput, Select, Field } from '@/components/ui/primitives';
+import { CORE_SKUS, CATEGORY_ORDER, PRODUCT_CATEGORIES } from '@/lib/catalog';
 import { companyTechnologies, techLabel } from '@/lib/technologies';
 import { parseCatalogCSV } from '@/lib/csv';
 import { exportCatalogCSV } from '@/lib/exportCSV';
 import { currency } from '@/lib/format';
 import VendorPriceImportModal from '@/components/VendorPriceImportModal';
+
+// One bulk-edit field: a Select over the known values, with "Leave
+// unchanged" as the resting state, an optional free-text "Other…", and an
+// optional "— clear —". Only fields moved off "Leave unchanged" apply.
+function BulkField({ label, options, value, other, onChange, onOtherChange, allowOther = false, allowClear = false }) {
+  return (
+    <Field label={label}>
+      <div className="flex items-center gap-2">
+        <Select className="flex-1" value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">— leave unchanged —</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          {allowOther && <option value="__other__">Other…</option>}
+          {allowClear && <option value="__clear__">— clear —</option>}
+        </Select>
+        {value === '__other__' && (
+          <TextInput
+            className="flex-1"
+            value={other}
+            onChange={(e) => onOtherChange(e.target.value)}
+            placeholder="New value"
+            autoFocus
+          />
+        )}
+      </div>
+    </Field>
+  );
+}
+
+function BulkEditModal({ count, company, allProducts, busy, onApply, onClose }) {
+  const [fields, setFields] = useState({
+    technology: '',
+    category: '',
+    vendor: '',
+    preferred_vendor: '',
+    product_line: '',
+  });
+  const [others, setOthers] = useState({ vendor: '', preferred_vendor: '', product_line: '' });
+  const set = (k) => (v) => setFields((f) => ({ ...f, [k]: v }));
+  const setOther = (k) => (v) => setOthers((o) => ({ ...o, [k]: v }));
+
+  const distinct = (get) => [...new Set(allProducts.map(get).filter(Boolean))].sort();
+  const registryNames = [
+    ...new Set(Object.values(company?.settings?.technologyVendors ?? {}).flat().map((v) => v?.name).filter(Boolean)),
+  ];
+  const vendorOptions = [...new Set([...distinct((p) => p.vendor), ...registryNames])].sort();
+
+  const resolve = (k) => {
+    const v = fields[k];
+    if (v === '') return undefined;
+    if (v === '__clear__') return '';
+    if (v === '__other__') return others[k]?.trim() || undefined;
+    return v;
+  };
+  const patch = Object.fromEntries(
+    ['technology', 'category', 'vendor', 'preferred_vendor', 'product_line']
+      .map((k) => [k, resolve(k)])
+      .filter(([, v]) => v !== undefined)
+  );
+  const dirty = Object.keys(patch).length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={onClose}>
+      <Card className="w-full max-w-md p-5" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+        <h3 className="mb-1 text-sm font-semibold text-slate-800">
+          Bulk edit {count} product{count !== 1 ? 's' : ''}
+        </h3>
+        <p className="mb-4 text-xs text-slate-400">
+          Only the fields you change apply to every selected product — everything else keeps its current value.
+        </p>
+        <div className="space-y-3">
+          <BulkField
+            label="Category (technology)"
+            options={companyTechnologies(company).map((t) => ({ value: t.id, label: t.label }))}
+            value={fields.technology}
+            onChange={set('technology')}
+          />
+          <BulkField
+            label="Subcategory"
+            options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
+            value={fields.category}
+            onChange={set('category')}
+          />
+          <BulkField
+            label="Vendor"
+            options={vendorOptions.map((v) => ({ value: v, label: v }))}
+            value={fields.vendor}
+            other={others.vendor}
+            onChange={set('vendor')}
+            onOtherChange={setOther('vendor')}
+            allowOther
+            allowClear
+          />
+          <BulkField
+            label="Source / Distributor"
+            options={distinct((p) => p.preferred_vendor).map((v) => ({ value: v, label: v }))}
+            value={fields.preferred_vendor}
+            other={others.preferred_vendor}
+            onChange={set('preferred_vendor')}
+            onOtherChange={setOther('preferred_vendor')}
+            allowOther
+            allowClear
+          />
+          <BulkField
+            label="Product Line"
+            options={distinct((p) => p.product_line).map((v) => ({ value: v, label: v }))}
+            value={fields.product_line}
+            other={others.product_line}
+            onChange={set('product_line')}
+            onOtherChange={setOther('product_line')}
+            allowOther
+            allowClear
+          />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" disabled={!dirty || busy} onClick={() => onApply(patch)}>
+            {busy ? 'Applying…' : `Apply to ${count}`}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 export default function ProductDatabase({
   allProducts,
@@ -48,7 +177,51 @@ export default function ProductDatabase({
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState(null); // { type: 'error'|'success', message: string }
   const [vendorImportOpen, setVendorImportOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Set()); // SKUs picked for bulk edit
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const fileRef = useRef(null);
+
+  const bulkable = canManageCatalog && !!onBulkUpdate;
+
+  const toggleSelected = (sku) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(sku)) next.delete(sku);
+      else next.add(sku);
+      return next;
+    });
+
+  const applyBulk = async (patch) => {
+    setBulkBusy(true);
+    try {
+      const rows = allProducts
+        .filter((p) => selected.has(p.sku))
+        .map((p) => ({
+          sku: p.sku,
+          description: p.desc,
+          category: patch.category ?? p.category,
+          technology: patch.technology ?? (p.technology ?? ''),
+          cost: p.cost,
+          price: p.price,
+          vendor: patch.vendor !== undefined ? patch.vendor : (p.vendor ?? ''),
+          preferred_vendor:
+            patch.preferred_vendor !== undefined ? patch.preferred_vendor : (p.preferred_vendor ?? ''),
+          product_line: patch.product_line !== undefined ? patch.product_line : (p.product_line ?? ''),
+        }));
+      const res = await onBulkUpdate(rows);
+      setNotice({
+        type: 'success',
+        message: `Updated ${res?.updated ?? rows.length} product${rows.length !== 1 ? 's' : ''}.`,
+      });
+      setSelected(new Set());
+      setBulkOpen(false);
+    } catch (err) {
+      setNotice({ type: 'error', message: `Bulk edit failed: ${err.message}` });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -236,6 +409,16 @@ export default function ProductDatabase({
           )}
         </div>
         <div className="flex flex-wrap gap-2">
+          {bulkable && selected.size > 0 && (
+            <>
+              <Button size="sm" onClick={() => setBulkOpen(true)}>
+                <Pencil size={14} /> Bulk Edit ({selected.size})
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>
+                Clear selection
+              </Button>
+            </>
+          )}
           <Button variant="outline" size="sm" onClick={() => exportCatalogCSV(allProducts, { includeCost: canViewMargin, techLabelOf: labelOf })}>
             <Download size={14} /> Export CSV
           </Button>
@@ -279,6 +462,26 @@ export default function ProductDatabase({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
+              {bulkable && (
+                <th className="w-8 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    title="Select all filtered products"
+                    checked={filtered.length > 0 && filtered.every((p) => selected.has(p.sku))}
+                    onChange={() =>
+                      setSelected((prev) => {
+                        const all = filtered.every((p) => prev.has(p.sku));
+                        const next = new Set(prev);
+                        for (const p of filtered) {
+                          if (all) next.delete(p.sku);
+                          else next.add(p.sku);
+                        }
+                        return next;
+                      })
+                    }
+                  />
+                </th>
+              )}
               {sortHeader('sku', 'SKU')}
               {sortHeader('desc', 'Description')}
               {sortHeader('technology', 'Category')}
@@ -294,13 +497,22 @@ export default function ProductDatabase({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={bulkable ? 11 : 10} className="px-4 py-8 text-center text-sm text-slate-400">
                   No products match the current search/filter.
                 </td>
               </tr>
             )}
             {filtered.map((p) => (
               <tr key={p.sku} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                {bulkable && (
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(p.sku)}
+                      onChange={() => toggleSelected(p.sku)}
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-2 font-mono text-xs text-slate-500">
                   {p.sku}
                   {p.isCustom && (
@@ -373,6 +585,16 @@ export default function ProductDatabase({
           productLineDiscounts={productLineDiscounts}
           onApply={onBulkUpdate}
           onClose={() => setVendorImportOpen(false)}
+        />
+      )}
+      {bulkOpen && (
+        <BulkEditModal
+          count={selected.size}
+          company={company}
+          allProducts={allProducts}
+          busy={bulkBusy}
+          onApply={applyBulk}
+          onClose={() => setBulkOpen(false)}
         />
       )}
     </Card>
