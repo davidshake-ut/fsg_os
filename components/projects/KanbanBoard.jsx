@@ -199,12 +199,21 @@ export default function KanbanBoard({
   };
 
   // Tasks whose column was deleted out from under them surface in To Do.
+  // Within a column, cards read chronologically like the Gantt: earliest
+  // start first (due date stands in when start is missing), undated tasks
+  // last, schedule order as the tie-break.
   const knownIds = new Set(columnDefs.map((c) => c.id));
+  const timeKey = (t) => t.start_date ?? t.due_date ?? '9999-12-31';
   const columns = columnDefs.map((col) => ({
     col,
     tasks: tasks
       .filter((t) => t.status === col.id || (col.id === 'todo' && !knownIds.has(t.status)))
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+      .sort(
+        (a, b) =>
+          timeKey(a).localeCompare(timeKey(b)) ||
+          (a.due_date ?? '9999-12-31').localeCompare(b.due_date ?? '9999-12-31') ||
+          (a.sort_order ?? 0) - (b.sort_order ?? 0)
+      ),
   }));
 
   const renameColumn = (id, label) =>
