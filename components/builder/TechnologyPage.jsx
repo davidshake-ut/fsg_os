@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Search, Trash2, Wrench, Package, Calculator } from 'lucide-react';
 import { Card, Button, TextInput } from '@/components/ui/primitives';
+import { productRidesWithVendor } from '@/lib/vendors';
 import { currency } from '@/lib/format';
 
 // Generic technology page — the quoting substrate for every technology
@@ -147,7 +148,8 @@ function SystemDesignTable({ lines, canViewMargin }) {
 export default function TechnologyPage({
   techId,
   label,
-  vendorName = '',     // vendor tab: limit the picker to this vendor's products
+  vendorName = '',     // vendor tab: scope the picker to this primary vendor
+  primaryNames = [],   // ALL primaries registered on this tech (rivals excluded)
   products = [],       // full merged catalog; filtered to this technology here
   lines = [],          // this tech's line entries (customLineItems, system === techId)
   computedLines = [],  // mini-calculator output (read-only; qty from design inputs)
@@ -159,16 +161,17 @@ export default function TechnologyPage({
 }) {
   const [query, setQuery] = useState('');
 
-  // Vendor-blank parts (cables, racks, generic accessories) are vendor-
-  // agnostic and appear in every vendor's picker.
+  // A vendor tab shows the primary's own products plus every SECONDARY
+  // vendor's gear (UPSs, racks, cabling — hardware-agnostic support parts
+  // ride with any primary); only rival primaries' products are excluded.
   const techProducts = useMemo(
     () =>
       products.filter(
         (p) =>
           (p.technology || 'managed_wifi') === techId &&
-          (!vendorName || p.vendor === vendorName || !p.vendor)
+          (!vendorName || productRidesWithVendor(p, vendorName, primaryNames))
       ),
-    [products, techId, vendorName]
+    [products, techId, vendorName, primaryNames]
   );
   const pickerResults = useMemo(() => {
     const q = query.trim().toLowerCase();

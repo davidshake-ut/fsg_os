@@ -15,7 +15,7 @@ import PropertyOverview from '@/components/builder/PropertyOverview';
 import TechnologyPage from '@/components/builder/TechnologyPage';
 import TechVendorsCard from '@/components/builder/TechVendorsCard';
 import { getCalculator } from '@/components/builder/calculators';
-import { companyTechVendors, resolveQuoteVendors, linesForVendor, newVendorId } from '@/lib/vendors';
+import { companyTechVendors, resolveQuoteVendors, linesForVendor, newVendorId, primaryVendorCandidates } from '@/lib/vendors';
 import CostSummary from '@/components/CostSummary';
 import { publishBuilderTechs } from '@/lib/builderNavStore';
 import { Button } from '@/components/ui/primitives';
@@ -1147,7 +1147,7 @@ function Calculator() {
                 tech={activeTech}
                 registry={companyTechVendors(company, activeTech.id)}
                 quoteVendors={activeTechVendors}
-                catalogVendors={[...new Set(allProducts.map((p) => p.vendor).filter(Boolean))].sort()}
+                catalogVendors={primaryVendorCandidates(allProducts, activeTech.id)}
                 hasEngine={!!activeCalc?.legacy}
                 isAdmin={configured ? isAdmin : true}
                 canWrite={!isViewer}
@@ -1218,6 +1218,7 @@ function Calculator() {
                 techId={activeTech.id}
                 label={activeTech.label}
                 vendorName={activeVendor?.name ?? ''}
+                primaryNames={companyTechVendors(company, activeTech.id).map((v) => v.name)}
                 products={allProducts}
                 computedLines={!vendored || activeVendor?.isPrimary ? techCalcLines[activeTech.id] ?? [] : []}
                 lines={

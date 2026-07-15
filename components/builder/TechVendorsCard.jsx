@@ -138,10 +138,10 @@ export default function TechVendorsCard({
       </div>
       <p className="mb-3 text-xs text-slate-400">
         {registry.length === 0
-          ? `Quote ${tech.label} against specific manufacturers — each vendor gets its own build tab, and enabling two lets you present an A/B comparison.`
+          ? `Quote ${tech.label} against competing equipment makers — each gets its own build tab, and enabling two lets you present an A/B comparison. Support gear from secondary vendors (UPSs, racks, cabling…) rides along with every build automatically.`
           : multi
-            ? 'The primary vendor (Option A) is the quoted total; other enabled vendors render as clearly-marked alternates.'
-            : 'Enable a second vendor on this quote to build an A/B comparison.'}
+            ? 'The primary vendor (Option A) is the quoted total; other enabled vendors render as clearly-marked alternates. Secondary-vendor support gear appears in every build.'
+            : 'Enable a second vendor on this quote to build an A/B comparison. Secondary-vendor support gear appears in every build.'}
       </p>
 
       {adding && (
@@ -160,7 +160,7 @@ export default function TechVendorsCard({
               }}
               autoFocus
             >
-              <option value="">— choose a vendor from the Product Database —</option>
+              <option value="">— choose an equipment maker from the Product Database —</option>
               {pickable.map((v) => (
                 <option key={v} value={v}>
                   {v}

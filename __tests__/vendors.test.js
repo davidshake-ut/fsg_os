@@ -5,6 +5,8 @@ import {
   lineVendorId,
   linesForVendor,
   newVendorId,
+  primaryVendorCandidates,
+  productRidesWithVendor,
 } from '../lib/vendors';
 
 const CAMBIUM = { id: 'vnd_cambium1', name: 'Cambium Networks' };
@@ -103,6 +105,30 @@ describe('line coalescing', () => {
       expect(bucketed).toHaveLength(4); // every managed_wifi line lands exactly once
       expect(new Set(bucketed.map((l) => l.id)).size).toBe(4);
     }
+  });
+});
+
+describe('primary vs secondary vendors', () => {
+  const CATALOG = [
+    { sku: 'AP-1', category: 'Access Point', technology: 'managed_wifi', vendor: 'Cambium Networks' },
+    { sku: 'AP-2', category: 'Access Point', technology: 'managed_wifi', vendor: 'Ruckus' },
+    { sku: 'UPS-1', category: 'UPS', technology: 'managed_wifi', vendor: 'Vertiv' },
+    { sku: 'RACK-1', category: 'Rack', technology: 'managed_wifi', vendor: 'Middle Atlantic' },
+    { sku: 'CBL-1', category: 'Cable', technology: 'managed_wifi', vendor: '' },
+    { sku: 'CAM-1', category: 'Camera', technology: 'video_surveillance', vendor: 'Uniview' },
+  ];
+
+  it('primaryVendorCandidates lists only core-equipment makers for the tech', () => {
+    expect(primaryVendorCandidates(CATALOG, 'managed_wifi')).toEqual(['Cambium Networks', 'Ruckus']);
+    expect(primaryVendorCandidates(CATALOG, 'video_surveillance')).toEqual(['Uniview']);
+  });
+
+  it('secondary and unbranded gear rides with every primary; rival primaries never leak', () => {
+    const primaries = ['Cambium Networks', 'Ruckus'];
+    const ruckusPicker = CATALOG.filter(
+      (p) => p.technology === 'managed_wifi' && productRidesWithVendor(p, 'Ruckus', primaries)
+    ).map((p) => p.sku);
+    expect(ruckusPicker).toEqual(['AP-2', 'UPS-1', 'RACK-1', 'CBL-1']); // no Cambium AP
   });
 });
 
