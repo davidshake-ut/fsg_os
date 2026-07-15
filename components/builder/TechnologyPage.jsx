@@ -147,20 +147,28 @@ function SystemDesignTable({ lines, canViewMargin }) {
 export default function TechnologyPage({
   techId,
   label,
+  vendorName = '',     // vendor tab: limit the picker to this vendor's products
   products = [],       // full merged catalog; filtered to this technology here
   lines = [],          // this tech's line entries (customLineItems, system === techId)
   computedLines = [],  // mini-calculator output (read-only; qty from design inputs)
   bom,                 // calculateTechBOM output for the totals strip
   canViewMargin = false,
-  onAddLine,           // (line) => void — page assigns id + system
+  onAddLine,           // (line) => void — page assigns id + system (+ vendor)
   onUpdateLine,
   onRemoveLine,
 }) {
   const [query, setQuery] = useState('');
 
+  // Vendor-blank parts (cables, racks, generic accessories) are vendor-
+  // agnostic and appear in every vendor's picker.
   const techProducts = useMemo(
-    () => products.filter((p) => (p.technology || 'managed_wifi') === techId),
-    [products, techId]
+    () =>
+      products.filter(
+        (p) =>
+          (p.technology || 'managed_wifi') === techId &&
+          (!vendorName || p.vendor === vendorName || !p.vendor)
+      ),
+    [products, techId, vendorName]
   );
   const pickerResults = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -193,11 +201,15 @@ export default function TechnologyPage({
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-slate-800">{label}</h2>
+            <h2 className="text-sm font-semibold text-slate-800">
+              {vendorName ? `${label} — ${vendorName}` : label}
+            </h2>
             <p className="text-xs text-slate-400">
               {techProducts.length > 0
-                ? `${techProducts.length} catalog item${techProducts.length !== 1 ? 's' : ''} in this category — search to add, or use custom lines.`
-                : 'No catalog items in this category yet — add them in the Product Database (Category = ' + label + '), or quote with custom lines below.'}
+                ? `${techProducts.length} ${vendorName ? `${vendorName} / unbranded ` : ''}catalog item${techProducts.length !== 1 ? 's' : ''} — search to add, or use custom lines.`
+                : vendorName
+                  ? `No ${vendorName} items in this category yet — set Vendor = ${vendorName} on products in the Product Database, or quote with custom lines below.`
+                  : 'No catalog items in this category yet — add them in the Product Database (Category = ' + label + '), or quote with custom lines below.'}
             </p>
           </div>
           {bom && (

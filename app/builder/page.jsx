@@ -13,7 +13,9 @@ import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
 import PropertyOverview from '@/components/builder/PropertyOverview';
 import TechnologyPage from '@/components/builder/TechnologyPage';
+import TechVendorsCard from '@/components/builder/TechVendorsCard';
 import { getCalculator } from '@/components/builder/calculators';
+import { companyTechVendors, resolveQuoteVendors, linesForVendor, newVendorId } from '@/lib/vendors';
 import CostSummary from '@/components/CostSummary';
 import { publishBuilderTechs } from '@/lib/builderNavStore';
 import { Button } from '@/components/ui/primitives';
@@ -215,6 +217,55 @@ function Calculator() {
       },
     }));
 
+  // Vendors resolved per enabled tech: registry ∩ this quote's enablement,
+  // primary flagged, engine host = registry[0] on the legacy-calculator techs.
+  const techVendorMap = useMemo(() => {
+    const out = {};
+    for (const t of techTabs) {
+      out[t.id] = resolveQuoteVendors(inputs, company, t.id, !!getCalculator(t.id)?.legacy);
+    }
+    return out;
+  }, [techTabs, inputs, company]);
+
+  const setTechVendorPrimary = (techId, vendorId) =>
+    setInputs((prev) => ({
+      ...prev,
+      techVendorPrimary: { ...(prev.techVendorPrimary ?? {}), [techId]: vendorId },
+    }));
+
+  const setTechVendorEnabled = (techId, vendor, on) => {
+    const current = techVendorMap[techId] ?? [];
+    if (!on && current.length === 1) {
+      setToast({ type: 'error', message: 'At least one vendor stays enabled — enable another first.' });
+      return;
+    }
+    const apply = () =>
+      setInputs((prev) => {
+        const list = on
+          ? [...current.map(({ id, name }) => ({ id, name })), { id: vendor.id, name: vendor.name }]
+          : current.filter((v) => v.id !== vendor.id).map(({ id, name }) => ({ id, name }));
+        return { ...prev, techVendors: { ...(prev.techVendors ?? {}), [techId]: list } };
+      });
+    if (!on) {
+      // Lines on the disabled vendor's tab re-bucket to the primary (or the
+      // next remaining vendor) — make that visible before it happens.
+      const remaining = current.filter((v) => v.id !== vendor.id);
+      const landing = remaining.find((v) => v.isPrimary) ?? remaining[0];
+      const moved = customLineItems.filter((c) => c.system === techId && c.vendor === vendor.id);
+      if (moved.length > 0 && landing) {
+        const total = moved.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0);
+        setConfirmState({
+          title: `Disable ${vendor.name} on this quote?`,
+          message: `${moved.length} line${moved.length !== 1 ? 's' : ''} totaling $${Math.round(total).toLocaleString()} will move to ${landing.name}'s tab.`,
+          confirmLabel: 'Disable vendor',
+          onConfirm: apply,
+        });
+        return;
+      }
+    }
+    apply();
+  };
+
   // Company custom technologies (admin-managed, settings jsonb — same
   // pattern as productLineDiscounts).
   const saveCustomTechs = async (list) => {
@@ -233,9 +284,68 @@ function Calculator() {
   const renameCustomTech = async (id, label) =>
     saveCustomTechs((company?.settings?.customTechnologies ?? []).map((t) => (t.id === id ? { ...t, label } : t)));
   const removeCustomTech = async (id) => {
-    await saveCustomTechs((company?.settings?.customTechnologies ?? []).filter((t) => t.id !== id));
+    // One combined settings write (dropping the tech AND its vendor registry)
+    // — two sequential writes would each spread the other's stale settings.
+    const supabase = getSupabase();
+    if (!supabase || !company?.id) return;
+    const vendors = { ...(company.settings?.technologyVendors ?? {}) };
+    delete vendors[id];
+    const settings = {
+      ...(company.settings ?? {}),
+      customTechnologies: (company.settings?.customTechnologies ?? []).filter((t) => t.id !== id),
+      technologyVendors: vendors,
+    };
+    const { error } = await supabase.from('companies').update({ settings }).eq('id', company.id);
+    if (error) { setToast({ type: 'error', message: error.message }); return; }
+    await refresh?.().catch(() => {});
     setTechEnabled(id, false);
   };
+
+  // ── Per-technology vendor registry (companies.settings.technologyVendors —
+  //    same admin-settings pattern as custom technologies). The entry name
+  //    IS the custom_products.vendor match string. ─────────────────────────
+  const saveTechVendors = async (techId, list) => {
+    const supabase = getSupabase();
+    if (!supabase || !company?.id) return false;
+    const map = { ...(company.settings?.technologyVendors ?? {}) };
+    if (list.length === 0) delete map[techId];
+    else map[techId] = list;
+    const settings = { ...(company.settings ?? {}), technologyVendors: map };
+    const { error } = await supabase.from('companies').update({ settings }).eq('id', company.id);
+    if (error) { setToast({ type: 'error', message: error.message }); return false; }
+    await refresh?.().catch(() => {});
+    return true;
+  };
+  const addTechVendor = (techId, name) =>
+    saveTechVendors(techId, [...companyTechVendors(company, techId), { id: newVendorId(), name }]);
+  const renameTechVendor = async (techId, id, name) => {
+    const list = companyTechVendors(company, techId);
+    const old = list.find((v) => v.id === id);
+    if (!old || old.name === name) return;
+    const ok = await saveTechVendors(techId, list.map((v) => (v.id === id ? { ...v, name } : v)));
+    if (!ok) return;
+    // Retag the vendor's catalog products so the tabs/pickers keep matching.
+    const rows = allProducts.filter((p) => p.vendor === old.name);
+    if (rows.length === 0) return;
+    try {
+      await bulkUpdateProducts(rows.map((p) => ({
+        sku: p.sku,
+        description: p.desc,
+        category: p.category,
+        technology: p.technology,
+        cost: p.cost,
+        price: p.price,
+        vendor: name,
+        preferred_vendor: p.preferred_vendor ?? '',
+        product_line: p.product_line ?? '',
+      })));
+      setToast({ type: 'success', message: `Renamed to ${name} — ${rows.length} product${rows.length !== 1 ? 's' : ''} retagged.` });
+    } catch (e) {
+      setToast({ type: 'error', message: `Vendor renamed, but retagging products failed: ${e.message}` });
+    }
+  };
+  const removeTechVendor = (techId, id) =>
+    saveTechVendors(techId, companyTechVendors(company, techId).filter((v) => v.id !== id));
 
   // Lines a registered mini-calculator derives from its design inputs —
   // stamped with the tech id + fromCalculator so calculateTechBOM and the
@@ -253,13 +363,14 @@ function Calculator() {
     return out;
   }, [techTabs, inputs, allProducts]);
 
-  // BOM-shaped sections for every non-legacy technology tab: the tech's
-  // calculator-derived lines (if any) plus the quote's own line entries.
-  // The two legacy engines (Wi-Fi/Camera) own their BOMs above.
+  // BOM-shaped sections for every non-legacy, NON-vendored technology tab:
+  // the tech's calculator-derived lines (if any) plus the quote's own line
+  // entries. Legacy engines own their BOMs above; vendored techs roll up
+  // per-vendor in vendorBoms below.
   const techBoms = useMemo(() => {
     const out = {};
     for (const t of techTabs) {
-      if (getCalculator(t.id)?.legacy) continue;
+      if (getCalculator(t.id)?.legacy || (techVendorMap[t.id] ?? []).length > 0) continue;
       out[t.id] = calculateTechBOM(
         t.id,
         [...(techCalcLines[t.id] ?? []), ...customLineItems],
@@ -267,7 +378,30 @@ function Calculator() {
       );
     }
     return out;
-  }, [techTabs, techCalcLines, customLineItems, includeShipping, shippingPercent]);
+  }, [techTabs, techVendorMap, techCalcLines, customLineItems, includeShipping, shippingPercent]);
+
+  // Per-vendor BOMs for vendored techs. The engine vendor is excluded (its
+  // BOM is the legacy bom/cameraBom); calculator-derived lines feed the
+  // primary vendor's bucket; every other line lands via the coalescing rule.
+  const vendorBoms = useMemo(() => {
+    const out = {};
+    for (const t of techTabs) {
+      const vendors = techVendorMap[t.id] ?? [];
+      if (vendors.length === 0) continue;
+      const enabledIds = vendors.map((v) => v.id);
+      const primaryId = vendors.find((v) => v.isPrimary)?.id;
+      out[t.id] = {};
+      for (const v of vendors) {
+        if (v.isEngine) continue;
+        const lines = [
+          ...(v.isPrimary ? techCalcLines[t.id] ?? [] : []),
+          ...linesForVendor(customLineItems, t.id, v.id, enabledIds, primaryId),
+        ];
+        out[t.id][v.id] = calculateTechBOM(t.id, lines, { includeShipping, shippingPercent });
+      }
+    }
+    return out;
+  }, [techTabs, techVendorMap, techCalcLines, customLineItems, includeShipping, shippingPercent]);
 
   const cameraBom = useMemo(
     () =>
@@ -324,10 +458,16 @@ function Calculator() {
   // Generic technology pages store their picked/custom lines in the same
   // customLineItems bucket, keyed by the tech's registry id (the two
   // calculators keep their legacy 'wifi'/'camera' keys for saved quotes).
-  const addTechLine = (techId, line) =>
+  const addTechLine = (techId, line, vendorId = null) =>
     setCustomLineItems((prev) => [
       ...prev,
-      { id: newCustomId(), system: techId, segment: 'Accessories', ...line },
+      {
+        id: newCustomId(),
+        system: techId,
+        segment: 'Accessories',
+        ...(vendorId ? { vendor: vendorId } : {}),
+        ...line,
+      },
     ]);
   const term = getTerminology(inputs.propertyType);
 
@@ -341,14 +481,37 @@ function Calculator() {
   const activeTech = techTabs.find((t) => t.id === tab) ?? null;
 
   // Each technology page has its own sub-tabs: Overview (that tech's
-  // summary + exports), the design surface (named after the tech), and a
-  // Product Database preset to that tech. Keyed by tech id so switching
-  // technologies always lands on the sub-overview.
-  const [subTabState, setSubTabState] = useState({ techId: null, id: 'overview' });
+  // summary + exports), the design surface — one tab per enabled VENDOR when
+  // the tech has a vendor registry, else a single tab named after the tech —
+  // and a Product Database preset to that tech (and vendor). Keyed by tech
+  // id so switching technologies always lands on the sub-overview.
+  const [subTabState, setSubTabState] = useState({ techId: null, id: 'overview', vendorId: null });
   const subTab = activeTech && subTabState.techId === activeTech.id ? subTabState.id : 'overview';
-  const setSubTab = (id) => setSubTabState({ techId: activeTech?.id ?? null, id });
+  const setSubTab = (id, vendorId = null) =>
+    setSubTabState({ techId: activeTech?.id ?? null, id, vendorId });
 
   const activeCalc = activeTech ? getCalculator(activeTech.id) : null;
+  const activeTechVendors = activeTech ? techVendorMap[activeTech.id] ?? [] : [];
+  const vendored = activeTechVendors.length > 0;
+  const activeVendor =
+    vendored && subTab.startsWith('vendor:')
+      ? activeTechVendors.find((v) => `vendor:${v.id}` === subTab) ?? null
+      : null;
+  // Which surface hosts the legacy calculator UI (rail + Body): the engine
+  // vendor's tab when vendored, the classic 'builder' tab otherwise.
+  const engineSurface = activeCalc?.legacy
+    ? vendored
+      ? activeVendor?.isEngine === true
+      : subTab === 'builder'
+    : false;
+  // Standard (non-legacy) calculators design into the primary vendor's tab.
+  const showCalcRail =
+    !!activeCalc &&
+    (activeCalc.legacy
+      ? engineSurface
+      : vendored
+        ? activeVendor?.isPrimary === true
+        : subTab === 'builder');
   const onCameras = activeCalc?.legacy === 'camera';
   const onWifi = activeCalc?.legacy === 'wifi';
   const dashView = onWifi ? 'wifi' : onCameras ? 'cameras' : 'both';
@@ -446,20 +609,30 @@ function Calculator() {
   }, [searchParams, projects, crmAccounts]);
 
   const round2 = (n) => Math.round(n * 100) / 100;
-  const genericPrice = Object.values(techBoms).reduce((s, tb) => s + (tb.grandTotalPrice ?? 0), 0);
-  const genericCost  = Object.values(techBoms).reduce((s, tb) => s + (tb.grandTotalCost ?? 0), 0);
-  const buildStatePayload = () => ({
-    projectName: inputs.propertyName,
-    inputs,
-    cameraInputs,
-    priceOverrides,
-    customLineItems,
-    laborRoles,
-    crmAccountId: currentCrmAccountId,
-    propertyId: currentPropertyId,
-    totalPrice: round2((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0) + genericPrice),
-    totalCost:  round2((bom.grandTotalCost ?? 0) + (cameraBom.grandTotalCost ?? 0) + genericCost),
-  });
+  // Saved quote totals = the primary sections only — an Option-B alternate
+  // is the same system quoted twice and must never inflate total_price.
+  const primaryTotals = () => {
+    const secs = exportSections().filter((s) => !s.isLabor);
+    return {
+      price: round2(secs.reduce((sum, s) => sum + (s.bom.grandTotalPrice ?? 0), 0)),
+      cost: round2(secs.reduce((sum, s) => sum + (s.bom.grandTotalCost ?? 0), 0)),
+    };
+  };
+  const buildStatePayload = () => {
+    const totals = primaryTotals();
+    return {
+      projectName: inputs.propertyName,
+      inputs,
+      cameraInputs,
+      priceOverrides,
+      customLineItems,
+      laborRoles,
+      crmAccountId: currentCrmAccountId,
+      propertyId: currentPropertyId,
+      totalPrice: totals.price,
+      totalCost: totals.cost,
+    };
+  };
 
   // The Project/Property Name IS the property: find it (case-insensitive)
   // among the chosen customer's properties, or create it on the fly. Keeps
@@ -562,14 +735,15 @@ function Calculator() {
   // generation) can read the parts list from the DB. Client-side recompute
   // (lib/calculateBOM.js) remains the source of truth while drafting.
   const buildBomSnapshot = () => {
-    const lines = [
-      ...bom.items.map((i) => ({ ...i, system: 'managed_wifi' })),
-      ...cameraBom.items.map((i) => ({ ...i, system: 'video_surveillance' })),
-      ...Object.entries(techBoms).flatMap(([techId, tb]) =>
-        tb.items.map((i) => ({ ...i, system: techId }))
-      ),
-    ];
-    return lines
+    // Built from the primary sections: alternates (Option B) never reach
+    // installed equipment or asset generation. vendor + source ride along
+    // as the future purchase-order grouping keys.
+    const catalogBySku = new Map(allProducts.map((p) => [p.sku, p]));
+    return exportSections()
+      .filter((s) => !s.isLabor)
+      .flatMap((s) =>
+        s.bom.items.map((i) => ({ ...i, system: s.techId, vendorName: s.vendorName ?? null }))
+      )
       .filter((i) => (i.qty ?? 0) > 0)
       .map((i) => ({
         system: i.system,
@@ -579,6 +753,8 @@ function Calculator() {
         qty: i.qty,
         unitPrice: i.unitPrice ?? 0,
         totalPrice: i.totalPrice ?? 0,
+        vendor: i.vendorName ?? (i.sku ? catalogBySku.get(i.sku)?.vendor || null : null),
+        source: i.sku ? catalogBySku.get(i.sku)?.preferred_vendor || null : null,
       }));
   };
 
@@ -634,23 +810,60 @@ function Calculator() {
   // Professional Labor last. This array is the single seam feeding the
   // Overview summary, exportPDF, exportProposal, and exportCSV. The Wi-Fi
   // and Camera labels are kept for the proposal PDF's scope grouping.
-  const sectionForTech = (t) => {
+  // One section per enabled technology — or per enabled VENDOR on vendored
+  // techs (primary first). With ≥2 vendors the sections carry optionGroup/
+  // isPrimary so consumers can treat alternates as Option B rather than
+  // additive dollars; a single enabled vendor stays plain (legacy shape).
+  const sectionsForTech = (t) => {
     const legacy = getCalculator(t.id)?.legacy;
-    if (legacy === 'wifi') {
-      return { title: t.label, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term) };
-    }
-    if (legacy === 'camera') {
-      return cameraBom.totalCameras > 0
-        ? { title: t.label, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom) }
+    const vendors = techVendorMap[t.id] ?? [];
+    const wifiSection = (title) => ({ title, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term), techId: t.id });
+    const cameraSection = (title) =>
+      cameraBom.totalCameras > 0
+        ? { title, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom), techId: t.id }
         : null;
+
+    if (vendors.length === 0) {
+      if (legacy === 'wifi') return [wifiSection(t.label)];
+      if (legacy === 'camera') {
+        const s = cameraSection(t.label);
+        return s ? [s] : [];
+      }
+      const tb = techBoms[t.id];
+      return tb && (tb.items.length > 0 || tb.serviceItems.length > 0)
+        ? [{ title: t.label, label: t.label, bom: tb, techId: t.id }]
+        : [];
     }
-    const tb = techBoms[t.id];
-    return tb && (tb.items.length > 0 || tb.serviceItems.length > 0)
-      ? { title: t.label, label: t.label, bom: tb }
-      : null;
+
+    const multi = vendors.length > 1;
+    const ordered = [...vendors].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+    const out = [];
+    for (const v of ordered) {
+      const title = multi ? `${t.label} — ${v.name}` : t.label;
+      let s = null;
+      if (v.isEngine && legacy === 'wifi') s = wifiSection(title);
+      else if (v.isEngine && legacy === 'camera') s = cameraSection(title);
+      else {
+        const vb = vendorBoms[t.id]?.[v.id];
+        if (vb && (vb.items.length > 0 || vb.serviceItems.length > 0)) {
+          s = { title, label: t.label, bom: vb, techId: t.id };
+        }
+      }
+      if (!s) continue;
+      out.push(
+        multi
+          ? { ...s, optionGroup: t.id, isPrimary: v.isPrimary, vendorId: v.id, vendorName: v.name }
+          : s
+      );
+    }
+    return out;
   };
+  // TEMP (multi-vendor commit B): documents and totals carry primary options
+  // only. Commit C teaches CostSummary/exportPDF/exportProposal/exportCSV to
+  // render alternates as badged Option B + comparison tables, then lifts
+  // this filter.
   const exportSections = () => {
-    const list = techTabs.map(sectionForTech).filter(Boolean);
+    const list = techTabs.flatMap(sectionsForTech).filter((s) => !s.optionGroup || s.isPrimary);
     if (labor.serviceItems.length > 0) {
       list.push({ title: 'Professional Labor', label: 'Labor', isLabor: true, bom: labor });
     }
@@ -676,15 +889,17 @@ function Calculator() {
   // Per-technology documents from a tech page's sub-overview — just that
   // system's section (labor stays on the whole-proposal exports).
   const techFileSuffix = (t) => `${t.label.replace(/[^a-zA-Z0-9]/g, '')}_Quote`;
+  // TEMP filter mirrors exportSections until commit C renders alternates.
+  const techDocSections = (t) => sectionsForTech(t).filter((s) => !s.optionGroup || s.isPrimary);
   const handleExportTechCSV = (t) => {
-    const s = sectionForTech(t);
-    if (!s) { setToast({ type: 'error', message: `Nothing on the ${t.label} quote yet.` }); return; }
-    exportCSV(inputs, [s], { fileSuffix: techFileSuffix(t), companyName: branding.companyName });
+    const secs = techDocSections(t);
+    if (secs.length === 0) { setToast({ type: 'error', message: `Nothing on the ${t.label} quote yet.` }); return; }
+    exportCSV(inputs, secs, { fileSuffix: techFileSuffix(t), companyName: branding.companyName });
   };
   const handleExportTechPDF = (t) => {
-    const s = sectionForTech(t);
-    if (!s) { setToast({ type: 'error', message: `Nothing on the ${t.label} quote yet.` }); return; }
-    exportPDF(inputs, [s], {
+    const secs = techDocSections(t);
+    if (secs.length === 0) { setToast({ type: 'error', message: `Nothing on the ${t.label} quote yet.` }); return; }
+    exportPDF(inputs, secs, {
       title: `${t.label} — Budgetary Quote`,
       footerLabel: t.label,
       fileSuffix: techFileSuffix(t),
@@ -851,7 +1066,7 @@ function Calculator() {
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6 lg:flex-row">
-        {activeCalc && subTab === 'builder' && (
+        {showCalcRail && (
           <aside className="w-full shrink-0 lg:w-[350px]">
             <activeCalc.InputPanel
               value={techCalcValue(activeTech.id)}
@@ -870,12 +1085,14 @@ function Calculator() {
             <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
               {[
                 { id: 'overview', label: 'Overview' },
-                { id: 'builder', label: activeTech.label },
+                ...(vendored
+                  ? activeTechVendors.map((v) => ({ id: `vendor:${v.id}`, label: v.name }))
+                  : [{ id: 'builder', label: activeTech.label }]),
                 { id: 'products', label: 'Product Database' },
               ].map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => setSubTab(t.id)}
+                  onClick={() => setSubTab(t.id, t.id === 'products' ? activeVendor?.id ?? null : null)}
                   className={cn(
                     'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all',
                     subTab === t.id
@@ -926,13 +1143,26 @@ function Calculator() {
                   canViewMargin={canViewMargin}
                 />
               )}
+              <TechVendorsCard
+                tech={activeTech}
+                registry={companyTechVendors(company, activeTech.id)}
+                quoteVendors={activeTechVendors}
+                hasEngine={!!activeCalc?.legacy}
+                isAdmin={configured ? isAdmin : true}
+                canWrite={!isViewer}
+                onAddVendor={(name) => addTechVendor(activeTech.id, name)}
+                onRenameVendor={(id, name) => renameTechVendor(activeTech.id, id, name)}
+                onRemoveVendor={(id) => removeTechVendor(activeTech.id, id)}
+                onToggleVendor={(v, on) => setTechVendorEnabled(activeTech.id, v, on)}
+                onSetPrimary={(id) => setTechVendorPrimary(activeTech.id, id)}
+              />
               {(() => {
-                const s = sectionForTech(activeTech);
-                return s ? (
-                  <CostSummary sections={[s]} canViewMargin={canViewMargin} />
+                const secs = techDocSections(activeTech);
+                return secs.length > 0 ? (
+                  <CostSummary sections={secs} canViewMargin={canViewMargin} />
                 ) : (
                   <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
-                    Nothing quoted for {activeTech.label} yet — open the {activeTech.label} tab to start designing.
+                    Nothing quoted for {activeTech.label} yet — open the {vendored ? 'vendor' : activeTech.label} tab to start designing.
                   </div>
                 );
               })()}
@@ -978,28 +1208,40 @@ function Calculator() {
               busy={busy}
             />
           )}
-          {activeTech && subTab === 'builder' && (
-            activeCalc?.Body ? (
-              <activeCalc.Body ctx={calcCtx} />
-            ) : (
+          {activeTech && engineSurface && activeCalc?.Body && <activeCalc.Body ctx={calcCtx} />}
+          {activeTech &&
+            (vendored
+              ? activeVendor && !activeVendor.isEngine
+              : subTab === 'builder' && !activeCalc?.Body) && (
               <TechnologyPage
                 techId={activeTech.id}
                 label={activeTech.label}
+                vendorName={activeVendor?.name ?? ''}
                 products={allProducts}
-                computedLines={techCalcLines[activeTech.id] ?? []}
-                lines={customLineItems.filter((c) => c.system === activeTech.id)}
-                bom={techBoms[activeTech.id]}
+                computedLines={!vendored || activeVendor?.isPrimary ? techCalcLines[activeTech.id] ?? [] : []}
+                lines={
+                  vendored
+                    ? linesForVendor(
+                        customLineItems,
+                        activeTech.id,
+                        activeVendor.id,
+                        activeTechVendors.map((v) => v.id),
+                        activeTechVendors.find((v) => v.isPrimary)?.id
+                      )
+                    : customLineItems.filter((c) => c.system === activeTech.id)
+                }
+                bom={vendored ? vendorBoms[activeTech.id]?.[activeVendor.id] : techBoms[activeTech.id]}
                 canViewMargin={canViewMargin}
-                onAddLine={(line) => addTechLine(activeTech.id, line)}
+                onAddLine={(line) => addTechLine(activeTech.id, line, activeVendor?.id ?? null)}
                 onUpdateLine={updateCustomLine}
                 onRemoveLine={removeCustomLine}
               />
-            )
-          )}
+            )}
           {activeTech && subTab === 'products' && (
             <ProductDatabase
-              key={`techdb-${activeTech.id}`}
+              key={`techdb-${activeTech.id}-${subTabState.vendorId ?? 'all'}`}
               initialTechFilter={activeTech.id}
+              initialVendorFilter={activeTechVendors.find((v) => v.id === subTabState.vendorId)?.name ?? ''}
               allProducts={allProducts}
               canManageCatalog={canManageCatalog}
               canViewMargin={canViewMargin}
