@@ -68,7 +68,7 @@ export async function PATCH(request) {
   const { error, svc, companyId } = await requireManager(request);
   if (error) return error;
   const body = await request.json();
-  const { sku, description, category, cost, price, vendor = '', preferred_vendor = '' } = body;
+  const { sku, description, category, cost, price } = body;
   if (!sku) return json({ error: 'Missing sku' }, 400);
 
   // Upsert per (company_id, sku): editing a base product writes/updates an
@@ -87,8 +87,12 @@ export async function PATCH(request) {
         category,
         cost,
         price,
-        vendor,
-        preferred_vendor,
+        // Vendor + Source/Distributor get the same preserve-guard as
+        // product_line/technology — a re-import without those columns must
+        // never blank the catalog's vendor data (they now drive the
+        // Builder's per-vendor tabs).
+        ...('vendor' in body ? { vendor: body.vendor } : {}),
+        ...('preferred_vendor' in body ? { preferred_vendor: body.preferred_vendor } : {}),
         ...('product_line' in body ? { product_line: body.product_line } : {}),
         // Same preserve-guard as product_line: only touch technology when the
         // caller sent it, so legacy CSV re-imports never blank it.

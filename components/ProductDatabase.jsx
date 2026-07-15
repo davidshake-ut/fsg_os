@@ -33,6 +33,7 @@ export default function ProductDatabase({
   canViewMargin = true,
   company = null, // resolves custom-technology labels
   initialTechFilter = '', // per-tech sub pages preset this (remount via key)
+  initialVendorFilter = '', // vendor tabs preset this (remount via key)
   teams = null, // super-admin only: [{ id, name }] to enable the team filter
   teamFilter = 'all',
   onTeamFilterChange,
@@ -40,6 +41,8 @@ export default function ProductDatabase({
   const [search, setSearch] = useState('');
   const [techFilter, setTechFilter] = useState(initialTechFilter);
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [vendorFilter, setVendorFilter] = useState(initialVendorFilter);
+  const [sourceFilter, setSourceFilter] = useState('');
   const [sortKey, setSortKey] = useState(null); // 'sku' | 'desc' | 'category' | 'technology'
   const [sortDir, setSortDir] = useState('asc');
   const [importing, setImporting] = useState(false);
@@ -92,6 +95,16 @@ export default function ProductDatabase({
 
   const labelOf = (p) => techLabel(p.technology || 'managed_wifi', company);
 
+  // Distinct vendor / source values present in the catalog (filter options).
+  const vendors = useMemo(
+    () => [...new Set(allProducts.map((p) => p.vendor).filter(Boolean))].sort(),
+    [allProducts]
+  );
+  const sources = useMemo(
+    () => [...new Set(allProducts.map((p) => p.preferred_vendor).filter(Boolean))].sort(),
+    [allProducts]
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = allProducts;
@@ -101,11 +114,14 @@ export default function ProductDatabase({
           p.sku.toLowerCase().includes(q) ||
           p.desc.toLowerCase().includes(q) ||
           p.category.toLowerCase().includes(q) ||
+          (p.vendor || '').toLowerCase().includes(q) ||
           labelOf(p).toLowerCase().includes(q)
       );
     }
     if (techFilter) list = list.filter((p) => (p.technology || 'managed_wifi') === techFilter);
     if (categoryFilter) list = list.filter((p) => p.category === categoryFilter);
+    if (vendorFilter) list = list.filter((p) => p.vendor === vendorFilter);
+    if (sourceFilter) list = list.filter((p) => p.preferred_vendor === sourceFilter);
     if (sortKey) {
       const dir = sortDir === 'asc' ? 1 : -1;
       const val = (p) => (sortKey === 'desc' ? p.desc : sortKey === 'technology' ? labelOf(p) : p[sortKey]) || '';
@@ -115,7 +131,7 @@ export default function ProductDatabase({
     }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allProducts, search, techFilter, categoryFilter, sortKey, sortDir, company]);
+  }, [allProducts, search, techFilter, categoryFilter, vendorFilter, sourceFilter, sortKey, sortDir, company]);
 
   const sortHeader = (key, label, align = 'left') => (
     <th className={`px-4 py-2 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
@@ -175,6 +191,34 @@ export default function ProductDatabase({
               </option>
             ))}
           </select>
+          {vendors.length > 0 && (
+            <select
+              value={vendorFilter}
+              onChange={(e) => setVendorFilter(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            >
+              <option value="">All Vendors</option>
+              {vendors.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          )}
+          {sources.length > 0 && (
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            >
+              <option value="">All Sources</option>
+              {sources.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          )}
           {teams && teams.length > 0 && (
             <select
               value={teamFilter}
@@ -239,6 +283,8 @@ export default function ProductDatabase({
               {sortHeader('desc', 'Description')}
               {sortHeader('technology', 'Category')}
               {sortHeader('category', 'Subcategory')}
+              {sortHeader('vendor', 'Vendor')}
+              {sortHeader('preferred_vendor', 'Source / Distributor')}
               <th className="px-4 py-2 text-left font-medium">Product Line</th>
               {canViewMargin && <th className="px-4 py-2 text-right font-medium">Cost</th>}
               <th className="px-4 py-2 text-right font-medium">Price</th>
@@ -248,7 +294,7 @@ export default function ProductDatabase({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-400">
                   No products match the current search/filter.
                 </td>
               </tr>
@@ -263,10 +309,6 @@ export default function ProductDatabase({
                 </td>
                 <td className="px-4 py-2">
                   <div className="text-slate-700">{p.desc}</div>
-                  {p.vendor && <div className="mt-0.5 text-xs text-slate-400">{p.vendor}</div>}
-                  {p.preferred_vendor && (
-                    <div className="mt-0.5 text-xs text-slate-400">via {p.preferred_vendor}</div>
-                  )}
                 </td>
                 <td className="px-4 py-2">
                   <Badge className="border-indigo-200 bg-indigo-50 text-indigo-600">{labelOf(p)}</Badge>
@@ -274,6 +316,8 @@ export default function ProductDatabase({
                 <td className="px-4 py-2">
                   <Badge className="border-slate-200 bg-slate-50 text-slate-500">{p.category}</Badge>
                 </td>
+                <td className="px-4 py-2 text-slate-600">{p.vendor || <span className="text-slate-300">—</span>}</td>
+                <td className="px-4 py-2 text-slate-500">{p.preferred_vendor || <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2 text-slate-500">{p.product_line || <span className="text-slate-300">—</span>}</td>
                 {canViewMargin && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.cost)}</td>}
                 <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.price)}</td>

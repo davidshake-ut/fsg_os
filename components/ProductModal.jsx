@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import { Card, Button, Field, TextInput, NumberInput, Select } from '@/components/ui/primitives';
 import { PRODUCT_CATEGORIES } from '@/lib/catalog';
 import { BUILTIN_TECHNOLOGIES, companyTechnologies } from '@/lib/technologies';
+import { companyTechVendors } from '@/lib/vendors';
 
 const EMPTY = { sku: '', description: '', category: 'Access Point', technology: 'managed_wifi', cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '' };
 
@@ -30,6 +31,15 @@ export default function ProductModal({ open, product, clone = false, onClose, on
   const [form, setForm] = useState(() => initialForm(product, defaultTechnology));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  // When the product's technology has registry vendors, Vendor renders as a
+  // Select of those names; "Other…" (or a pre-existing non-registry value)
+  // switches to free text so arbitrary manufacturers keep working.
+  const [vendorFreeText, setVendorFreeText] = useState(() => {
+    const v = product?.vendor ?? '';
+    if (!v) return false;
+    return !companyTechVendors(company, product?.technology || defaultTechnology || 'managed_wifi')
+      .some((entry) => entry.name === v);
+  });
 
   useEffect(() => {
     const onKey = (e) => {
@@ -103,10 +113,42 @@ export default function ProductModal({ open, product, clone = false, onClose, on
               ))}
             </Select>
           </Field>
-          <Field label="Manufacturer">
-            <TextInput value={form.vendor} onChange={(e) => set('vendor', e.target.value)} placeholder="e.g. Cambium Networks, Vertiv…" />
-          </Field>
-          <Field label="Preferred Vendor (Distributor)">
+          {(() => {
+            const registryVendors = companyTechVendors(company, form.technology).map((v) => v.name);
+            const useSelect = registryVendors.length > 0 && !vendorFreeText;
+            return (
+              <Field label="Vendor" sub="Manufacturer — drives this technology's vendor tabs in the Builder">
+                {useSelect ? (
+                  <Select
+                    value={registryVendors.includes(form.vendor) ? form.vendor : ''}
+                    onChange={(e) => {
+                      if (e.target.value === '__other__') {
+                        setVendorFreeText(true);
+                        set('vendor', '');
+                      } else {
+                        set('vendor', e.target.value);
+                      }
+                    }}
+                  >
+                    <option value="">— none —</option>
+                    {registryVendors.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                    <option value="__other__">Other…</option>
+                  </Select>
+                ) : (
+                  <TextInput
+                    value={form.vendor}
+                    onChange={(e) => set('vendor', e.target.value)}
+                    placeholder="e.g. Cambium Networks, Ruckus, Vertiv…"
+                  />
+                )}
+              </Field>
+            );
+          })()}
+          <Field label="Source / Distributor" sub="Where you buy it — groups future purchase orders">
             <TextInput value={form.preferred_vendor} onChange={(e) => set('preferred_vendor', e.target.value)} placeholder="e.g. Anixter, ScanSource, Graybar…" />
           </Field>
           <Field label="Product Line" sub="Drives automatic Cost calculation — see Settings → Pricing">

@@ -16,12 +16,41 @@ describe('parseCSV', () => {
 
 describe('parseCatalogCSV — canonical template', () => {
   const csv = ['SKU,Description,Category,Cost,Price', 'CAM-X,Test Cam,Camera,100,250'].join('\n');
-  it('maps columns and numbers', () => {
+  it('maps columns and numbers — vendor keys OMITTED when the columns are absent', () => {
     const { products, errors } = parseCatalogCSV(csv);
     expect(errors).toEqual([]);
     expect(products).toEqual([
-      { sku: 'CAM-X', description: 'Test Cam', category: 'Camera', cost: 100, price: 250, vendor: '', preferred_vendor: '' },
+      { sku: 'CAM-X', description: 'Test Cam', category: 'Camera', cost: 100, price: 250 },
     ]);
+    // The preserve-guards depend on the keys not existing at all:
+    expect('vendor' in products[0]).toBe(false);
+    expect('preferred_vendor' in products[0]).toBe(false);
+  });
+
+  it('parses Vendor and Source / Distributor headers (and legacy aliases)', () => {
+    const modern = [
+      'SKU,Description,Category,Price,Vendor,Source / Distributor',
+      'AP-9,Thing,Access Point,100,Ruckus,ScanSource',
+    ].join('\n');
+    expect(parseCatalogCSV(modern).products[0]).toMatchObject({
+      vendor: 'Ruckus',
+      preferred_vendor: 'ScanSource',
+    });
+
+    const legacy = [
+      'SKU,Description,Category,Price,Manufacturer,Preferred Vendor',
+      'AP-9,Thing,Access Point,100,Cambium Networks,Anixter',
+    ].join('\n');
+    expect(parseCatalogCSV(legacy).products[0]).toMatchObject({
+      vendor: 'Cambium Networks',
+      preferred_vendor: 'Anixter',
+    });
+  });
+
+  it('a present-but-empty vendor cell still sends "" so intentional clearing works', () => {
+    const csv = ['SKU,Description,Category,Price,Vendor', 'AP-9,Thing,Access Point,100,'].join('\n');
+    const { products } = parseCatalogCSV(csv);
+    expect(products[0].vendor).toBe('');
   });
 });
 
