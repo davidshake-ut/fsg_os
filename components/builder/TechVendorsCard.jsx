@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Factory, Plus, Pencil, Trash2, Check, X, Cpu } from 'lucide-react';
-import { Card, Button, TextInput, Badge } from '@/components/ui/primitives';
+import { Card, Button, TextInput, Select, Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
 // Per-technology vendor manager, mounted on the tech page's sub-overview.
@@ -85,6 +85,7 @@ export default function TechVendorsCard({
   tech,                 // { id, label }
   registry = [],        // companyTechVendors(company, tech.id)
   quoteVendors = [],    // resolveQuoteVendors(...) — enabled on this quote
+  catalogVendors = [],  // distinct Vendor values present in the Product Database
   hasEngine = false,    // tech has the legacy wifi/camera calculator
   isAdmin = false,
   canWrite = true,
@@ -96,18 +97,31 @@ export default function TechVendorsCard({
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newVendorMode, setNewVendorMode] = useState(false); // free-text escape hatch
 
   const enabledIds = new Set(quoteVendors.map((v) => v.id));
   const primaryId = quoteVendors.find((v) => v.isPrimary)?.id ?? null;
   const orphaned = quoteVendors.filter((v) => !registry.some((r) => r.id === v.id));
   const multi = quoteVendors.length > 1;
 
+  // Pick from vendors already tagged on products (minus ones registered
+  // here) — typing risks a name that doesn't match the catalog. "New
+  // vendor…" covers brands with no tagged products yet.
+  const registered = new Set(registry.map((r) => r.name));
+  const pickable = catalogVendors.filter((v) => !registered.has(v));
+  const useDropdown = pickable.length > 0 && !newVendorMode;
+
+  const closeAdd = () => {
+    setAdding(false);
+    setNewName('');
+    setNewVendorMode(false);
+  };
+
   const submitAdd = () => {
     const name = newName.trim();
     if (!name) return;
     onAddVendor(name);
-    setNewName('');
-    setAdding(false);
+    closeAdd();
   };
 
   return (
@@ -132,21 +146,45 @@ export default function TechVendorsCard({
 
       {adding && (
         <div className="mb-3 flex items-center gap-2">
-          <TextInput
-            className="h-8 flex-1 text-sm"
-            placeholder={SUGGESTED_FIRST[tech.id] && registry.length === 0
-              ? `e.g. ${SUGGESTED_FIRST[tech.id]} (matches the built-in catalog)`
-              : 'Vendor name — matches the Vendor field on products'}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); submitAdd(); }
-              if (e.key === 'Escape') { setAdding(false); setNewName(''); }
-            }}
-            autoFocus
-          />
+          {useDropdown ? (
+            <Select
+              className="h-8 flex-1 text-sm"
+              value={newName}
+              onChange={(e) => {
+                if (e.target.value === '__new__') {
+                  setNewVendorMode(true);
+                  setNewName('');
+                } else {
+                  setNewName(e.target.value);
+                }
+              }}
+              autoFocus
+            >
+              <option value="">— choose a vendor from the Product Database —</option>
+              {pickable.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+              <option value="__new__">New vendor…</option>
+            </Select>
+          ) : (
+            <TextInput
+              className="h-8 flex-1 text-sm"
+              placeholder={SUGGESTED_FIRST[tech.id] && registry.length === 0
+                ? `e.g. ${SUGGESTED_FIRST[tech.id]} (matches the built-in catalog)`
+                : 'Vendor name — matches the Vendor field on products'}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); submitAdd(); }
+                if (e.key === 'Escape') closeAdd();
+              }}
+              autoFocus
+            />
+          )}
           <Button size="sm" onClick={submitAdd} disabled={!newName.trim()}>Add</Button>
-          <Button variant="outline" size="sm" onClick={() => { setAdding(false); setNewName(''); }}>Cancel</Button>
+          <Button variant="outline" size="sm" onClick={closeAdd}>Cancel</Button>
         </div>
       )}
 

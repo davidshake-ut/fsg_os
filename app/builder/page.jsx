@@ -1147,6 +1147,7 @@ function Calculator() {
                 tech={activeTech}
                 registry={companyTechVendors(company, activeTech.id)}
                 quoteVendors={activeTechVendors}
+                catalogVendors={[...new Set(allProducts.map((p) => p.vendor).filter(Boolean))].sort()}
                 hasEngine={!!activeCalc?.legacy}
                 isAdmin={configured ? isAdmin : true}
                 canWrite={!isViewer}
