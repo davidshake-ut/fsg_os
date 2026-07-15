@@ -147,7 +147,7 @@ function Calculator() {
   const [toProjectOpen,  setToProjectOpen]  = useState(false);
   const [newPsaProjectId, setNewPsaProjectId] = useState(null);
   const [toProjectBusy,  setToProjectBusy]  = useState(false);
-  const [toProjectForm,  setToProjectForm]  = useState({ name: '', customer_name: '', start_date: '', budget: '', useTemplate: true });
+  const [toProjectForm,  setToProjectForm]  = useState({ name: '', customer_name: '', start_date: '', budget: '', equipment: null, laborBudget: null, useTemplate: true });
 
   // The PSA project this proposal (or its property — one project per
   // property, migration 0040) already spawned, if any. Drives the header's
@@ -612,6 +612,68 @@ function Calculator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, projects, crmAccounts]);
 
+  // One section per enabled technology — or per enabled VENDOR on vendored
+  // techs (primary first). With ≥2 vendors the sections carry optionGroup/
+  // isPrimary so consumers can treat alternates as Option B rather than
+  // additive dollars; a single enabled vendor stays plain (legacy shape).
+  // (Declared before the totals helpers below — the React Compiler rejects
+  // forward references.)
+  const sectionsForTech = (t) => {
+    const legacy = getCalculator(t.id)?.legacy;
+    const vendors = techVendorMap[t.id] ?? [];
+    const wifiSection = (title) => ({ title, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term), techId: t.id });
+    const cameraSection = (title) =>
+      cameraBom.totalCameras > 0
+        ? { title, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom), techId: t.id }
+        : null;
+
+    if (vendors.length === 0) {
+      if (legacy === 'wifi') return [wifiSection(t.label)];
+      if (legacy === 'camera') {
+        const s = cameraSection(t.label);
+        return s ? [s] : [];
+      }
+      const tb = techBoms[t.id];
+      return tb && (tb.items.length > 0 || tb.serviceItems.length > 0)
+        ? [{ title: t.label, label: t.label, bom: tb, techId: t.id }]
+        : [];
+    }
+
+    const multi = vendors.length > 1;
+    const ordered = [...vendors].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+    const out = [];
+    for (const v of ordered) {
+      const title = multi ? `${t.label} — ${v.name}` : t.label;
+      let s = null;
+      if (v.isEngine && legacy === 'wifi') s = wifiSection(title);
+      else if (v.isEngine && legacy === 'camera') s = cameraSection(title);
+      else {
+        const vb = vendorBoms[t.id]?.[v.id];
+        if (vb && (vb.items.length > 0 || vb.serviceItems.length > 0)) {
+          s = { title, label: t.label, bom: vb, techId: t.id };
+        }
+      }
+      if (!s) continue;
+      out.push(
+        multi
+          ? { ...s, optionGroup: t.id, isPrimary: v.isPrimary, vendorId: v.id, vendorName: v.name }
+          : s
+      );
+    }
+    return out;
+  };
+  // TEMP (multi-vendor commit B): documents and totals carry primary options
+  // only. Commit C teaches CostSummary/exportPDF/exportProposal/exportCSV to
+  // render alternates as badged Option B + comparison tables, then lifts
+  // this filter.
+  const exportSections = () => {
+    const list = techTabs.flatMap(sectionsForTech).filter((s) => !s.optionGroup || s.isPrimary);
+    if (labor.serviceItems.length > 0) {
+      list.push({ title: 'Professional Labor', label: 'Labor', isLabor: true, bom: labor });
+    }
+    return list;
+  };
+
   const round2 = (n) => Math.round(n * 100) / 100;
   // Saved quote totals = the primary sections only — an Option-B alternate
   // is the same system quoted twice and must never inflate total_price.
@@ -666,11 +728,18 @@ function Calculator() {
   const openCreateProjectModal = () => {
     const quote   = projects.find((p) => p.id === currentProjectId);
     const account = crmAccounts.find((a) => a.id === currentCrmAccountId);
+    // Budget prefill = the quote's primary sections: equipment (hardware +
+    // shipping across every technology) + the professional-labor section —
+    // carried separately so the project gets the Equipment/Labor breakdown.
+    const equipment = Math.round(primaryTotals().price);
+    const laborTotal = Math.round(labor.grandTotalPrice ?? 0);
     setToProjectForm({
       name:          quote?.project_name ?? inputs.propertyName ?? '',
       customer_name: account?.name ?? '',
       start_date:    '',
-      budget:        String(Math.round((bom.grandTotalPrice ?? 0) + (cameraBom.grandTotalPrice ?? 0))),
+      budget:        String(equipment + laborTotal),
+      equipment,
+      laborBudget:   laborTotal,
       useTemplate:   true,
     });
     setToProjectOpen(true);
@@ -814,65 +883,6 @@ function Calculator() {
   // Professional Labor last. This array is the single seam feeding the
   // Overview summary, exportPDF, exportProposal, and exportCSV. The Wi-Fi
   // and Camera labels are kept for the proposal PDF's scope grouping.
-  // One section per enabled technology — or per enabled VENDOR on vendored
-  // techs (primary first). With ≥2 vendors the sections carry optionGroup/
-  // isPrimary so consumers can treat alternates as Option B rather than
-  // additive dollars; a single enabled vendor stays plain (legacy shape).
-  const sectionsForTech = (t) => {
-    const legacy = getCalculator(t.id)?.legacy;
-    const vendors = techVendorMap[t.id] ?? [];
-    const wifiSection = (title) => ({ title, label: 'Wi-Fi', bom, kpis: wifiKpis(bom, term), techId: t.id });
-    const cameraSection = (title) =>
-      cameraBom.totalCameras > 0
-        ? { title, label: 'Camera', bom: cameraBom, kpis: cameraKpis(cameraBom), techId: t.id }
-        : null;
-
-    if (vendors.length === 0) {
-      if (legacy === 'wifi') return [wifiSection(t.label)];
-      if (legacy === 'camera') {
-        const s = cameraSection(t.label);
-        return s ? [s] : [];
-      }
-      const tb = techBoms[t.id];
-      return tb && (tb.items.length > 0 || tb.serviceItems.length > 0)
-        ? [{ title: t.label, label: t.label, bom: tb, techId: t.id }]
-        : [];
-    }
-
-    const multi = vendors.length > 1;
-    const ordered = [...vendors].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
-    const out = [];
-    for (const v of ordered) {
-      const title = multi ? `${t.label} — ${v.name}` : t.label;
-      let s = null;
-      if (v.isEngine && legacy === 'wifi') s = wifiSection(title);
-      else if (v.isEngine && legacy === 'camera') s = cameraSection(title);
-      else {
-        const vb = vendorBoms[t.id]?.[v.id];
-        if (vb && (vb.items.length > 0 || vb.serviceItems.length > 0)) {
-          s = { title, label: t.label, bom: vb, techId: t.id };
-        }
-      }
-      if (!s) continue;
-      out.push(
-        multi
-          ? { ...s, optionGroup: t.id, isPrimary: v.isPrimary, vendorId: v.id, vendorName: v.name }
-          : s
-      );
-    }
-    return out;
-  };
-  // TEMP (multi-vendor commit B): documents and totals carry primary options
-  // only. Commit C teaches CostSummary/exportPDF/exportProposal/exportCSV to
-  // render alternates as badged Option B + comparison tables, then lifts
-  // this filter.
-  const exportSections = () => {
-    const list = techTabs.flatMap(sectionsForTech).filter((s) => !s.optionGroup || s.isPrimary);
-    if (labor.serviceItems.length > 0) {
-      list.push({ title: 'Professional Labor', label: 'Labor', isLabor: true, bom: labor });
-    }
-    return list;
-  };
 
   const presentTitles = exportSections().filter((s) => !s.isLabor).map((s) => s.title);
   const systemsTitle = presentTitles.length > 2
@@ -1386,6 +1396,8 @@ function Calculator() {
                       customer_name:  toProjectForm.customer_name.trim() || null,
                       start_date:     toProjectForm.start_date || null,
                       budget:         toProjectForm.budget ? Number(toProjectForm.budget) : null,
+                      equipment_budget: toProjectForm.equipment ?? null,
+                      labor_budget:     toProjectForm.laborBudget ?? null,
                       quote_id:       currentProjectId,
                       crm_account_id: currentCrmAccountId,
                       property_id:    currentPropertyId,

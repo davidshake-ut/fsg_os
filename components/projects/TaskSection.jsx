@@ -228,32 +228,23 @@ function TaskChecklist({ items, onAdd, onToggle, onDelete }) {
 }
 
 // ── DependencyPicker ─────────────────────────────────────────────────────────
-// Only guards against a direct A↔B cycle (excludes tasks that already depend
-// on this one from the candidate list) — deeper cycles (A→B→C→A) aren't
-// detected, which would need full graph traversal.
-function DependencyPicker({ task, allProjectTasks, onUpdate }) {
+// Both phrasings of the same edge: "Starts after" edits THIS task's
+// depends_on; "Blocks" writes this task's id into the OTHER task's
+// depends_on (…must start after this one). Only direct A↔B cycles are
+// guarded here; deeper cycles are tolerated by the cascade's bounded pass.
+function DependencyChips({ label, chips, onRemove, candidates, onAdd, addHint }) {
   const [open, setOpen] = useState(false);
-  const dependsOn = task.depends_on ?? [];
-  const deps = dependsOn.map((id) => (allProjectTasks ?? []).find((t) => t.id === id)).filter(Boolean);
-  const candidates = (allProjectTasks ?? []).filter(
-    (t) => t.id !== task.id && !dependsOn.includes(t.id) && !(t.depends_on ?? []).includes(task.id)
-  );
-
-  const addDep = (id) => onUpdate(task.id, { depends_on: [...dependsOn, id] });
-  const removeDep = (id) => onUpdate(task.id, { depends_on: dependsOn.filter((d) => d !== id) });
-
-  if (deps.length === 0 && candidates.length === 0) return null;
-
+  if (chips.length === 0 && candidates.length === 0) return null;
   return (
     <div>
       <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-        <Link2 size={10} /> Depends on
+        <Link2 size={10} /> {label}
       </p>
       <div className="flex flex-wrap items-center gap-1.5">
-        {deps.map((d) => (
+        {chips.map((d) => (
           <span key={d.id} className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
             {d.title}
-            <button type="button" onClick={() => removeDep(d.id)} className="text-amber-400 hover:text-amber-700">
+            <button type="button" onClick={() => onRemove(d.id)} className="text-amber-400 hover:text-amber-700">
               <X size={10} />
             </button>
           </span>
@@ -263,6 +254,7 @@ function DependencyPicker({ task, allProjectTasks, onUpdate }) {
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
+              title={addHint}
               className="flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-[11px] text-slate-400 hover:border-blue-300 hover:text-blue-500"
             >
               <Plus size={10} /> Add
@@ -276,7 +268,7 @@ function DependencyPicker({ task, allProjectTasks, onUpdate }) {
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => { addDep(c.id); setOpen(false); }}
+                    onClick={() => { onAdd(c.id); setOpen(false); }}
                     className="w-full truncate rounded-lg px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700"
                   >
                     {c.title}
@@ -287,6 +279,53 @@ function DependencyPicker({ task, allProjectTasks, onUpdate }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function DependencyPicker({ task, allProjectTasks, onUpdate }) {
+  const all = allProjectTasks ?? [];
+  const dependsOn = task.depends_on ?? [];
+  const deps = dependsOn.map((id) => all.find((t) => t.id === id)).filter(Boolean);
+  const depCandidates = all.filter(
+    (t) => t.id !== task.id && !dependsOn.includes(t.id) && !(t.depends_on ?? []).includes(task.id)
+  );
+
+  // The inverse direction: tasks that must start after THIS one.
+  const blocks = all.filter((t) => (t.depends_on ?? []).includes(task.id));
+  const blockCandidates = all.filter(
+    (t) => t.id !== task.id && !(t.depends_on ?? []).includes(task.id) && !dependsOn.includes(t.id)
+  );
+
+  const addDep = (id) => onUpdate(task.id, { depends_on: [...dependsOn, id] });
+  const removeDep = (id) => onUpdate(task.id, { depends_on: dependsOn.filter((d) => d !== id) });
+  const addBlock = (id) => {
+    const other = all.find((t) => t.id === id);
+    onUpdate(id, { depends_on: [...(other?.depends_on ?? []), task.id] });
+  };
+  const removeBlock = (id) => {
+    const other = all.find((t) => t.id === id);
+    onUpdate(id, { depends_on: (other?.depends_on ?? []).filter((d) => d !== task.id) });
+  };
+
+  return (
+    <div className="space-y-2">
+      <DependencyChips
+        label="Starts after"
+        chips={deps}
+        onRemove={removeDep}
+        candidates={depCandidates}
+        onAdd={addDep}
+        addHint="This task can't start until the picked task is done"
+      />
+      <DependencyChips
+        label="Blocks (these start after it)"
+        chips={blocks}
+        onRemove={removeBlock}
+        candidates={blockCandidates}
+        onAdd={addBlock}
+        addHint="The picked task can't start until this one is done"
+      />
     </div>
   );
 }

@@ -66,11 +66,13 @@ function TaskCard({ task, milestoneName, assignee, checklistDone, checklistTotal
           </span>
         )}
         {assignee && (
-          <span
-            title={assignee.full_name || assignee.email}
-            className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[9px] font-semibold text-blue-700"
-          >
-            {initials(assignee.full_name, assignee.email)}
+          <span className="ml-auto flex min-w-0 items-center gap-1" title={assignee.full_name || assignee.email}>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[9px] font-semibold text-blue-700">
+              {initials(assignee.full_name, assignee.email)}
+            </span>
+            <span className="max-w-[90px] truncate text-[10px] text-slate-500">
+              {(assignee.full_name || assignee.email || '').split(' ')[0]}
+            </span>
           </span>
         )}
       </div>

@@ -481,6 +481,7 @@ function ProjectDetail() {
             technologies={technologies}
             milestones={milestones}
             tasks={tasks}
+            members={members}
             onUpdateMilestone={updateMilestone}
             onUpdateTask={updateTask}
             getRoleColor={getRoleColor}
@@ -553,8 +554,16 @@ function ProjectDetail() {
                   <EditableField label="End" value={project.end_date}
                     onSave={(v) => updateProject({ end_date: v })} type="date" />
                 </div>
-                <EditableField label="Budget" value={project.budget}
+                <EditableField label="Budget (total)" value={project.budget}
                   onSave={(v) => updateProject({ budget: v ? Number(v) : null })} type="number" placeholder="$0" />
+                {/* Breakdown for future POs (equipment) and time-log tracking
+                    (labor); the total above stays the authoritative figure. */}
+                <div className="grid grid-cols-2 gap-4">
+                  <EditableField label="Equipment Budget" value={project.equipment_budget}
+                    onSave={(v) => updateProject({ equipment_budget: v ? Number(v) : null })} type="number" placeholder="$0" />
+                  <EditableField label="Labor Budget" value={project.labor_budget}
+                    onSave={(v) => updateProject({ labor_budget: v ? Number(v) : null })} type="number" placeholder="$0" />
+                </div>
                 {project.saved_projects?.project_name && (
                   <div>
                     <p className="mb-0.5 text-xs font-medium text-slate-400">Linked Quote</p>

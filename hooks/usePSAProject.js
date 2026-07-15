@@ -10,6 +10,7 @@ import {
   newPsaId,
 } from '@/lib/psaLocalStore';
 import { computeTemplateSchedule } from '@/lib/projectTemplateSchedule';
+import { cascadeDependentDates } from '@/lib/taskDependencies';
 import { notify } from '@/lib/notify';
 import { runAutomations } from '@/lib/automations';
 
@@ -177,15 +178,43 @@ export function usePSAProject(projectId, session) {
 
   const updateTask = useCallback(
     async (id, data) => {
+      // Dependency cascade: moving a task's dates pushes every dependent
+      // (transitively) so each still starts after its predecessors finish.
+      // Centralized here so the task list's date fields and the Gantt's
+      // bar drags both inherit it.
+      const datesMoved = 'start_date' in data || 'due_date' in data;
+      const shiftsFor = (list) => {
+        if (!datesMoved) return [];
+        const base = list.find((t) => t.id === id);
+        return cascadeDependentDates(
+          list,
+          id,
+          'start_date' in data ? data.start_date : base?.start_date ?? null,
+          'due_date' in data ? data.due_date : base?.due_date ?? null
+        );
+      };
       if (!supabase) {
-        writePsa((s) => ({
-          ...s,
-          tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...data } : t)),
-        }));
+        writePsa((s) => {
+          const patch = new Map(shiftsFor(s.tasks).map((sh) => [sh.id, sh]));
+          return {
+            ...s,
+            tasks: s.tasks.map((t) =>
+              t.id === id ? { ...t, ...data } : patch.has(t.id) ? { ...t, ...patch.get(t.id) } : t
+            ),
+          };
+        });
         return;
       }
       const { error } = await supabase.from('psa_tasks').update(data).eq('id', id);
       if (error) throw error;
+      const shifts = shiftsFor(tasks);
+      if (shifts.length > 0) {
+        await Promise.all(
+          shifts.map(({ id: taskId, ...fields }) =>
+            supabase.from('psa_tasks').update(fields).eq('id', taskId)
+          )
+        );
+      }
       const task = tasks.find((t) => t.id === id);
       if (data.assignee_id) {
         if (task && task.assignee_id !== data.assignee_id) {

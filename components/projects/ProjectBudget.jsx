@@ -64,6 +64,12 @@ export default function ProjectBudget({ project, tasks, timeEntries }) {
 
         <div className="divide-y divide-slate-100">
           <Row label="Project Budget"  value={fmt(budget)}  highlight />
+          {project?.equipment_budget != null && (
+            <Row label="· Equipment" value={fmt(parseFloat(project.equipment_budget))} sub="(purchase orders)" />
+          )}
+          {project?.labor_budget != null && (
+            <Row label="· Labor" value={fmt(parseFloat(project.labor_budget))} sub="(time tracking)" />
+          )}
           <Row
             label="Budget Consumed"
             value={timeEntries.length === 0 ? '—' : fmt(actualCost)}

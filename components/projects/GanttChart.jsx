@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Palette, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, initials } from '@/lib/utils';
 import { PALETTE, PALETTE_MAP } from '@/hooks/useRoleColors';
 
 // ── Tech section colors (unchanged) ─────────────────────────────────────────
@@ -359,6 +359,7 @@ export default function GanttChart({
   technologies = [],
   milestones   = [],
   tasks        = [],
+  members      = [],
   onUpdateMilestone,
   onUpdateTask,
   getRoleColor,
@@ -366,6 +367,8 @@ export default function GanttChart({
 }) {
   const [showColors, setShowColors] = useState(false);
   const scrollRef = useRef(null);
+
+  const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   // Unique roles present in tasks
   const uniqueRoles = useMemo(
@@ -529,14 +532,25 @@ export default function GanttChart({
               ? (field, val) => onUpdateMilestone?.(row.item.id, { [field]: val })
               : (field, val) => onUpdateTask?.(row.item.id, { [field]: val });
 
+            const assignee = isTask ? membersById.get(row.item.assignee_id) : null;
             return (
               <div
                 key={i}
                 className="flex flex-col justify-center border-b border-slate-50 last:border-0"
                 style={{ height: h, paddingLeft: pl, paddingRight: 8 }}
               >
-                <span className={cn('truncate text-xs', isMilestone ? 'font-semibold text-slate-700' : 'text-slate-500')}>
-                  {isMilestone ? `◆ ${row.item.name}` : `• ${row.item.title}`}
+                <span className="flex items-center gap-1.5">
+                  <span className={cn('min-w-0 flex-1 truncate text-xs', isMilestone ? 'font-semibold text-slate-700' : 'text-slate-500')}>
+                    {isMilestone ? `◆ ${row.item.name}` : `• ${row.item.title}`}
+                  </span>
+                  {assignee && (
+                    <span
+                      title={assignee.full_name || assignee.email}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[8px] font-semibold text-blue-700"
+                    >
+                      {initials(assignee.full_name, assignee.email)}
+                    </span>
+                  )}
                 </span>
                 <div className="mt-0.5 flex items-center gap-1">
                   <GanttDateField
