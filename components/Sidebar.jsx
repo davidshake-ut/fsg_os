@@ -72,9 +72,10 @@ export default function Sidebar({ onClose }) {
   const { isEnabled } = useModules();
   // Manual chevron override; null = auto (open while on /builder).
   const [builderManual, setBuilderManual] = useState(null);
-  // The Builder publishes the current quote's enabled techs; before it has,
+  // The Builder publishes the current quote's enabled techs (which sub-links
+  // to list) and its active tab (which sub-link is lit); before it has,
   // fall back to the default-on pair.
-  const { enabledIds } = useSyncExternalStore(subscribeBuilderTechs, getBuilderTechsSnapshot, getBuilderTechsServerSnapshot);
+  const { enabledIds, activeTab } = useSyncExternalStore(subscribeBuilderTechs, getBuilderTechsSnapshot, getBuilderTechsServerSnapshot);
   const builderSubTechs = companyTechnologies(company).filter((t) =>
     enabledIds ? enabledIds.includes(t.id) : (t.id === 'managed_wifi' || t.id === 'video_surveillance')
   );
@@ -127,6 +128,9 @@ export default function Sidebar({ onClose }) {
           const showHeader = group && group !== visibleItems[i - 1]?.group;
           const isBuilder = key === 'builder';
           const builderExpanded = isBuilder && (builderManual ?? pathname === '/builder');
+          // While a Builder sub-tab is active, the sub-link carries the
+          // highlight and the parent goes quiet.
+          const builderSubActive = isBuilder && pathname === '/builder' && !!activeTab;
           return (
             <div key={key}>
               {showHeader && (
@@ -144,7 +148,7 @@ export default function Sidebar({ onClose }) {
                       href={href}
                       icon={icon}
                       label={label}
-                      active={pathname === href || pathname.startsWith(href + '/')}
+                      active={(pathname === href || pathname.startsWith(href + '/')) && !builderSubActive}
                       onClick={onClose}
                     />
                   </div>
@@ -175,16 +179,24 @@ export default function Sidebar({ onClose }) {
                     { id: 'overview', label: 'Overview' },
                     ...builderSubTechs.map((t) => ({ id: t.id, label: t.label })),
                     { id: 'products', label: 'Product Database' },
-                  ].map((sub) => (
-                    <Link
-                      key={sub.id}
-                      href={`/builder?tab=${sub.id}`}
-                      onClick={onClose}
-                      className="block truncate rounded-md px-2.5 py-1 text-[12px] font-medium text-[var(--ui-sidebar-ink)] transition-colors hover:bg-[var(--ui-sidebar-active-bg)] hover:text-[var(--ui-sidebar-active-ink)]"
-                    >
-                      {sub.label}
-                    </Link>
-                  ))}
+                  ].map((sub) => {
+                    const subActive = builderSubActive && activeTab === sub.id;
+                    return (
+                      <Link
+                        key={sub.id}
+                        href={`/builder?tab=${sub.id}`}
+                        onClick={onClose}
+                        className={cn(
+                          'block truncate rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors',
+                          subActive
+                            ? 'bg-[var(--ui-sidebar-active-bg)] font-semibold text-[var(--ui-sidebar-active-ink)]'
+                            : 'text-[var(--ui-sidebar-ink)] hover:bg-[var(--ui-sidebar-active-bg)] hover:text-[var(--ui-sidebar-active-ink)]'
+                        )}
+                      >
+                        {sub.label}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>

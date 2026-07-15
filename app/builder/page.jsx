@@ -17,7 +17,7 @@ import TechVendorsCard from '@/components/builder/TechVendorsCard';
 import { getCalculator } from '@/components/builder/calculators';
 import { companyTechVendors, resolveQuoteVendors, linesForVendor, newVendorId, primaryVendorCandidates } from '@/lib/vendors';
 import CostSummary from '@/components/CostSummary';
-import { publishBuilderTechs } from '@/lib/builderNavStore';
+import { publishBuilderTechs, publishBuilderActiveTab } from '@/lib/builderNavStore';
 import { Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import QuoteLifecycleMenu from '@/components/QuoteLifecycleMenu';
@@ -516,10 +516,14 @@ function Calculator() {
   const onWifi = activeCalc?.legacy === 'wifi';
   const dashView = onWifi ? 'wifi' : onCameras ? 'cameras' : 'both';
 
-  // Keep the sidebar's Builder sub-nav in sync with this quote's toggles.
+  // Keep the sidebar's Builder sub-nav in sync with this quote's toggles
+  // and highlight the sub-link matching the tab the user is actually on.
   useEffect(() => {
     publishBuilderTechs(techTabs.map((t) => t.id));
   }, [techTabs]);
+  useEffect(() => {
+    publishBuilderActiveTab(tab);
+  }, [tab]);
 
   const hasChanges = useMemo(() => {
     if (!savedSnapshot) {
