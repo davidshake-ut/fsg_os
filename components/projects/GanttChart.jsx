@@ -141,7 +141,7 @@ function TodayLine({ minDate, totalDays }) {
 // ── DraggableBar ─────────────────────────────────────────────────────────────
 // When onSave is provided, left/right handles resize the bar and the center
 // drags both dates together. Fires onSave(newStart, newEnd) on mouse-up.
-function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onSave }) {
+function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onSave, onOpenEdit, onConnectStart }) {
   const [ls, setLs] = useState(startDate);
   const [le, setLe] = useState(dueDate);
   const [dragging, setDragging] = useState(false);
@@ -166,15 +166,18 @@ function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onS
   const isPoint = !hasS || !hasE || sOff === eOff;
 
   const startDrag = (kind) => (evt) => {
-    if (!onSave) return;
+    if (!onSave && !onOpenEdit) return;
     evt.preventDefault(); evt.stopPropagation();
     draggingRef.current = true;
     setDragging(true);
     const startX = evt.clientX;
     const origS = curRef.current.start;
     const origE = curRef.current.end;
+    let moved = false;
 
     const onMove = (ev) => {
+      if (Math.abs(ev.clientX - startX) > 3) moved = true;
+      if (!onSave) return;
       const d = Math.round((ev.clientX - startX) / DAY_PX);
       let ns = origS, ne = origE;
       if (kind === 'body')  { ns = addDays(origS, d); ne = addDays(origE, d); }
@@ -186,7 +189,10 @@ function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onS
     const onUp = () => {
       draggingRef.current = false;
       setDragging(false);
-      onSave(curRef.current.start, curRef.current.end);
+      // A press-and-release without movement is a CLICK — open the shared
+      // Edit Task dialog instead of a no-op date save.
+      if (!moved && kind === 'body' && onOpenEdit) onOpenEdit();
+      else if (moved && onSave) onSave(curRef.current.start, curRef.current.end);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
@@ -205,6 +211,7 @@ function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onS
         dragging ? 'opacity-100 shadow-md' : 'opacity-85 hover:opacity-95'
       )}
       style={{ left, width: isPoint ? undefined : width }}
+      onMouseDown={(isPoint || !onSave) && onOpenEdit ? (e) => startDrag('body')(e) : undefined}
     >
       {!isPoint && onSave && (
         <>
@@ -212,7 +219,7 @@ function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onS
           {hasS && (
             <div
               className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize"
-              onMouseDown={startDrag('start')}
+              onMouseDown={(e) => startDrag('start')(e)}
             >
               <div className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3/4 w-0.5 rounded-full bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
@@ -225,18 +232,26 @@ function DraggableBar({ startDate, dueDate, minDate, barClass, label, thick, onS
               hasE ? 'right-2' : 'right-0',
               dragging ? 'cursor-grabbing' : 'cursor-grab'
             )}
-            onMouseDown={startDrag('body')}
+            onMouseDown={(e) => startDrag('body')(e)}
           />
           {/* Right resize handle */}
           {hasE && (
             <div
               className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize"
-              onMouseDown={startDrag('end')}
+              onMouseDown={(e) => startDrag('end')(e)}
             >
               <div className="absolute right-0.5 top-1/2 -translate-y-1/2 h-3/4 w-0.5 rounded-full bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
           )}
         </>
+      )}
+      {/* Dependency connector — drag onto another task's bar */}
+      {onConnectStart && (
+        <span
+          title="Drag to another task to make it start after this one"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onConnectStart(e); }}
+          className="absolute -right-3 top-1/2 z-10 h-2.5 w-2.5 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-blue-500 bg-white opacity-0 transition-opacity group-hover:opacity-100"
+        />
       )}
     </div>
   );
@@ -362,11 +377,17 @@ export default function GanttChart({
   members      = [],
   onUpdateMilestone,
   onUpdateTask,
+  onEditTask,
   getRoleColor,
   setRoleColor,
 }) {
   const [showColors, setShowColors] = useState(false);
   const scrollRef = useRef(null);
+  const contentRef = useRef(null);
+  // In-progress dependency connect-drag: from a bar's connector dot to
+  // another task's row. Drawn as a dashed line; dropping on a task row
+  // writes the edge into that task's depends_on (it starts after the source).
+  const [connect, setConnect] = useState(null); // { fromId, x1, y1, x2, y2 }
 
   const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
@@ -447,6 +468,47 @@ export default function GanttChart({
 
   const totalH = rowMeta.reduce((s, m) => s + m.h, 0);
   const chartW = Math.max(600, totalDays * DAY_PX);
+
+  // Drag from a task bar's connector dot; drop on another task's row to
+  // create "target starts after source". Coordinates live in the content
+  // div's space (the rect is re-read per event so horizontal scroll is
+  // accounted for); the drop row comes from the rowMeta geometry.
+  const startConnect = (fromTask, rowIndex) => (evt) => {
+    const content = contentRef.current;
+    if (!content) return;
+    const rect = () => content.getBoundingClientRect();
+    const r0 = rect();
+    const anchor = fromTask.due_date || fromTask.start_date;
+    const x1 = anchor ? (dayOff(anchor, minDate) + 1) * DAY_PX : evt.clientX - r0.left;
+    const y1 = rowMeta[rowIndex].top + rowMeta[rowIndex].h / 2;
+    setConnect({ fromId: fromTask.id, x1, y1, x2: evt.clientX - r0.left, y2: evt.clientY - r0.top });
+
+    const onMove = (e) => {
+      const r = rect();
+      setConnect((c) => (c ? { ...c, x2: e.clientX - r.left, y2: e.clientY - r.top } : c));
+    };
+    const onUp = (e) => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setConnect(null);
+      const r = rect();
+      const y = e.clientY - r.top;
+      const idx = rowMeta.findIndex((m) => y >= m.top && y < m.top + m.h);
+      const target = idx >= 0 ? rows[idx] : null;
+      if (!target || target.kind !== 'task') return;
+      const t = target.item;
+      if (
+        t.id === fromTask.id ||
+        (t.depends_on ?? []).includes(fromTask.id) ||
+        (fromTask.depends_on ?? []).includes(t.id) // direct-cycle guard
+      ) {
+        return;
+      }
+      onUpdateTask?.(t.id, { depends_on: [...(t.depends_on ?? []), fromTask.id] });
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
 
   if (!minDate) {
     return (
@@ -572,7 +634,7 @@ export default function GanttChart({
 
         {/* Right: scrollable date bars */}
         <div className="flex-1 overflow-x-auto">
-          <div className="relative" style={{ width: chartW, height: totalH }}>
+          <div ref={contentRef} className="relative" style={{ width: chartW, height: totalH }}>
 
             <MonthGridLines minDate={minDate} totalDays={totalDays} />
             <TodayLine minDate={minDate} totalDays={totalDays} />
@@ -623,6 +685,10 @@ export default function GanttChart({
                           ? (s, e) => onUpdateMilestone?.(row.item.id, { start_date: s, due_date: e })
                           : (s, e) => onUpdateTask?.(row.item.id, { start_date: s, due_date: e })
                       }
+                      onOpenEdit={row.kind === 'task' && onEditTask ? () => onEditTask(row.item) : undefined}
+                      onConnectStart={
+                        row.kind === 'task' && onUpdateTask ? startConnect(row.item, i) : undefined
+                      }
                     />
                   )}
                   {isSection && sectionSpan && (
@@ -640,6 +706,22 @@ export default function GanttChart({
             })}
 
             <DependencyLines rows={rows} rowMeta={rowMeta} minDate={minDate} />
+
+            {/* Live connector while dragging a new dependency */}
+            {connect && (
+              <svg className="pointer-events-none absolute inset-0 z-20" width={chartW} height={totalH}>
+                <line
+                  x1={connect.x1}
+                  y1={connect.y1}
+                  x2={connect.x2}
+                  y2={connect.y2}
+                  stroke="#3b82f6"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 3"
+                />
+                <circle cx={connect.x2} cy={connect.y2} r="3.5" fill="#3b82f6" />
+              </svg>
+            )}
           </div>
         </div>
       </div>

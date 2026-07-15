@@ -18,6 +18,8 @@ import ProjectStatusBadge, { STATUS_CONFIG } from '@/components/projects/Project
 import TaskSection from '@/components/projects/TaskSection';
 import KanbanBoard from '@/components/projects/KanbanBoard';
 import GanttChart from '@/components/projects/GanttChart';
+import TaskEditModal from '@/components/projects/TaskEditModal';
+import { resolveBoardColumns } from '@/lib/boardColumns';
 import TimeLog from '@/components/projects/TimeLog';
 import ProjectBudget from '@/components/projects/ProjectBudget';
 import ApplyTemplateModal from '@/components/projects/ApplyTemplateModal';
@@ -151,7 +153,7 @@ function MergeMenu({ tech, others, onMerge }) {
 function ProjectDetail() {
   const { id } = useParams();
   const router = useRouter();
-  const { session, company, user } = useSession();
+  const { session, company, user, canWrite } = useSession();
   const {
     project, milestones, tasks, timeEntries, technologies, checklistItems, members, loading,
     updateProject,
@@ -173,6 +175,7 @@ function ProjectDetail() {
   const { createInvoice } = useInvoices(session, company, user);
 
   const [tab, setTab] = useState('tasks');
+  const [editTask, setEditTask] = useState(null); // task open in the shared Edit Task dialog
   const [applyModal, setApplyModal] = useState(null);
   const [addingTech, setAddingTech] = useState(false);
   const [collapsedTechs, setCollapsedTechs] = useState(new Set());
@@ -241,7 +244,10 @@ function ProjectDetail() {
     onToggleChecklistItem: toggleChecklistItem,
     onDeleteChecklistItem: deleteChecklistItem,
     allProjectTasks: tasks,
+    onEditTask: setEditTask,
   };
+
+  const boardColumns = resolveBoardColumns(project);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -472,6 +478,9 @@ function ProjectDetail() {
             checklistItems={checklistItems}
             getPalette={getPalette}
             onUpdateTask={updateTask}
+            columns={boardColumns}
+            onUpdateColumns={canWrite ? (list) => updateProject({ board_columns: list }) : undefined}
+            onEditTask={setEditTask}
           />
         )}
 
@@ -484,8 +493,21 @@ function ProjectDetail() {
             members={members}
             onUpdateMilestone={updateMilestone}
             onUpdateTask={updateTask}
+            onEditTask={setEditTask}
             getRoleColor={getRoleColor}
             setRoleColor={setRoleColor}
+          />
+        )}
+
+        {/* ── Shared Edit Task dialog — opened from list, board, and Gantt ── */}
+        {editTask && (
+          <TaskEditModal
+            task={tasks.find((t) => t.id === editTask.id) ?? editTask}
+            members={members}
+            milestones={milestones}
+            columns={boardColumns}
+            onSave={(patch) => updateTask(editTask.id, patch)}
+            onClose={() => setEditTask(null)}
           />
         )}
 

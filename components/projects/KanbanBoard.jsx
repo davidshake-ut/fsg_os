@@ -2,8 +2,12 @@
 
 // Drag tasks between status columns. Deliberately does NOT support reordering
 // within a column — sort_order is scoped per-milestone and driven by the
-// Tasks tab; touching it here would scramble that ordering. This board only
-// ever changes `status`.
+// Tasks tab; touching it here would scramble that ordering. This board
+// changes `status`, and (for writers) the project's column set itself:
+// rename any column, add custom ones, delete non-anchor columns (their
+// tasks move to To Do). 'todo' and 'done' are permanent anchors — see
+// lib/boardColumns.js. Clicking a card opens the shared Edit Task dialog
+// (the PointerSensor's 5px activation keeps clicks distinct from drags).
 
 import { useState } from 'react';
 import {
@@ -11,11 +15,10 @@ import {
   PointerSensor, KeyboardSensor, useSensor, useSensors,
   useDraggable, useDroppable,
 } from '@dnd-kit/core';
-import { CheckSquare, Calendar } from 'lucide-react';
+import { CheckSquare, Calendar, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TASK_STATUS_CONFIG, taskStatusClasses } from './ProjectStatusBadge';
-
-const COLUMNS = ['todo', 'in_progress', 'done'];
+import { taskStatusClasses } from './ProjectStatusBadge';
+import { DEFAULT_BOARD_COLUMNS, SYSTEM_COLUMN_IDS, newColumnId } from '@/lib/boardColumns';
 
 function fmtDate(iso) {
   if (!iso) return null;
@@ -28,7 +31,7 @@ function initials(name, email) {
   return (email || '?')[0].toUpperCase();
 }
 
-function TaskCard({ task, milestoneName, assignee, checklistDone, checklistTotal, getPalette, hidden }) {
+function TaskCard({ task, milestoneName, assignee, checklistDone, checklistTotal, getPalette, hidden, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 50 }
@@ -40,6 +43,8 @@ function TaskCard({ task, milestoneName, assignee, checklistDone, checklistTotal
       style={style}
       {...attributes}
       {...listeners}
+      onClick={() => onEdit?.(task)}
+      title="Click to edit task"
       className={cn(
         'cursor-grab touch-none rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm transition-shadow hover:shadow active:cursor-grabbing',
         isDragging && 'opacity-40',
@@ -80,15 +85,63 @@ function TaskCard({ task, milestoneName, assignee, checklistDone, checklistTotal
   );
 }
 
-function Column({ status, tasks, milestoneNameOf, memberOf, checklistCountsOf, getPalette, activeId }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
-  const cfg = TASK_STATUS_CONFIG[status];
+function Column({ column, tasks, milestoneNameOf, memberOf, checklistCountsOf, getPalette, activeId, onEditTask, onRename, onDelete }) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(column.label);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const isSystem = SYSTEM_COLUMN_IDS.has(column.id);
+
+  const commitRename = () => {
+    const next = name.trim();
+    if (next && next !== column.label) onRename(next);
+    setRenaming(false);
+  };
 
   return (
     <div className="flex min-w-[260px] flex-1 flex-col">
-      <div className="mb-2 flex items-center gap-2 px-1">
-        <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', taskStatusClasses(status))}>{cfg.label}</span>
+      <div className="group/col mb-2 flex items-center gap-2 px-1">
+        {renaming ? (
+          <span className="flex items-center gap-1">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') { setName(column.label); setRenaming(false); }
+              }}
+              className="h-6 w-32 rounded border border-slate-200 px-1.5 text-xs outline-none focus:border-blue-400"
+              autoFocus
+            />
+            <button type="button" onClick={commitRename} className="text-emerald-600"><Check size={12} /></button>
+            <button type="button" onClick={() => { setName(column.label); setRenaming(false); }} className="text-slate-400"><X size={12} /></button>
+          </span>
+        ) : (
+          <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', taskStatusClasses(column.id))}>{column.label}</span>
+        )}
         <span className="text-xs tabular-nums text-slate-400">{tasks.length}</span>
+        {onRename && !renaming && (
+          <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/col:opacity-100">
+            <button type="button" title="Rename column" onClick={() => { setName(column.label); setRenaming(true); }}
+              className="rounded p-0.5 text-slate-300 hover:text-blue-500">
+              <Pencil size={11} />
+            </button>
+            {!isSystem && onDelete && (
+              confirmDelete ? (
+                <span className="flex items-center gap-1 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600">
+                  {tasks.length > 0 ? `Move ${tasks.length} to To Do?` : 'Delete?'}
+                  <button type="button" onClick={() => { setConfirmDelete(false); onDelete(); }} className="font-semibold hover:underline">Yes</button>
+                  <button type="button" onClick={() => setConfirmDelete(false)} className="text-red-400 hover:underline">No</button>
+                </span>
+              ) : (
+                <button type="button" title="Delete column" onClick={() => setConfirmDelete(true)}
+                  className="rounded p-0.5 text-slate-300 hover:text-red-500">
+                  <Trash2 size={11} />
+                </button>
+              )
+            )}
+          </span>
+        )}
       </div>
       <div
         ref={setNodeRef}
@@ -109,6 +162,7 @@ function Column({ status, tasks, milestoneNameOf, memberOf, checklistCountsOf, g
               checklistTotal={total}
               getPalette={getPalette}
               hidden={task.id === activeId}
+              onEdit={onEditTask}
             />
           );
         })}
@@ -118,8 +172,20 @@ function Column({ status, tasks, milestoneNameOf, memberOf, checklistCountsOf, g
   );
 }
 
-export default function KanbanBoard({ tasks, milestones, members, checklistItems, getPalette, onUpdateTask }) {
+export default function KanbanBoard({
+  tasks,
+  milestones,
+  members,
+  checklistItems,
+  getPalette,
+  onUpdateTask,
+  columns: columnDefs = DEFAULT_BOARD_COLUMNS,
+  onUpdateColumns, // (list) => void — absent for read-only viewers
+  onEditTask,
+}) {
   const [activeId, setActiveId] = useState(null);
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [newColumnLabel, setNewColumnLabel] = useState('');
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor)
@@ -132,10 +198,34 @@ export default function KanbanBoard({ tasks, milestones, members, checklistItems
     return [items.filter((c) => c.is_done).length, items.length];
   };
 
-  const columns = COLUMNS.map((status) => ({
-    status,
-    tasks: tasks.filter((t) => t.status === status).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+  // Tasks whose column was deleted out from under them surface in To Do.
+  const knownIds = new Set(columnDefs.map((c) => c.id));
+  const columns = columnDefs.map((col) => ({
+    col,
+    tasks: tasks
+      .filter((t) => t.status === col.id || (col.id === 'todo' && !knownIds.has(t.status)))
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
   }));
+
+  const renameColumn = (id, label) =>
+    onUpdateColumns?.(columnDefs.map((c) => (c.id === id ? { ...c, label } : c)));
+  const deleteColumn = async (col) => {
+    const orphans = tasks.filter((t) => t.status === col.id);
+    for (const t of orphans) await onUpdateTask(t.id, { status: 'todo' });
+    onUpdateColumns?.(columnDefs.filter((c) => c.id !== col.id));
+  };
+  const addColumn = () => {
+    const label = newColumnLabel.trim();
+    if (!label) return;
+    // New columns slot before Done — a fresh stage is part of the flow, not
+    // after completion.
+    const doneIdx = columnDefs.findIndex((c) => c.id === 'done');
+    const next = [...columnDefs];
+    next.splice(doneIdx === -1 ? next.length : doneIdx, 0, { id: newColumnId(), label });
+    onUpdateColumns?.(next);
+    setNewColumnLabel('');
+    setAddingColumn(false);
+  };
 
   const handleDragEnd = ({ active, over }) => {
     setActiveId(null);
@@ -156,18 +246,50 @@ export default function KanbanBoard({ tasks, milestones, members, checklistItems
       onDragCancel={() => setActiveId(null)}
     >
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {columns.map((col) => (
+        {columns.map(({ col, tasks: colTasks }) => (
           <Column
-            key={col.status}
-            status={col.status}
-            tasks={col.tasks}
+            key={col.id}
+            column={col}
+            tasks={colTasks}
             milestoneNameOf={milestoneNameOf}
             memberOf={memberOf}
             checklistCountsOf={checklistCountsOf}
             getPalette={getPalette}
             activeId={activeId}
+            onEditTask={onEditTask}
+            onRename={onUpdateColumns ? (label) => renameColumn(col.id, label) : undefined}
+            onDelete={onUpdateColumns ? () => deleteColumn(col) : undefined}
           />
         ))}
+        {onUpdateColumns && (
+          <div className="w-40 shrink-0 pt-0.5">
+            {addingColumn ? (
+              <div className="flex items-center gap-1">
+                <input
+                  value={newColumnLabel}
+                  onChange={(e) => setNewColumnLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addColumn();
+                    if (e.key === 'Escape') { setAddingColumn(false); setNewColumnLabel(''); }
+                  }}
+                  placeholder="Column name"
+                  className="h-7 w-full rounded border border-slate-200 px-2 text-xs outline-none focus:border-blue-400"
+                  autoFocus
+                />
+                <button type="button" onClick={addColumn} className="text-emerald-600"><Check size={13} /></button>
+                <button type="button" onClick={() => { setAddingColumn(false); setNewColumnLabel(''); }} className="text-slate-400"><X size={13} /></button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddingColumn(true)}
+                className="flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-500"
+              >
+                <Plus size={12} /> Add column
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <DragOverlay>
         {activeTask && (

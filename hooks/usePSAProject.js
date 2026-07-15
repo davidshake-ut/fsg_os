@@ -10,7 +10,7 @@ import {
   newPsaId,
 } from '@/lib/psaLocalStore';
 import { computeTemplateSchedule } from '@/lib/projectTemplateSchedule';
-import { cascadeDependentDates } from '@/lib/taskDependencies';
+import { cascadeDependentDates, resolveDependencyViolations } from '@/lib/taskDependencies';
 import { notify } from '@/lib/notify';
 import { runAutomations } from '@/lib/automations';
 
@@ -183,15 +183,24 @@ export function usePSAProject(projectId, session) {
       // Centralized here so the task list's date fields and the Gantt's
       // bar drags both inherit it.
       const datesMoved = 'start_date' in data || 'due_date' in data;
+      const edgeMoved = 'depends_on' in data;
       const shiftsFor = (list) => {
-        if (!datesMoved) return [];
-        const base = list.find((t) => t.id === id);
-        return cascadeDependentDates(
-          list,
-          id,
-          'start_date' in data ? data.start_date : base?.start_date ?? null,
-          'due_date' in data ? data.due_date : base?.due_date ?? null
-        );
+        const withEdge = edgeMoved
+          ? list.map((t) => (t.id === id ? { ...t, depends_on: data.depends_on } : t))
+          : list;
+        if (datesMoved) {
+          const base = list.find((t) => t.id === id);
+          return cascadeDependentDates(
+            withEdge,
+            id,
+            'start_date' in data ? data.start_date : base?.start_date ?? null,
+            'due_date' in data ? data.due_date : base?.due_date ?? null
+          );
+        }
+        // A new dependency edge can itself violate the rule (the dependent
+        // already starts before its new predecessor finishes) — resolve it.
+        if (edgeMoved) return resolveDependencyViolations(withEdge);
+        return [];
       };
       if (!supabase) {
         writePsa((s) => {

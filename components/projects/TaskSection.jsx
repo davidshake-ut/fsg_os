@@ -32,6 +32,7 @@ import {
   ArrowRight,
   Copy,
   Link2,
+  Pencil,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -437,7 +438,7 @@ function CloneMenu({ label, onCloneHere, items = [], onCloneTo }) {
 
 // ── SortableTaskRow ───────────────────────────────────────────────────────────
 function SortableTaskRow({
-  task, allProjectMilestones, onUpdate, onDelete, onMoveTask, onCloneTask, getPalette, members,
+  task, allProjectMilestones, onUpdate, onDelete, onMoveTask, onCloneTask, onEditTask, getPalette, members,
   checklistItems, onAddChecklistItem, onToggleChecklistItem, onDeleteChecklistItem, allProjectTasks,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -571,6 +572,16 @@ function SortableTaskRow({
 
         {/* Row actions */}
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          {onEditTask && (
+            <button
+              type="button"
+              title="Edit task"
+              onClick={() => onEditTask(task)}
+              className="rounded p-1 text-slate-300 transition-colors hover:text-blue-500"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
           <MoveMenu
             label="Move to milestone"
             items={otherMilestones.map((m) => ({ id: m.id, name: m.name }))}
@@ -628,6 +639,7 @@ function SortableMilestoneBlock({
   onMoveMilestoneToSection,
   onCloneMilestone,
   onCloneTask,
+  onEditTask,
   getPalette,
   members,
   checklistItems,
@@ -741,6 +753,7 @@ function SortableMilestoneBlock({
                 onDelete={onDeleteTask}
                 onMoveTask={onMoveTask}
                 onCloneTask={onCloneTask}
+                onEditTask={onEditTask}
                 getPalette={getPalette}
                 members={members}
                 checklistItems={checklistItems}
@@ -785,6 +798,7 @@ export default function TaskSection({
   onMoveMilestoneToSection,
   onCloneMilestone,
   onCloneTask,
+  onEditTask,
   getPalette,
   members,
   checklistItems,
@@ -902,6 +916,7 @@ export default function TaskSection({
                 onMoveMilestoneToSection={onMoveMilestoneToSection}
                 onCloneMilestone={onCloneMilestone}
                 onCloneTask={onCloneTask}
+                onEditTask={onEditTask}
                 getPalette={getPalette}
                 members={members}
                 checklistItems={checklistItems}
@@ -931,6 +946,7 @@ export default function TaskSection({
                   onDelete={onDeleteTask}
                   onMoveTask={handleMoveTask}
                   onCloneTask={onCloneTask}
+                  onEditTask={onEditTask}
                   getPalette={getPalette}
                   members={members}
                   checklistItems={checklistItems}
