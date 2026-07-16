@@ -61,6 +61,7 @@ function companyBranding(company) {
     primaryColor: company.primary_color || DEFAULT_BRANDING.primaryColor,
     accentColor: company.accent_color || DEFAULT_BRANDING.accentColor,
     secondaryColor: company.secondary_color || DEFAULT_BRANDING.secondaryColor,
+    backgroundColor: company.background_color || DEFAULT_BRANDING.backgroundColor,
     uiTheme: company.ui_theme || DEFAULT_BRANDING.uiTheme,
     sidebarStyle: company.sidebar_style || DEFAULT_BRANDING.sidebarStyle,
   };
@@ -87,6 +88,7 @@ export function useBranding(opts = {}) {
           primary_color: b.primaryColor,
           accent_color: b.accentColor,
           secondary_color: b.secondaryColor,
+          background_color: b.backgroundColor,
           ui_theme: b.uiTheme,
           sidebar_style: b.sidebarStyle,
         })

@@ -21,9 +21,11 @@ export default function BrandingVars() {
     root.style.setProperty('--brand', branding.primaryColor);
     root.style.setProperty('--brand-secondary', branding.secondaryColor);
     root.style.setProperty('--brand-text', readableTextHex(branding.primaryColor));
+    if (branding.backgroundColor) root.style.setProperty('--ui-page-bg', branding.backgroundColor);
+    else root.style.removeProperty('--ui-page-bg');
     root.setAttribute('data-ui-theme', branding.uiTheme === 'muted' ? 'muted' : 'bold');
     root.setAttribute('data-sidebar-style', branding.sidebarStyle === 'solid' ? 'solid' : 'gradient');
-  }, [branding.primaryColor, branding.secondaryColor, branding.uiTheme, branding.sidebarStyle]);
+  }, [branding.primaryColor, branding.secondaryColor, branding.backgroundColor, branding.uiTheme, branding.sidebarStyle]);
 
   // Browser-tab favicon follows the team too; fall back to the stock icon.
   const faviconUrl = branding.favicon?.dataUrl ?? null;

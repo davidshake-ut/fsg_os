@@ -246,6 +246,24 @@ function BrandingForm({ initial, onSave }) {
               />
             </div>
           </div>
+          <div>
+            <p className="mb-1.5 text-xs text-slate-500">Background color</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={form.backgroundColor || '#f6f7f9'}
+                onChange={(e) => set('backgroundColor', e.target.value)}
+                className="h-9 w-9 cursor-pointer rounded-lg border border-slate-200 p-0.5"
+              />
+              <input
+                type="text"
+                value={form.backgroundColor || ''}
+                onChange={(e) => set('backgroundColor', e.target.value)}
+                className="w-28 rounded-lg border border-slate-200 px-3 py-1.5 font-mono text-sm outline-none focus:border-blue-400"
+                placeholder="#f6f7f9"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Live preview */}
