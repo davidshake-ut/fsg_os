@@ -23,7 +23,10 @@ function MessagesContent() {
   const searchParams = useSearchParams();
   const activeId = searchParams.get('c');
 
-  const { conversations, loading: listLoading, loadError, refresh: refreshList, createConversation } = useConversations(session, company, user);
+  const {
+    conversations, loading: listLoading, loadError, refresh: refreshList, createConversation,
+    setArchived, markUnread, leaveConversation,
+  } = useConversations(session, company, user);
   const {
     conversation, members, memberStates, messages, loading: threadLoading, sending, sendMessage, refresh: refreshThread,
   } = useConversation(activeId, session, company, user);
@@ -87,6 +90,19 @@ function MessagesContent() {
     await refreshList();
   };
 
+  const handleLeave = async (convo) => {
+    await leaveConversation(convo.id);
+    if (convo.id === activeId) router.push('/messages');
+    setToast({ type: 'success', message: `Left ${convo.name || 'the conversation'}.` });
+  };
+
+  const handleMarkUnread = async (convo) => {
+    // Marking the OPEN conversation unread would be undone instantly by the
+    // thread's mark-read-on-open — step out of it first.
+    if (convo.id === activeId) router.push('/messages');
+    await markUnread(convo.id);
+  };
+
   return (
     <div className="flex h-full">
       <ConversationList
@@ -99,6 +115,9 @@ function MessagesContent() {
         onNewConversation={() => setModalOpen(true)}
         onSearch={() => setSearchOpen(true)}
         searchActive={searchOpen}
+        onArchive={(convo, archived) => setArchived(convo.id, archived)}
+        onMarkUnread={handleMarkUnread}
+        onLeave={handleLeave}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {loadError && <div className="p-4"><ErrorBanner error={loadError} onRetry={refreshList} /></div>}

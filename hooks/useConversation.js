@@ -62,9 +62,11 @@ export function useConversation(conversationId, session, company, user) {
 
   const markRead = useCallback(async () => {
     if (!supabase || !conversationId || !userId) return;
+    // Opening also clears a manual "mark as unread" flag — reading it again
+    // is what un-saves it for later.
     await supabase
       .from('conversation_members')
-      .update({ last_read_at: new Date().toISOString() })
+      .update({ last_read_at: new Date().toISOString(), marked_unread: false })
       .eq('conversation_id', conversationId)
       .eq('user_id', userId);
   }, [supabase, conversationId, userId]);

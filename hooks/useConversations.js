@@ -31,7 +31,7 @@ export function useConversations(session, company, user) {
 
     const { data: convos, error } = await supabase
       .from('conversations')
-      .select('*, conversation_members(user_id, last_read_at, users(id, full_name, email))')
+      .select('*, conversation_members(user_id, last_read_at, archived, marked_unread, users(id, full_name, email))')
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -78,12 +78,17 @@ export function useConversations(session, company, user) {
     const unreadMap = new Map(unreadEntries);
 
     setConversations(
-      list.map((c) => ({
-        ...c,
-        members: (c.conversation_members ?? []).map((m) => m.users).filter(Boolean),
-        lastMessage: lastByConvo.get(c.id) ?? null,
-        unreadCount: unreadMap.get(c.id) ?? 0,
-      }))
+      list.map((c) => {
+        const mine = (c.conversation_members ?? []).find((m) => m.user_id === userId);
+        return {
+          ...c,
+          members: (c.conversation_members ?? []).map((m) => m.users).filter(Boolean),
+          lastMessage: lastByConvo.get(c.id) ?? null,
+          unreadCount: unreadMap.get(c.id) ?? 0,
+          archived: mine?.archived ?? false,
+          markedUnread: mine?.marked_unread ?? false,
+        };
+      })
     );
     setLoading(false);
   }, [supabase, companyId, userId]);
@@ -241,5 +246,48 @@ export function useConversations(session, company, user) {
     }
   }, [supabase, companyId, userId, createConversation, refresh]);
 
-  return { conversations, loading, loadError, refresh, createConversation, openProjectChannel };
+  // ── Per-member list management (Slack-ish folders) ─────────────────────
+  // Archive = my view only (the conversation lives on); mark-unread = save
+  // for later (cleared the next time I open it); leave = drop my membership.
+  const setArchived = useCallback(async (conversationId, archived) => {
+    if (!supabase || !userId) return;
+    await supabase
+      .from('conversation_members')
+      .update({ archived })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId);
+    await refresh({ silent: true });
+  }, [supabase, userId, refresh]);
+
+  const markUnread = useCallback(async (conversationId) => {
+    if (!supabase || !userId) return;
+    await supabase
+      .from('conversation_members')
+      .update({ marked_unread: true })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId);
+    await refresh({ silent: true });
+  }, [supabase, userId, refresh]);
+
+  const leaveConversation = useCallback(async (conversationId) => {
+    if (!supabase || !userId) return;
+    await supabase
+      .from('conversation_members')
+      .delete()
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId);
+    await refresh({ silent: true });
+  }, [supabase, userId, refresh]);
+
+  return {
+    conversations,
+    loading,
+    loadError,
+    refresh,
+    createConversation,
+    openProjectChannel,
+    setArchived,
+    markUnread,
+    leaveConversation,
+  };
 }
