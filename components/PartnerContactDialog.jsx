@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Mail, X, CheckCircle2, Loader2 } from 'lucide-react';
 
 // "New Partners — Send Us a Message" on the public landing page. Opens a
@@ -64,10 +65,11 @@ export default function PartnerContactButton({ variant = 'hero', className = '' 
         <Mail size={variant === 'header' ? 14 : 16} /> New Partners — Send Us a Message
       </button>
 
-      {open && (
-        // Scroll-safe overlay: when the dialog is taller than the viewport
-        // it must scroll into view, not clip off the top — so the overlay
-        // scrolls and the inner wrapper centers only when there's room.
+      {open && typeof document !== 'undefined' && createPortal(
+        // Portaled to <body>: the landing header's backdrop-blur creates a
+        // containing block that would trap this fixed overlay inside the
+        // header bar. Scroll-safe: the overlay scrolls when the dialog is
+        // taller than the viewport; the wrapper centers it when it fits.
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm" onMouseDown={close}>
           <div className="flex min-h-full items-center justify-center p-4">
           <div
@@ -148,7 +150,8 @@ export default function PartnerContactButton({ variant = 'hero', className = '' 
             )}
           </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
