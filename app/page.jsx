@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import PartnerContactButton from '@/components/PartnerContactDialog';
 import {
   Layers,
   LayoutDashboard,
@@ -16,7 +17,6 @@ import {
   Calculator,
   Workflow,
   ArrowRight,
-  Mail,
   LogIn,
   CheckCircle2,
 } from 'lucide-react';
@@ -75,16 +75,7 @@ function CtaButtons({ light = false }) {
       >
         <LogIn size={16} /> Existing Partners — Log In
       </Link>
-      <a
-        href={CONTACT_MAILTO}
-        className={
-          light
-            ? 'inline-flex items-center gap-2 rounded-xl border border-white/50 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10'
-            : 'inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:border-blue-400 hover:text-blue-700'
-        }
-      >
-        <Mail size={16} /> New Partners — Send Us a Message
-      </a>
+      <PartnerContactButton variant={light ? 'light' : 'hero'} />
     </div>
   );
 }
@@ -108,12 +99,7 @@ export default function LandingPage() {
             >
               <LogIn size={14} /> Existing Partners — Log In
             </Link>
-            <a
-              href={CONTACT_MAILTO}
-              className="hidden items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-blue-400 hover:text-blue-700 sm:inline-flex"
-            >
-              <Mail size={14} /> New Partners — Send Us a Message
-            </a>
+            <PartnerContactButton variant="header" className="max-sm:hidden" />
           </div>
         </div>
       </header>
