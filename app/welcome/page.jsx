@@ -68,7 +68,7 @@ export default function WelcomePage() {
     setBusy(false);
     if (error) return setErr(error.message);
     setDone(true);
-    setTimeout(() => router.push('/'), 1400);
+    setTimeout(() => router.push('/dashboard'), 1400);
   };
 
   return (
@@ -103,7 +103,7 @@ export default function WelcomePage() {
               This link is invalid or has expired. Request a new invite or password reset, or sign in
               with an email login code.
             </p>
-            <Button variant="outline" className="w-full" onClick={() => router.push('/')}>
+            <Button variant="outline" className="w-full" onClick={() => router.push('/dashboard')}>
               Go to sign in
             </Button>
           </div>
