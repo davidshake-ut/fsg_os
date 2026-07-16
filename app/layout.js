@@ -3,6 +3,7 @@ import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
 import FaviconManager from "@/components/FaviconManager";
 import BrandingVars from "@/components/BrandingVars";
+import { Analytics } from "@vercel/analytics/next";
 
 const headingFont = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -53,6 +54,7 @@ export default function RootLayout({ children }) {
           <BrandingVars />
           {children}
         </SessionProvider>
+        <Analytics />
       </body>
     </html>
   );
