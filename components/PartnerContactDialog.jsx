@@ -65,15 +65,16 @@ export default function PartnerContactButton({ variant = 'hero', className = '' 
       </button>
 
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-          onMouseDown={close}
-        >
+        // Scroll-safe overlay: when the dialog is taller than the viewport
+        // it must scroll into view, not clip off the top — so the overlay
+        // scrolls and the inner wrapper centers only when there's room.
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-sm" onMouseDown={close}>
+          <div className="flex min-h-full items-center justify-center p-4">
           <div
             role="dialog"
             aria-modal="true"
             onMouseDown={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            className="my-4 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900">
@@ -145,6 +146,7 @@ export default function PartnerContactButton({ variant = 'hero', className = '' 
                 </button>
               </form>
             )}
+          </div>
           </div>
         </div>
       )}
