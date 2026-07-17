@@ -84,9 +84,14 @@ export function useConversations(session, company, user) {
           ...c,
           members: (c.conversation_members ?? []).map((m) => m.users).filter(Boolean),
           lastMessage: lastByConvo.get(c.id) ?? null,
-          unreadCount: unreadMap.get(c.id) ?? 0,
+          // Super admins can SEE conversations they're not members of (RLS
+          // oversight bypass) — but with no membership row there's no
+          // last_read_at to compare, so every message would count unread
+          // and the row would bold forever. Not a member → nothing unread.
+          unreadCount: mine ? unreadMap.get(c.id) ?? 0 : 0,
           archived: mine?.archived ?? false,
           markedUnread: mine?.marked_unread ?? false,
+          isMember: !!mine,
         };
       })
     );

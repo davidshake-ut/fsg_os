@@ -198,5 +198,20 @@ export function useConversation(conversationId, session, company, user) {
     }
   }, [supabase, conversationId, companyId, userId, members, user, conversation, markRead, refresh]);
 
-  return { conversation, members, memberStates, messages, loading, loadError, sending, sendMessage, markRead, refresh };
+  // A super admin can VIEW conversations they're not a member of (RLS
+  // oversight bypass) — but sending requires membership. Join seats them.
+  const isMember = memberStates.some((s) => s.user_id === userId);
+  const joinConversation = useCallback(async () => {
+    if (!supabase || !conversationId || !userId) return;
+    const { error } = await supabase
+      .from('conversation_members')
+      .insert({ conversation_id: conversationId, user_id: userId });
+    if (error) throw error;
+    await refresh();
+  }, [supabase, conversationId, userId, refresh]);
+
+  return {
+    conversation, members, memberStates, messages, loading, loadError, sending,
+    sendMessage, markRead, refresh, isMember, joinConversation,
+  };
 }

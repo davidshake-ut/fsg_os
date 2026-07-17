@@ -153,10 +153,12 @@ function mentionTokenAt(text, caret) {
   return { partial: match[2], start: caret - match[2].length - 1 };
 }
 
-export default function MessageThread({ conversation, members, memberStates, messages, currentUserId, onSend, sending, onRefresh, loading, canWrite = true }) {
+export default function MessageThread({ conversation, members, memberStates, messages, currentUserId, onSend, sending, onRefresh, loading, canWrite = true, isMember = true, onJoin }) {
   const [body, setBody] = useState('');
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState(null);
+  const [sendError, setSendError] = useState(null);
+  const [joining, setJoining] = useState(false);
   const [mentionQuery, setMentionQuery] = useState(null); // { partial, start }
   const [mentionIndex, setMentionIndex] = useState(0);
   const bottomRef = useRef(null);
@@ -208,10 +210,16 @@ export default function MessageThread({ conversation, members, memberStates, mes
     e.preventDefault();
     const text = body.trim();
     if (!text && !file) return;
-    setBody('');
-    setFile(null);
+    setSendError(null);
     setMentionQuery(null);
-    await onSend(text, file);
+    try {
+      await onSend(text, file);
+      // Only clear on success — a failed send must never eat the message.
+      setBody('');
+      setFile(null);
+    } catch (err) {
+      setSendError(err?.message || 'Message could not be sent — please try again.');
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -295,7 +303,35 @@ export default function MessageThread({ conversation, members, memberStates, mes
         <div ref={bottomRef} />
       </div>
 
-      {canWrite && (
+      {canWrite && !isMember && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-amber-100 bg-amber-50 px-5 py-3">
+          <p className="text-xs text-amber-800">
+            You&rsquo;re viewing this conversation with platform-admin access — join it to send messages.
+          </p>
+          {onJoin && (
+            <button
+              type="button"
+              disabled={joining}
+              onClick={async () => {
+                setJoining(true);
+                setSendError(null);
+                try {
+                  await onJoin();
+                } catch (err) {
+                  setSendError(err?.message || 'Could not join the conversation.');
+                } finally {
+                  setJoining(false);
+                }
+              }}
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              {joining ? 'Joining…' : 'Join conversation'}
+            </button>
+          )}
+          {sendError && <p className="w-full text-xs text-red-600">{sendError}</p>}
+        </div>
+      )}
+      {canWrite && isMember && (
       <form onSubmit={handleSend} className="relative shrink-0 border-t border-slate-100 px-5 py-3">
         {mentionQuery && mentionMatches.length > 0 && (
           <div className="absolute bottom-full left-5 z-20 mb-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
@@ -333,6 +369,7 @@ export default function MessageThread({ conversation, members, memberStates, mes
             {fileError && <span className="text-xs text-red-600">{fileError}</span>}
           </div>
         )}
+        {sendError && <p className="mb-2 text-xs text-red-600">{sendError}</p>}
 
         <div className="flex items-end gap-2">
           <button

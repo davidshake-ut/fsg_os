@@ -29,7 +29,7 @@ function MessagesContent() {
   } = useConversations(session, company, user);
   const {
     conversation, members, memberStates, messages, loading: threadLoading, loadError: threadError,
-    sending, sendMessage, refresh: refreshThread,
+    sending, sendMessage, refresh: refreshThread, isMember, joinConversation,
   } = useConversation(activeId, session, company, user);
   const { results, searching, searchError, search, clear } = useMessageSearch();
 
@@ -157,6 +157,12 @@ function MessagesContent() {
             onRefresh={refreshThread}
             loading={threadLoading}
             canWrite={canWrite}
+            isMember={isMember}
+            onJoin={async () => {
+              await joinConversation();
+              await refreshList({ silent: true });
+              setToast({ type: 'success', message: 'Joined — you can send messages here now.' });
+            }}
           />
         )}
       </div>
