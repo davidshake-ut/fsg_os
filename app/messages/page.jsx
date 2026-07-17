@@ -28,7 +28,8 @@ function MessagesContent() {
     setArchived, markUnread, leaveConversation,
   } = useConversations(session, company, user);
   const {
-    conversation, members, memberStates, messages, loading: threadLoading, sending, sendMessage, refresh: refreshThread,
+    conversation, members, memberStates, messages, loading: threadLoading, loadError: threadError,
+    sending, sendMessage, refresh: refreshThread,
   } = useConversation(activeId, session, company, user);
   const { results, searching, searchError, search, clear } = useMessageSearch();
 
@@ -50,6 +51,15 @@ function MessagesContent() {
   }, [supabase, session]);
 
   const selectConversation = (id) => router.push(`/messages?c=${id}`);
+
+  // Opening a conversation marks it read (thread hook) — re-pull the list
+  // shortly after so its bold/unread state clears immediately instead of
+  // waiting for the next background poll.
+  useEffect(() => {
+    if (!activeId) return;
+    const t = setTimeout(() => refreshList({ silent: true }), 800);
+    return () => clearTimeout(t);
+  }, [activeId, refreshList]);
 
   const runSearch = (q, senderId) => {
     setQuery(q);
@@ -121,6 +131,7 @@ function MessagesContent() {
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {loadError && <div className="p-4"><ErrorBanner error={loadError} onRetry={refreshList} /></div>}
+        {threadError && <div className="p-4"><ErrorBanner error={threadError} onRetry={refreshThread} /></div>}
         {searchOpen ? (
           <MessageSearch
             query={query}

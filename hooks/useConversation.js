@@ -45,13 +45,18 @@ export function useConversation(conversationId, session, company, user) {
         .order('created_at', { ascending: true })
         .limit(500),
     ]);
-    if (convoRes.error) { setLoadError(convoRes.error.message); return; }
-    setConversation(convoRes.data);
-    const states = convoRes.data?.conversation_members ?? [];
-    setMemberStates(states);
-    setMembers(states.map((m) => m.users).filter(Boolean));
-    if (!msgRes.error) setMessages(msgRes.data ?? []);
-    else setLoadError(msgRes.error.message);
+    // Handle the two fetches independently — a conversation-metadata error
+    // must not leave a stale/empty message list behind (and vice versa).
+    if (convoRes.error) {
+      setLoadError(convoRes.error.message);
+    } else {
+      setConversation(convoRes.data);
+      const states = convoRes.data?.conversation_members ?? [];
+      setMemberStates(states);
+      setMembers(states.map((m) => m.users).filter(Boolean));
+    }
+    if (msgRes.error) setLoadError(msgRes.error.message);
+    else setMessages(msgRes.data ?? []);
   }, [supabase, conversationId]);
 
   useEffect(() => {
@@ -63,12 +68,20 @@ export function useConversation(conversationId, session, company, user) {
   const markRead = useCallback(async () => {
     if (!supabase || !conversationId || !userId) return;
     // Opening also clears a manual "mark as unread" flag — reading it again
-    // is what un-saves it for later.
-    await supabase
+    // is what un-saves it for later. If the flag column ever fails (schema
+    // drift), still record the read so unread badges keep clearing.
+    const { error } = await supabase
       .from('conversation_members')
       .update({ last_read_at: new Date().toISOString(), marked_unread: false })
       .eq('conversation_id', conversationId)
       .eq('user_id', userId);
+    if (error) {
+      await supabase
+        .from('conversation_members')
+        .update({ last_read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId);
+    }
   }, [supabase, conversationId, userId]);
 
   // Opening a conversation marks it read (clears its unread badge in
