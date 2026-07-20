@@ -6,9 +6,9 @@ import { getSupabase } from '@/lib/supabase/client';
 import { Button, Field, TextInput, Select } from '@/components/ui/primitives';
 import { CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
 
-const EMPTY = { title: '', description: '', priority: 'medium', category: 'other', due_date: '', account_id: '', project_id: '', asset_id: '' };
+const EMPTY = { title: '', description: '', priority: 'medium', category: 'other', due_date: '', account_id: '', project_id: '', asset_id: '', assigned_to: '' };
 
-export default function NewTicketModal({ open, onClose, onSave, accounts = [], projects = [] }) {
+export default function NewTicketModal({ open, onClose, onSave, accounts = [], projects = [], members = [] }) {
   const supabase = getSupabase();
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -67,6 +67,7 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
         account_id:  form.account_id || null,
         project_id:  form.project_id || null,
         asset_id:    form.asset_id || null,
+        assigned_to: form.assigned_to || null,
       });
       onClose();
     } catch (ex) { setErr(ex.message); }
@@ -110,6 +111,14 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
             <Field label="Due by (optional)">
               <TextInput type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
             </Field>
+            {members.length > 0 && (
+              <Field label="Assign to (optional)">
+                <Select value={form.assigned_to} onChange={(e) => set('assigned_to', e.target.value)}>
+                  <option value="">— unassigned —</option>
+                  {members.map((m) => <option key={m.id} value={m.id}>{m.full_name || m.email}</option>)}
+                </Select>
+              </Field>
+            )}
             {accounts.length > 0 && (
               <Field label="Account (optional)">
                 <Select value={form.account_id} onChange={(e) => setForm((f) => ({ ...f, account_id: e.target.value, project_id: '', asset_id: '' }))}>

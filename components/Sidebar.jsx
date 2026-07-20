@@ -31,7 +31,7 @@ import { cn, initials } from '@/lib/utils';
 
 // `group: null` renders with no header (top-level); consecutive items
 // sharing a group render under one label, matching the Sell/Deliver/
-// Support & Bill structure design settled on for the "bold" chrome pass.
+// Support structure design settled on for the "bold" chrome pass.
 // Messages stays ungrouped like Dashboard — it's cross-cutting (every
 // department uses it), not scoped to one workflow stage.
 const NAV_ITEMS = [
@@ -41,11 +41,11 @@ const NAV_ITEMS = [
   { key: 'builder',   label: 'System Builder',  href: '/builder',   icon: Wrench,          group: 'Sell' },
   { key: 'proposals',  label: 'Proposals',       href: '/proposals',  icon: FileCheck,      group: 'Deliver' },
   { key: 'projects',   label: 'Projects',        href: '/projects',   icon: FolderKanban,   group: 'Deliver' },
+  { key: 'invoices',   label: 'Invoices',        href: '/invoices',   icon: Receipt,        group: 'Deliver' },
   { key: 'templates',  label: 'Templates',       href: '/templates',  icon: LayoutTemplate, group: 'Deliver' },
   { key: 'automations', label: 'Automations',    href: '/automations', icon: Zap,           group: 'Deliver' },
-  { key: 'support',    label: 'Support',         href: '/support',    icon: LifeBuoy,       group: 'Support & Bill' },
-  { key: 'invoices',   label: 'Invoices',        href: '/invoices',   icon: Receipt,        group: 'Support & Bill' },
-  { key: 'resources',  label: 'Resources',       href: '/resources',  icon: BookOpen,       group: 'Support & Bill' },
+  { key: 'support',    label: 'Support',         href: '/support',    icon: LifeBuoy,       group: 'Support' },
+  { key: 'resources',  label: 'Resources',       href: '/resources',  icon: BookOpen,       group: 'Support' },
 ];
 
 function NavLink({ href, icon: Icon, label, active, onClick }) {

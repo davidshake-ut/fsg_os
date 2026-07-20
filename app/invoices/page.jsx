@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Plus, Receipt, Trash2, X, Loader2, ChevronDown, ChevronUp,
+  Plus, Search, Receipt, Trash2, X, Loader2, ChevronDown, ChevronUp,
   CheckCircle2, Send, Clock, Ban, FilePlus, Printer,
   Calendar, DollarSign, Building2, GitPullRequest, AlertTriangle,
 } from 'lucide-react';
@@ -457,18 +457,24 @@ function InvoicesContent() {
     useInvoices(session, company, user);
   const { items: unbilled, unbilledProjects, totalValue: unbilledValue, refresh: refreshUnbilled } = useUnbilledWork(session, company);
 
+  const [search,        setSearch]        = useState('');
   const [statusFilter,  setStatusFilter]  = useState('all');
   const [modalOpen,     setModalOpen]     = useState(false);
   const [modalInitial,  setModalInitial]  = useState({});
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
+  const q = search.trim().toLowerCase();
+  const searchFiltered = !q ? invoices : invoices.filter((i) =>
+    [i.invoice_number, i.title, i.customer_name, i.psa_projects?.name, i.crm_accounts?.name]
+      .some((s) => s?.toLowerCase().includes(q)));
   const filtered = statusFilter === 'all'
-    ? invoices
-    : invoices.filter((i) => i.status === statusFilter);
+    ? searchFiltered
+    : searchFiltered.filter((i) => i.status === statusFilter);
 
+  // Tab counts follow the search so the numbers match what's listed.
   const counts = STATUS_TABS.reduce((acc, s) => {
-    acc[s] = s === 'all' ? invoices.length : invoices.filter((i) => i.status === s).length;
+    acc[s] = s === 'all' ? searchFiltered.length : searchFiltered.filter((i) => i.status === s).length;
     return acc;
   }, {});
 
@@ -577,6 +583,16 @@ function InvoicesContent() {
         </div>
       )}
 
+      {/* Search */}
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search invoices by number, title, customer, project…"
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+        />
+      </div>
+
       {/* Status tabs */}
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
         {STATUS_TABS.map((s) => (
@@ -600,8 +616,10 @@ function InvoicesContent() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-slate-200 py-16 text-slate-400">
           <Receipt size={32} className="text-slate-200" />
-          <p className="text-sm font-medium">No {statusFilter !== 'all' ? `${STATUS[statusFilter]?.label.toLowerCase()} ` : ''}invoices yet</p>
-          {statusFilter === 'all' && canWrite && (
+          <p className="text-sm font-medium">
+            {q ? 'No invoices match your search' : `No ${statusFilter !== 'all' ? `${STATUS[statusFilter]?.label.toLowerCase()} ` : ''}invoices yet`}
+          </p>
+          {!q && statusFilter === 'all' && canWrite && (
             <button type="button" onClick={() => setModalOpen(true)}
               className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
               <Plus size={14} /> New Invoice

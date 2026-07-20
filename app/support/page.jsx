@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Inbox, Trash2 } from 'lucide-react';
+import { Plus, Search, Inbox, Trash2 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
@@ -10,8 +10,8 @@ import { useSupportTickets } from '@/hooks/useSupportTickets';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import NewTicketModal from '@/components/support/NewTicketModal';
-import TicketPriorityBadge, { TicketStatusBadge, TicketCategoryBadge, STATUS_CONFIG } from '@/components/support/TicketPriorityBadge';
-import { Card, Button } from '@/components/ui/primitives';
+import TicketPriorityBadge, { TicketStatusBadge, TicketCategoryBadge, STATUS_CONFIG, PRIORITY_CONFIG, CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
+import { Card, Button, Select } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
@@ -31,19 +31,30 @@ function timeAgo(iso) {
 
 function SupportContent() {
   const { session, company, user, canWrite } = useSession();
-  const { tickets, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, deleteTicket } = useSupportTickets(session, company, user);
+  const { tickets, members, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, deleteTicket } = useSupportTickets(session, company, user);
   const { accounts } = useCRMAccounts(session, company, user);
   const { projects } = usePSAProjects(session, company, user);
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [toast, setToast] = useState(null);
 
-  const filtered = statusFilter === 'all' ? tickets : tickets.filter((t) => t.status === statusFilter);
+  const q = search.trim().toLowerCase();
+  // Everything except the status tab, so tab counts match what's listed.
+  const preFiltered = tickets.filter((t) =>
+    (!q || [t.title, t.description, t.crm_accounts?.name, t.assignee?.full_name, t.assignee?.email]
+      .some((s) => s?.toLowerCase().includes(q)))
+    && (priorityFilter === 'all' || t.priority === priorityFilter)
+    && (categoryFilter === 'all' || t.category === categoryFilter));
+  const filtered = statusFilter === 'all' ? preFiltered : preFiltered.filter((t) => t.status === statusFilter);
+  const filtersActive = !!q || priorityFilter !== 'all' || categoryFilter !== 'all';
 
   const counts = ALL_STATUSES.reduce((acc, s) => {
-    acc[s] = tickets.filter((t) => t.status === s).length;
+    acc[s] = preFiltered.filter((t) => t.status === s).length;
     return acc;
   }, {});
 
@@ -89,12 +100,36 @@ function SupportContent() {
         ))}
       </div>
 
+      {/* Search + priority/category filters */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tickets by subject, account, assignee…"
+            className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+          />
+        </div>
+        <Select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="h-9 sm:w-40">
+          <option value="all">All priorities</option>
+          {Object.entries(PRIORITY_CONFIG).map(([val, cfg]) => (
+            <option key={val} value={val}>{cfg.label}</option>
+          ))}
+        </Select>
+        <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="h-9 sm:w-44">
+          <option value="all">All categories</option>
+          {Object.entries(CATEGORY_CONFIG).map(([val, cfg]) => (
+            <option key={val} value={val}>{cfg.label}</option>
+          ))}
+        </Select>
+      </div>
+
       {/* Status filter */}
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
         <button onClick={() => setStatusFilter('all')}
           className={cn('whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
             statusFilter === 'all' ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
-          All <span className="ml-1 text-xs opacity-70">{tickets.length}</span>
+          All <span className="ml-1 text-xs opacity-70">{preFiltered.length}</span>
         </button>
         {ALL_STATUSES.map((s) => (
           <button key={s} onClick={() => setStatusFilter(s)}
@@ -111,8 +146,11 @@ function SupportContent() {
       ) : filtered.length === 0 ? (
         <Card className="py-16 text-center">
           <Inbox size={32} className="mx-auto mb-3 text-slate-300" />
-          <p className="text-sm font-medium text-slate-600">{statusFilter === 'all' ? 'No tickets yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} tickets`}</p>
-          {statusFilter === 'all' && canWrite && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>}
+          <p className="text-sm font-medium text-slate-600">
+            {filtersActive ? 'No tickets match your filters'
+              : statusFilter === 'all' ? 'No tickets yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} tickets`}
+          </p>
+          {!filtersActive && statusFilter === 'all' && canWrite && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>}
         </Card>
       ) : (
         <div className="space-y-2">
@@ -157,7 +195,7 @@ function SupportContent() {
         </div>
       )}
 
-      <NewTicketModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={async (d) => { await createTicket(d); setToast({ type: 'success', message: 'Ticket created.' }); }} accounts={accounts} projects={projects} />
+      <NewTicketModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={async (d) => { await createTicket(d); setToast({ type: 'success', message: 'Ticket created.' }); }} accounts={accounts} projects={projects} members={members} />
       <ConfirmModal
         open={!!confirmState}
         title={confirmState?.title}

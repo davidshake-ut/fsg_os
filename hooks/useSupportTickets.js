@@ -16,6 +16,7 @@ export function useSupportTickets(session, company, user) {
   const userId    = user?.id;
 
   const [remoteTickets, setRemoteTickets] = useState([]);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -48,6 +49,17 @@ export function useSupportTickets(session, company, user) {
 
   const tickets = supabase ? remoteTickets : localData.tickets;
 
+  // Company roster for the assignee picker in NewTicketModal.
+  useEffect(() => {
+    if (!supabase || !companyId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.from('users').select('id, full_name, email').eq('company_id', companyId).order('full_name');
+      if (!cancelled) setMembers(data ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, companyId]);
+
   const createTicket = useCallback(async (data) => {
     const now = new Date().toISOString();
     if (!supabase) {
@@ -66,6 +78,14 @@ export function useSupportTickets(session, company, user) {
       verb: 'ticket.created', entityType: 'ticket', entityId: t.id,
       label: `Ticket opened: ${t.title}`,
     });
+    if (t.assigned_to && t.assigned_to !== userId) {
+      await notify(supabase, {
+        companyId, userId: t.assigned_to,
+        verb: 'ticket.assigned', entityType: 'ticket', entityId: t.id,
+        label: `Ticket assigned to you: ${t.title}`,
+        href: `/support/${t.id}`,
+      });
+    }
     await runAutomations(supabase, {
       companyId, triggerType: 'ticket.created',
       entity: t,
@@ -116,5 +136,5 @@ export function useSupportTickets(session, company, user) {
     await refresh();
   }, [supabase, refresh]);
 
-  return { tickets, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, updateTicket, deleteTicket };
+  return { tickets, members, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, updateTicket, deleteTicket };
 }

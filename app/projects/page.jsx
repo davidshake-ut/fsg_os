@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import {
   Plus,
+  Search,
   Calendar,
   DollarSign,
   CheckCircle2,
@@ -59,6 +60,7 @@ function ProjectsContent() {
   const { createInvoice } = useInvoices(session, company, user);
   const vitals = useProjectVitals(session, company, projects);
 
+  const [search,        setSearch]        = useState('');
   const [statusFilter,  setStatusFilter]  = useState('all');
   const [modalOpen,     setModalOpen]     = useState(false);
   const [deleting,      setDeleting]      = useState(null);
@@ -66,9 +68,13 @@ function ProjectsContent() {
   const [confirmState,  setConfirmState]  = useState(null);
   const [toast, setToast] = useState(null);
 
+  const q = search.trim().toLowerCase();
+  const searchFiltered = !q ? projects : projects.filter((p) =>
+    [p.name, p.crm_accounts?.name, p.customer_name, p.properties?.name]
+      .some((s) => s?.toLowerCase().includes(q)));
   const filtered = statusFilter === 'all'
-    ? projects
-    : projects.filter((p) => p.status === statusFilter);
+    ? searchFiltered
+    : searchFiltered.filter((p) => p.status === statusFilter);
 
   const handleDelete = (p) => {
     setConfirmState({
@@ -81,8 +87,9 @@ function ProjectsContent() {
     });
   };
 
+  // Tab counts follow the search so the numbers match what's listed.
   const counts = ALL_STATUSES.reduce((acc, s) => {
-    acc[s] = projects.filter((p) => p.status === s).length;
+    acc[s] = searchFiltered.filter((p) => p.status === s).length;
     return acc;
   }, {});
 
@@ -104,6 +111,16 @@ function ProjectsContent() {
         )}
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search projects, customers, properties…"
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+        />
+      </div>
+
       {/* Status filter tabs */}
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
         <button
@@ -115,7 +132,7 @@ function ProjectsContent() {
               : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
           )}
         >
-          All <span className="ml-1 text-xs opacity-70">{projects.length}</span>
+          All <span className="ml-1 text-xs opacity-70">{searchFiltered.length}</span>
         </button>
         {ALL_STATUSES.map((s) => (
           <button
@@ -141,12 +158,13 @@ function ProjectsContent() {
         <Card className="py-16 text-center">
           <FolderKanban size={32} className="mx-auto mb-3 text-slate-300" />
           <p className="text-sm font-medium text-slate-600">
-            {statusFilter === 'all' ? 'No projects yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} projects`}
+            {q ? 'No projects match your search'
+              : statusFilter === 'all' ? 'No projects yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} projects`}
           </p>
           <p className="mt-1 text-sm text-slate-400">
-            {statusFilter === 'all' && 'Create your first project to get started.'}
+            {!q && statusFilter === 'all' && 'Create your first project to get started.'}
           </p>
-          {statusFilter === 'all' && canWrite && (
+          {!q && statusFilter === 'all' && canWrite && (
             <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}>
               <Plus size={14} /> New Project
             </Button>
