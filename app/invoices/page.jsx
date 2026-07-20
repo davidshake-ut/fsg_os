@@ -14,7 +14,7 @@ import { useInvoices } from '@/hooks/useInvoices';
 import { useUnbilledWork } from '@/hooks/useUnbilledWork';
 import { useBranding } from '@/hooks/useBranding';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
-import { exportInvoiceCSV, exportInvoicePDF } from '@/lib/exportInvoice';
+import { exportInvoiceCSV, exportInvoicePDF, invoiceTaxLines } from '@/lib/exportInvoice';
 import { pickLogo } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
@@ -95,13 +95,19 @@ function LineItemsEditor({ items, onChange }) {
 // ── Create / Edit invoice modal ───────────────────────────────────────────
 function InvoiceModal({ initial = {}, onSave, onClose }) {
   const today = todayIso();
+  // Legacy invoices carry one combined tax_rate; surface it as state tax so
+  // editing round-trips cleanly (mirrors the 0059 backfill).
+  const legacyStateTax = !initial.state_tax_enabled && !initial.local_tax_enabled && Number(initial.tax_rate) > 0;
   const [form, setForm] = useState({
     title:         initial.title         ?? '',
     customer_name: initial.customer_name ?? '',
     invoice_date:  initial.invoice_date  ?? today,
     due_date:      initial.due_date      ?? plusDays(today, 30),
     line_items:    initial.line_items    ?? [],
-    tax_rate:      initial.tax_rate      ?? 0,
+    state_tax_enabled: initial.state_tax_enabled ?? legacyStateTax,
+    state_tax_rate:    Number(initial.state_tax_rate) > 0 ? initial.state_tax_rate : (legacyStateTax ? initial.tax_rate : 0),
+    local_tax_enabled: initial.local_tax_enabled ?? false,
+    local_tax_rate:    initial.local_tax_rate ?? 0,
     notes:         initial.notes         ?? '',
     project_id:    initial.project_id    ?? null,
     quote_id:      initial.quote_id      ?? null,
@@ -113,7 +119,11 @@ function InvoiceModal({ initial = {}, onSave, onClose }) {
   const set = useCallback((k, v) => setForm((f) => ({ ...f, [k]: v })), []);
 
   const subtotal   = form.line_items.reduce((s, i) => s + (Number(i.total) || 0), 0);
-  const tax_amount = subtotal * (Number(form.tax_rate) || 0) / 100;
+  const stateRate  = form.state_tax_enabled ? (Number(form.state_tax_rate) || 0) : 0;
+  const localRate  = form.local_tax_enabled ? (Number(form.local_tax_rate) || 0) : 0;
+  const stateTax   = subtotal * stateRate / 100;
+  const localTax   = subtotal * localRate / 100;
+  const tax_amount = stateTax + localTax;
   const total      = subtotal + tax_amount;
 
   const submit = async (e) => {
@@ -122,7 +132,14 @@ function InvoiceModal({ initial = {}, onSave, onClose }) {
     setSaving(true);
     setError('');
     try {
-      await onSave({ ...form, subtotal, tax_amount, total, tax_rate: Number(form.tax_rate) || 0 });
+      await onSave({
+        ...form,
+        state_tax_rate: Number(form.state_tax_rate) || 0,
+        local_tax_rate: Number(form.local_tax_rate) || 0,
+        subtotal, tax_amount, total,
+        // Combined columns stay maintained for legacy display paths.
+        tax_rate: stateRate + localRate,
+      });
       onClose();
     } catch (err) {
       setError(err.message);
@@ -171,11 +188,26 @@ function InvoiceModal({ initial = {}, onSave, onClose }) {
               <input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)}
                 className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400" />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">Tax Rate (%)</label>
-              <input type="number" min="0" max="100" step="0.1" value={form.tax_rate}
-                onChange={(e) => set('tax_rate', e.target.value)}
-                className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm tabular-nums outline-none focus:border-blue-400" />
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs font-medium text-slate-700">Taxes</label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[['state', 'State Tax'], ['local', 'Local Tax']].map(([key, label]) => (
+                  <div key={key}
+                    className={cn('flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors',
+                      form[`${key}_tax_enabled`] ? 'border-blue-200 bg-blue-50/40' : 'border-slate-200 bg-slate-50')}>
+                    <input id={`tax-${key}`} type="checkbox" checked={form[`${key}_tax_enabled`]}
+                      onChange={(e) => set(`${key}_tax_enabled`, e.target.checked)}
+                      className="h-4 w-4 accent-blue-600" />
+                    <label htmlFor={`tax-${key}`} className="flex-1 cursor-pointer text-sm text-slate-700">{label}</label>
+                    <input type="number" min="0" max="100" step="0.01" value={form[`${key}_tax_rate`]}
+                      disabled={!form[`${key}_tax_enabled`]}
+                      onChange={(e) => set(`${key}_tax_rate`, e.target.value)}
+                      aria-label={`${label} rate`}
+                      className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-blue-400 disabled:opacity-40" />
+                    <span className="text-xs text-slate-400">%</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -190,9 +222,14 @@ function InvoiceModal({ initial = {}, onSave, onClose }) {
             <div className="flex justify-between text-sm text-slate-600">
               <span>Subtotal</span><span className="tabular-nums">{fmtMoney(subtotal)}</span>
             </div>
-            {Number(form.tax_rate) > 0 && (
+            {form.state_tax_enabled && (
               <div className="flex justify-between text-sm text-slate-600">
-                <span>Tax ({form.tax_rate}%)</span><span className="tabular-nums">{fmtMoney(tax_amount)}</span>
+                <span>State Tax ({stateRate}%)</span><span className="tabular-nums">{fmtMoney(stateTax)}</span>
+              </div>
+            )}
+            {form.local_tax_enabled && (
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>Local Tax ({localRate}%)</span><span className="tabular-nums">{fmtMoney(localTax)}</span>
               </div>
             )}
             <div className="flex justify-between border-t border-slate-200 pt-1.5 text-base font-semibold text-slate-900">
@@ -278,7 +315,7 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete, onEdit, canW
       </table>
       <div class="totals">
         <div class="total-row"><span>Subtotal</span><span>${fmtMoney(inv.subtotal)}</span></div>
-        ${inv.tax_rate > 0 ? `<div class="total-row"><span>Tax (${inv.tax_rate}%)</span><span>${fmtMoney(inv.tax_amount)}</span></div>` : ''}
+        ${invoiceTaxLines(inv).map((l) => `<div class="total-row"><span>${l.label}</span><span>${fmtMoney(l.amount)}</span></div>`).join('')}
         <div class="total-row grand-total"><span>Total</span><span>${fmtMoney(inv.total)}</span></div>
       </div>
       ${inv.notes ? `<div class="notes"><strong>Notes:</strong><br>${inv.notes}</div>` : ''}
@@ -442,11 +479,11 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete, onEdit, canW
             <div className="flex justify-between text-sm text-slate-600">
               <span>Subtotal</span><span className="tabular-nums">{fmtMoney(inv.subtotal)}</span>
             </div>
-            {inv.tax_rate > 0 && (
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Tax ({inv.tax_rate}%)</span><span className="tabular-nums">{fmtMoney(inv.tax_amount)}</span>
+            {invoiceTaxLines(inv).map((l) => (
+              <div key={l.label} className="flex justify-between text-sm text-slate-600">
+                <span>{l.label}</span><span className="tabular-nums">{fmtMoney(l.amount)}</span>
               </div>
-            )}
+            ))}
             <div className="flex justify-between border-t border-slate-200 pt-1.5 text-base font-bold text-slate-900">
               <span>Total</span><span className="tabular-nums">{fmtMoney(inv.total)}</span>
             </div>
@@ -718,7 +755,7 @@ function InvoicesContent() {
           invoice={selectedInvoice}
           canWrite={canWrite}
           branding={branding}
-          onEdit={(inv) => { setModalInitial(inv); setModalOpen(true); }}
+          onEdit={(inv) => { setSelectedInvoice(null); setModalInitial(inv); setModalOpen(true); }}
           onClose={() => setSelectedInvoice(null)}
           onUpdate={async (id, data) => {
             await updateInvoice(id, data);
