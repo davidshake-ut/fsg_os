@@ -481,7 +481,7 @@ function InvoicesContent() {
   const { invoices, loading, loadError, hasMore, totalCount, loadMore, refresh, createInvoice, updateInvoice, deleteInvoice } =
     useInvoices(session, company, user);
   const { items: unbilled, unbilledProjects, totalValue: unbilledValue, refresh: refreshUnbilled } = useUnbilledWork(session, company);
-  const { branding } = useBranding({ configured: isSupabaseConfigured(), company });
+  const { branding } = useBranding({ configured: isSupabaseConfigured, company });
 
   const [search,        setSearch]        = useState('');
   const [statusFilter,  setStatusFilter]  = useState('all');
