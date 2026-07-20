@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Building2, Phone, Globe, Trash2, List, KanbanSquare, UserCheck } from 'lucide-react';
+import { Plus, Search, Building2, Phone, Globe, Trash2, List, KanbanSquare, ChevronDown } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import NewAccountModal from '@/components/crm/NewAccountModal';
-import PipelineBoard from '@/components/crm/PipelineBoard';
+import PipelineBoard, { STAGES } from '@/components/crm/PipelineBoard';
 import { Card, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
@@ -22,17 +22,13 @@ const TYPE_LABELS = {
   healthcare: 'Healthcare', other: 'Other',
 };
 
-const ACCOUNT_STATUS_TONE = {
-  active:   'success',
-  prospect: 'warning',
-  inactive: 'neutral',
-};
+const STAGE_BY_ID = Object.fromEntries(STAGES.map((s) => [s.id, s]));
 
 function CRMContent() {
   const { session, company, user, canWrite } = useSession();
   const { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, updateAccount, deleteAccount } = useCRMAccounts(session, company, user);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState('all');
   const [view, setView] = useState('list');
   const [modalOpen, setModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -40,7 +36,22 @@ function CRMContent() {
   const [toast, setToast] = useState(null);
 
   const searchFiltered = accounts.filter((a) => !search || a.name.toLowerCase().includes(search.toLowerCase()));
-  const filtered = searchFiltered.filter((a) => statusFilter === 'all' || a.status === statusFilter);
+  const filtered = searchFiltered.filter((a) => stageFilter === 'all' || (a.stage ?? 'new') === stageFilter);
+
+  const handleStageChange = async (a, stage) => {
+    await updateAccount(a.id, { stage });
+    if (stage === 'won') {
+      setToast({
+        type: 'success',
+        message: (
+          <>
+            {a.name} is now a customer.{' '}
+            <Link href={`/builder?account=${a.id}`} className="font-semibold underline">Create a proposal →</Link>
+          </>
+        ),
+      });
+    }
+  };
 
   const handleDelete = (a) => {
     setConfirmState({
@@ -68,7 +79,7 @@ function CRMContent() {
         )}
       </div>
 
-      {/* Search + status filter + view toggle */}
+      {/* Search + stage filter + view toggle */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -79,16 +90,14 @@ function CRMContent() {
           />
         </div>
         {view === 'list' && (
-          <div className="flex gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
-            {/* Flow language: a Lead is an account still being sold
-                (status=prospect); winning the pipeline (or the convert
-                action) makes it a Customer (status=active). */}
-            {[['all', 'All'], ['prospect', 'Leads'], ['active', 'Customers'], ['inactive', 'Inactive']].map(([s, label]) => (
-              <button key={s} onClick={() => setStatusFilter(s)}
+          <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
+            {/* An account's status IS its pipeline stage — one state machine. */}
+            {[{ id: 'all', label: 'All' }, ...STAGES].map((s) => (
+              <button key={s.id} onClick={() => setStageFilter(s.id)}
                 className={cn('whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-all',
-                  statusFilter === s ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100'
+                  stageFilter === s.id ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100'
                 )}
-              >{label} <span className="ml-0.5 opacity-70">{s === 'all' ? accounts.length : accounts.filter((a) => a.status === s).length}</span></button>
+              >{s.label} <span className="ml-0.5 opacity-70">{s.id === 'all' ? searchFiltered.length : searchFiltered.filter((a) => (a.stage ?? 'new') === s.id).length}</span></button>
             ))}
           </div>
         )}
@@ -129,29 +138,23 @@ function CRMContent() {
                   {a.phone && <span className="flex items-center gap-1 text-xs text-slate-400"><Phone size={11} />{a.phone}</span>}
                   {a.website && <span className="flex items-center gap-1 text-xs text-slate-400"><Globe size={11} />{a.website.replace(/^https?:\/\//, '')}</span>}
                 </div>
-                <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium', toneClasses(ACCOUNT_STATUS_TONE[a.status] ?? 'warning'))}>
-                  {a.status.charAt(0).toUpperCase() + a.status.slice(1)}
-                </span>
               </Link>
-              {a.status === 'prospect' && (
-                <button
-                  onClick={async () => {
-                    await updateAccount(a.id, { status: 'active' });
-                    setToast({
-                      type: 'success',
-                      message: (
-                        <>
-                          {a.name} is now a customer.{' '}
-                          <Link href={`/builder?account=${a.id}`} className="font-semibold underline">Create a proposal →</Link>
-                        </>
-                      ),
-                    });
-                  }}
-                  title="Convert to customer"
-                  className="shrink-0 rounded-lg p-1.5 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-emerald-50 hover:text-emerald-600">
-                  <UserCheck size={15} />
-                </button>
-              )}
+              {/* Stage pill doubles as the stage picker. */}
+              <div className="relative shrink-0">
+                <select
+                  value={a.stage ?? 'new'}
+                  disabled={!canWrite}
+                  onChange={(e) => handleStageChange(a, e.target.value)}
+                  title="Change stage"
+                  className={cn(
+                    'h-7 cursor-pointer appearance-none rounded-full border pl-2.5 pr-7 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-default',
+                    toneClasses(STAGE_BY_ID[a.stage ?? 'new']?.tone ?? 'neutral')
+                  )}
+                >
+                  {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+                <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-60" />
+              </div>
               <button onClick={() => handleDelete(a)} disabled={deleting === a.id}
                 className="shrink-0 rounded-lg p-1.5 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500">
                 <Trash2 size={15} />

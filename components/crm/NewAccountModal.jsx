@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Button, Field, TextInput, Select } from '@/components/ui/primitives';
+import { STAGES } from '@/components/crm/PipelineBoard';
 
-const EMPTY = { name: '', type: 'other', status: 'prospect', phone: '', website: '', address: '', notes: '' };
+const EMPTY = { name: '', type: 'other', stage: 'new', phone: '', website: '', address: '', notes: '' };
 
 export default function NewAccountModal({ open, onClose, onSave }) {
   const [form, setForm] = useState(EMPTY);
@@ -34,7 +35,7 @@ export default function NewAccountModal({ open, onClose, onSave }) {
       await onSave({
         name:    form.name.trim(),
         type:    form.type,
-        status:  form.status,
+        stage:   form.stage,
         phone:   form.phone.trim()   || null,
         website: form.website.trim() || null,
         address: form.address.trim() || null,
@@ -74,11 +75,9 @@ export default function NewAccountModal({ open, onClose, onSave }) {
                 <option value="other">Other</option>
               </Select>
             </Field>
-            <Field label="Status">
-              <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
-                <option value="prospect">Prospect</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+            <Field label="Pipeline Stage">
+              <Select value={form.stage} onChange={(e) => set('stage', e.target.value)}>
+                {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </Select>
             </Field>
             <Field label="Phone">

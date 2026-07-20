@@ -12,7 +12,7 @@ const MODULES = [
   { key: 'crm',       label: 'CRM',                description: 'Customer accounts, contacts, and opportunities' },
   { key: 'builder',   label: 'System Builder',     description: 'CPQ — configure, price, and quote systems' },
   { key: 'projects',  label: 'Project Management', description: 'PSA — project tracking, scheduling, and resource management' },
-  { key: 'support',   label: 'Customer Support',   description: 'Ticket system with alerts and SLA tracking' },
+  { key: 'support',   label: 'Customer Support',   description: 'Case system with alerts and SLA tracking' },
   { key: 'invoices',  label: 'Invoices',           description: 'Create and send invoices tied to projects and quotes' },
   { key: 'resources', label: 'Resources',           description: 'Knowledge base, guides, and team tools' },
   { key: 'messages',  label: 'Message Center',      description: 'Direct messages, group channels, and project channels' },

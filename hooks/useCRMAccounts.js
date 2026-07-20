@@ -65,21 +65,17 @@ export function useCRMAccounts(session, company, user) {
 
   const updateAccount = useCallback(async (id, data) => {
     const now = new Date().toISOString();
-    // Winning the deal makes them a customer — pipeline stage and account
-    // status were previously independent state machines, so an account
-    // dragged to Won stayed a "prospect" forever.
-    const patch = data.stage === 'won' ? { ...data, status: 'active' } : data;
     if (!supabase) {
-      writeCrm((s) => ({ ...s, accounts: s.accounts.map((a) => a.id === id ? { ...a, ...patch, updated_at: now } : a) }));
+      writeCrm((s) => ({ ...s, accounts: s.accounts.map((a) => a.id === id ? { ...a, ...data, updated_at: now } : a) }));
       return;
     }
-    const { error } = await supabase.from('crm_accounts').update({ ...patch, updated_at: now }).eq('id', id);
+    const { error } = await supabase.from('crm_accounts').update({ ...data, updated_at: now }).eq('id', id);
     if (error) throw error;
-    if (patch.stage) {
+    if (data.stage) {
       const account = accounts.find((a) => a.id === id);
       await runAutomations(supabase, {
         companyId, triggerType: 'account.stage_changed',
-        entity: { ...account, ...patch, id },
+        entity: { ...account, ...data, id },
       });
     }
     await refresh();

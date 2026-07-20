@@ -6,6 +6,7 @@ import {
   Archive, ArchiveRestore, MailPlus, LogOut, ChevronRight,
 } from 'lucide-react';
 import { cn, initials } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 import { toneClasses, tileClasses } from '@/lib/statusColors';
 
 function timeAgo(iso) {
@@ -18,7 +19,7 @@ function timeAgo(iso) {
   if (hours < 24) return `${hours}h`;
   const days = Math.round(hours / 24);
   if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDateShared(iso);
 }
 
 function displayInfo(convo, currentUserId) {

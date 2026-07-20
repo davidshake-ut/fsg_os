@@ -76,13 +76,13 @@ export function useSupportTickets(session, company, user) {
     await logActivity(supabase, {
       companyId, actorId: userId,
       verb: 'ticket.created', entityType: 'ticket', entityId: t.id,
-      label: `Ticket opened: ${t.title}`,
+      label: `Case opened: ${t.title}`,
     });
     if (t.assigned_to && t.assigned_to !== userId) {
       await notify(supabase, {
         companyId, userId: t.assigned_to,
         verb: 'ticket.assigned', entityType: 'ticket', entityId: t.id,
-        label: `Ticket assigned to you: ${t.title}`,
+        label: `Case assigned to you: ${t.title}`,
         href: `/support/${t.id}`,
       });
     }
@@ -108,7 +108,7 @@ export function useSupportTickets(session, company, user) {
         await notify(supabase, {
           companyId, userId: data.assigned_to,
           verb: 'ticket.assigned', entityType: 'ticket', entityId: id,
-          label: `Ticket assigned to you: ${ticket.title}`,
+          label: `Case assigned to you: ${ticket.title}`,
           href: `/support/${id}`,
         });
       }

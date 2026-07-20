@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Clock, Trash2, Plus } from 'lucide-react';
 import { Button, Field, Select, TextInput, Toggle } from '@/components/ui/primitives';
 import { Card } from '@/components/ui/primitives';
-import { currency } from '@/lib/format';
+import { currency, fmtDate as fmtDateShared } from '@/lib/format';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -26,7 +26,7 @@ function groupByDate(entries) {
 
 function formatDate(iso) {
   const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtDateShared(d);
 }
 
 export default function TimeLog({ tasks, timeEntries, onLog, onDelete }) {

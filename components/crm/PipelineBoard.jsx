@@ -13,7 +13,7 @@ import {
 } from '@dnd-kit/core';
 import { Calendar, Percent } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { currency } from '@/lib/format';
+import { currency, fmtDate as fmtDateShared } from '@/lib/format';
 import { toneClasses } from '@/lib/statusColors';
 
 export const STAGES = [
@@ -27,7 +27,7 @@ export const STAGES = [
 
 function fmtDate(iso) {
   if (!iso) return null;
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDateShared(iso);
 }
 
 function AccountCard({ account, hidden }) {

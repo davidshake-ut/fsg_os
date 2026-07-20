@@ -116,8 +116,8 @@ export default function AssetsSection({ assets, onCreate, onDelete, bomSnapshot 
                   </p>
                 </div>
                 {ticketCount > 0 && (
-                  <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600" title="Support tickets linked to this asset">
-                    {ticketCount} ticket{ticketCount !== 1 ? 's' : ''}
+                  <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600" title="Support cases linked to this asset">
+                    {ticketCount} case{ticketCount !== 1 ? 's' : ''}
                   </span>
                 )}
                 <button

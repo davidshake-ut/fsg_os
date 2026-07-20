@@ -75,18 +75,16 @@ export function useCRMAccount(accountId, session) {
 
   const updateAccount = useCallback(async (data) => {
     const now = new Date().toISOString();
-    // Won -> customer, same sync as useCRMAccounts.updateAccount.
-    const patch = data.stage === 'won' ? { ...data, status: 'active' } : data;
     if (!supabase) {
-      writeCrm((s) => ({ ...s, accounts: s.accounts.map((a) => a.id === accountId ? { ...a, ...patch, updated_at: now } : a) }));
+      writeCrm((s) => ({ ...s, accounts: s.accounts.map((a) => a.id === accountId ? { ...a, ...data, updated_at: now } : a) }));
       return;
     }
-    const { error } = await supabase.from('crm_accounts').update({ ...patch, updated_at: now }).eq('id', accountId);
+    const { error } = await supabase.from('crm_accounts').update({ ...data, updated_at: now }).eq('id', accountId);
     if (error) throw error;
-    if (patch.stage) {
+    if (data.stage) {
       await runAutomations(supabase, {
         companyId: account?.company_id, triggerType: 'account.stage_changed',
-        entity: { ...account, ...patch, id: accountId },
+        entity: { ...account, ...data, id: accountId },
       });
     }
     await refresh();

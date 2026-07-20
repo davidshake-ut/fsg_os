@@ -85,7 +85,7 @@ export function useSupportTicket(ticketId, session, company) {
       await notify(supabase, {
         companyId, userId: data.assigned_to,
         verb: 'ticket.assigned', entityType: 'ticket', entityId: ticketId,
-        label: `Ticket assigned to you: ${remoteTicket.title}`,
+        label: `Case assigned to you: ${remoteTicket.title}`,
         href: `/support/${ticketId}`,
       });
     }

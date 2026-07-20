@@ -11,6 +11,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import ModulesPanel from '@/components/ModulesPanel';
 import { costFromDiscount, DEFAULT_PRODUCT_LINE_DISCOUNTS } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 
 // ── Tab definitions ────────────────────────────────────────────────────────
 
@@ -43,18 +44,21 @@ function BrandingForm({ initial, onSave }) {
   const [saved,  setSaved]  = useState(false);
   const [err,    setErr]    = useState(null);
   const fileRef             = useRef();
+  const fileLightRef        = useRef();
   const favRef              = useRef();
 
   useEffect(() => { setForm(initial); }, [JSON.stringify(initial)]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const handleLogoFile = (file) => {
+  // key: 'logo' (dark artwork, light backgrounds) or 'logoLight' (light
+  // artwork, dark backgrounds) — consumers pick per surface via pickLogo().
+  const handleLogoFile = (file, key = 'logo') => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
-      img.onload = () => set('logo', { dataUrl: ev.target.result, w: img.naturalWidth, h: img.naturalHeight });
+      img.onload = () => set(key, { dataUrl: ev.target.result, w: img.naturalWidth, h: img.naturalHeight });
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
@@ -104,9 +108,11 @@ function BrandingForm({ initial, onSave }) {
         <TextInput value={form.companyName} onChange={(e) => set('companyName', e.target.value)} />
       </Field>
 
-      {/* Logo */}
+      {/* Logos — dark artwork for light surfaces, light artwork for dark
+          surfaces (banners, sidebar gradients). The app picks per surface. */}
       <div>
-        <p className="mb-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Logo</p>
+        <p className="mb-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Logo — Dark version</p>
+        <p className="mb-2 text-[11px] text-slate-400">Used on light backgrounds (white pages, printed invoices, light banners).</p>
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
@@ -143,6 +149,46 @@ function BrandingForm({ initial, onSave }) {
               accept="image/*"
               className="hidden"
               onChange={(e) => handleLogoFile(e.target.files?.[0])}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Logo — Light version</p>
+        <p className="mb-2 text-[11px] text-slate-400">Used on dark backgrounds (proposal and invoice PDF banners, dark sidebars). Usually white or knockout artwork.</p>
+        <div className="flex items-center gap-4">
+          {form.logoLight?.dataUrl ? (
+            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 p-1.5">
+              <img src={form.logoLight.dataUrl} alt="Light logo" className="max-h-full max-w-full object-contain" />
+              <button
+                type="button"
+                onClick={() => set('logoLight', null)}
+                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-500 text-white hover:bg-red-500"
+              >
+                <X size={9} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-800/90 text-slate-500">
+              <Upload size={20} />
+            </div>
+          )}
+          <div>
+            <button
+              type="button"
+              onClick={() => fileLightRef.current?.click()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+            >
+              {form.logoLight ? 'Replace light logo' : 'Upload light logo'}
+            </button>
+            <p className="mt-1 text-[11px] text-slate-400">Optional — the dark version is used everywhere if this is empty</p>
+            <input
+              ref={fileLightRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => handleLogoFile(e.target.files?.[0], 'logoLight')}
             />
           </div>
         </div>
@@ -293,8 +339,15 @@ function BrandingForm({ initial, onSave }) {
           >
             Gradient
           </span>
-          {form.logo?.dataUrl && (
-            <img src={form.logo.dataUrl} alt="Company logo" className="ml-auto h-7 w-auto object-contain" />
+          {(form.logo?.dataUrl || form.logoLight?.dataUrl) && (
+            <span className="ml-auto flex items-center gap-2">
+              {form.logo?.dataUrl && <img src={form.logo.dataUrl} alt="Company logo" className="h-7 w-auto object-contain" />}
+              {form.logoLight?.dataUrl && (
+                <span className="rounded-lg bg-slate-800 px-2 py-1">
+                  <img src={form.logoLight.dataUrl} alt="Light logo" className="h-6 w-auto object-contain" />
+                </span>
+              )}
+            </span>
           )}
         </div>
       </div>
@@ -400,7 +453,7 @@ function lastSeenLabel(iso) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return fmtDateShared(iso);
 }
 
 function MembersTable({ members, companies, selfId, visitCounts = {}, onRole, onRemove, onResend, onReassign, onSaveProfile, superAdmin }) {
@@ -916,6 +969,7 @@ export default function AdminPanel() {
     ? {
         companyName:    brandingTarget.name            || '',
         logo:           brandingTarget.logo            || null,
+        logoLight:      brandingTarget.logo_light      || null,
         favicon:        brandingTarget.favicon         || null,
         primaryColor:   brandingTarget.primary_color    || '#2563eb',
         accentColor:    brandingTarget.accent_color     || '#1e40af',
@@ -923,7 +977,7 @@ export default function AdminPanel() {
         uiTheme:        brandingTarget.ui_theme         || 'bold',
         sidebarStyle:   brandingTarget.sidebar_style    || 'gradient',
       }
-    : { companyName: '', logo: null, favicon: null, primaryColor: '#2563eb', accentColor: '#1e40af', secondaryColor: '#0891b2', uiTheme: 'bold', sidebarStyle: 'gradient' };
+    : { companyName: '', logo: null, logoLight: null, favicon: null, primaryColor: '#2563eb', accentColor: '#1e40af', secondaryColor: '#0891b2', uiTheme: 'bold', sidebarStyle: 'gradient' };
 
   const saveSuperBranding = async (form) => {
     if (!supabase || !brandingTargetId) return;
@@ -932,6 +986,7 @@ export default function AdminPanel() {
       .update({
         name:            form.companyName,
         logo:            form.logo ?? null,
+        logo_light:      form.logoLight ?? null,
         favicon:         form.favicon ?? null,
         primary_color:   form.primaryColor,
         accent_color:    form.accentColor,
@@ -1128,6 +1183,7 @@ export default function AdminPanel() {
                   initial={{
                     companyName:    ownBranding.companyName    || '',
                     logo:           ownBranding.logo           || null,
+                    logoLight:      ownBranding.logoLight      || null,
                     primaryColor:   ownBranding.primaryColor   || '#2563eb',
                     accentColor:    ownBranding.accentColor    || '#1e40af',
                     secondaryColor: ownBranding.secondaryColor || '#0891b2',

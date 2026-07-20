@@ -16,6 +16,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { cn } from '@/lib/utils';
+import { fmtDate } from '@/lib/format';
 
 const ALL_STATUSES = Object.keys(STATUS_CONFIG);
 
@@ -66,8 +67,8 @@ function SupportContent() {
 
   const handleDelete = (t) => {
     setConfirmState({
-      title: 'Delete ticket',
-      message: `Delete ticket "${t.title}"? This cannot be undone.`,
+      title: 'Delete case',
+      message: `Delete case "${t.title}"? This cannot be undone.`,
       onConfirm: async () => {
         setDeleting(t.id);
         try { await deleteTicket(t.id); } finally { setDeleting(null); }
@@ -81,9 +82,9 @@ function SupportContent() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Customer Support</h1>
-          <p className="mt-1 text-sm text-slate-500">{tickets.length} ticket{tickets.length !== 1 ? 's' : ''} total</p>
+          <p className="mt-1 text-sm text-slate-500">{tickets.length} case{tickets.length !== 1 ? 's' : ''} total</p>
         </div>
-        {canWrite && <Button size="sm" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>}
+        {canWrite && <Button size="sm" onClick={() => setModalOpen(true)}><Plus size={14} /> New Case</Button>}
       </div>
 
       {/* Stats strip */}
@@ -106,7 +107,7 @@ function SupportContent() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tickets by subject, account, assignee…"
+            placeholder="Search cases by subject, account, assignee…"
             className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           />
         </div>
@@ -142,15 +143,15 @@ function SupportContent() {
 
       {/* Ticket list */}
       {loading ? (
-        <p className="py-12 text-center text-sm text-slate-400">Loading tickets…</p>
+        <p className="py-12 text-center text-sm text-slate-400">Loading cases…</p>
       ) : filtered.length === 0 ? (
         <Card className="py-16 text-center">
           <Inbox size={32} className="mx-auto mb-3 text-slate-300" />
           <p className="text-sm font-medium text-slate-600">
-            {filtersActive ? 'No tickets match your filters'
-              : statusFilter === 'all' ? 'No tickets yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} tickets`}
+            {filtersActive ? 'No cases match your filters'
+              : statusFilter === 'all' ? 'No cases yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} cases`}
           </p>
-          {!filtersActive && statusFilter === 'all' && canWrite && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Ticket</Button>}
+          {!filtersActive && statusFilter === 'all' && canWrite && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Case</Button>}
         </Card>
       ) : (
         <div className="space-y-2">
@@ -167,7 +168,7 @@ function SupportContent() {
                       : <span className={t.status === 'open' || t.status === 'in_progress' ? 'font-medium text-rose-400' : undefined}>Unassigned</span>}
                     {t.due_date && (
                       <span className={t.due_date < new Date().toISOString().slice(0, 10) && t.status !== 'resolved' && t.status !== 'closed' ? ' font-semibold text-rose-500' : undefined}>
-                        {' '}· due {new Date(t.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {' '}· due {fmtDate(t.due_date)}
                       </span>
                     )}
                   </p>
@@ -195,7 +196,7 @@ function SupportContent() {
         </div>
       )}
 
-      <NewTicketModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={async (d) => { await createTicket(d); setToast({ type: 'success', message: 'Ticket created.' }); }} accounts={accounts} projects={projects} members={members} />
+      <NewTicketModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={async (d) => { await createTicket(d); setToast({ type: 'success', message: 'Case created.' }); }} accounts={accounts} projects={projects} members={members} />
       <ConfirmModal
         open={!!confirmState}
         title={confirmState?.title}

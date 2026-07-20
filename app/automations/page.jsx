@@ -12,13 +12,10 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import AppToast from '@/components/ui/AppToast';
 import { cn } from '@/lib/utils';
+import { fmtDateTime as fmtDate } from '@/lib/format';
 
 const TRIGGER_KEYS = Object.keys(TRIGGER_TYPES);
 const ACTION_KEYS = Object.keys(ACTION_TYPES);
-
-function fmtDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
 
 // ── Condition row ────────────────────────────────────────────────────────
 function ConditionRow({ condition, fields, onChange, onRemove }) {
@@ -67,7 +64,7 @@ function ActionRow({ action, onChange, onRemove }) {
       )}
       {action.type === 'create_ticket' && (
         <div className="grid grid-cols-2 gap-2">
-          <TextInput className="h-8 text-xs" value={action.title ?? ''} onChange={(e) => set({ title: e.target.value })} placeholder="Ticket title" />
+          <TextInput className="h-8 text-xs" value={action.title ?? ''} onChange={(e) => set({ title: e.target.value })} placeholder="Case title" />
           <Select className="h-8 text-xs" value={action.priority ?? 'medium'} onChange={(e) => set({ priority: e.target.value })}>
             <option value="low">Low</option>
             <option value="medium">Medium</option>

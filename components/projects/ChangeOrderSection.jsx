@@ -5,6 +5,7 @@ import { Plus, X, Trash2, ChevronDown, ChevronRight, Send, CheckCircle2, Ban, Fi
 import { useSession } from '@/components/SessionProvider';
 import { useChangeOrders } from '@/hooks/useChangeOrders';
 import { computeCoTotals } from '@/lib/changeOrders';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
@@ -178,7 +179,7 @@ function ChangeOrderRow({ co, onStatus, onDelete }) {
               <Button size="sm" variant="outline" onClick={() => onStatus(co, 'draft')}>Reopen as Draft</Button>
             )}
             {co.status === 'approved' && co.approved_at && (
-              <p className="text-xs text-slate-400">Approved {new Date(co.approved_at).toLocaleDateString()}</p>
+              <p className="text-xs text-slate-400">Approved {fmtDateShared(co.approved_at)}</p>
             )}
           </div>
         </div>

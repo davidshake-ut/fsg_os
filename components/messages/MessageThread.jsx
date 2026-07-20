@@ -5,6 +5,7 @@ import { Send, RefreshCw, Loader2, Hash, FolderKanban, MessageSquare, Paperclip,
 import { getSupabase } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/primitives';
 import { cn, initials } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 import { toneClasses } from '@/lib/statusColors';
 import { splitMentions } from '@/lib/mentions';
 
@@ -16,7 +17,7 @@ function timeLabel(iso) {
   const sameDay = d.toDateString() === now.toDateString();
   return sameDay
     ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    : fmtDateShared(d) + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 function fmtBytes(n) {

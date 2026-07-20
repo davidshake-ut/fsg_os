@@ -17,17 +17,13 @@ import { Card, Button, Select, TextInput, EmptyState } from '@/components/ui/pri
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import AppToast from '@/components/ui/AppToast';
 import { cn } from '@/lib/utils';
+import { fmtDate } from '@/lib/format';
 
 const STATUS_FILTERS = ['all', 'draft', 'sent', 'accepted', 'declined', 'expired'];
 
 function fmtMoney(n) {
   if (n == null) return '—';
   return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
-}
-
-function fmtDate(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // Signed-URL download for the attached proposal PDF (private bucket).

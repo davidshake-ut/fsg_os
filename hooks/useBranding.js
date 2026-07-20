@@ -57,6 +57,7 @@ function companyBranding(company) {
   return {
     companyName: company.name || '',
     logo: company.logo || null,
+    logoLight: company.logo_light || null,
     favicon: company.favicon || null,
     primaryColor: company.primary_color || DEFAULT_BRANDING.primaryColor,
     accentColor: company.accent_color || DEFAULT_BRANDING.accentColor,
@@ -84,6 +85,7 @@ export function useBranding(opts = {}) {
         .update({
           name: b.companyName || company.name,
           logo: b.logo ?? null,
+          logo_light: b.logoLight ?? null,
           favicon: b.favicon ?? null,
           primary_color: b.primaryColor,
           accent_color: b.accentColor,

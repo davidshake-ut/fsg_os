@@ -30,17 +30,13 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { cn } from '@/lib/utils';
+import { fmtDate } from '@/lib/format';
 
 const ALL_STATUSES = Object.keys(STATUS_CONFIG);
 
 function fmt(n) {
   if (n == null) return '—';
   return `$${Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-}
-
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // Schedule pulse for in-flight projects: overdue in red, closing-in in amber.

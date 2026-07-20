@@ -51,7 +51,9 @@ export default function SettingsModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const onLogo = (e) => {
+  // key: 'logo' (dark artwork, light backgrounds) or 'logoLight' (light
+  // artwork, dark banners) — see lib/colors.js pickLogo().
+  const onLogoFor = (key) => (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -69,7 +71,7 @@ export default function SettingsModal({
       }
       const img = new Image();
       img.onload = () => {
-        set('logo', { dataUrl, w: img.naturalWidth || 200, h: img.naturalHeight || 80 });
+        set(key, { dataUrl, w: img.naturalWidth || 200, h: img.naturalHeight || 80 });
         setErr(null);
       };
       img.onerror = () => setErr('Could not read that image.');
@@ -77,6 +79,7 @@ export default function SettingsModal({
     };
     reader.readAsDataURL(file);
   };
+  const onLogo = onLogoFor('logo');
 
   const noneEnabled = !includeWifi && !includeCameras;
 
@@ -178,7 +181,7 @@ export default function SettingsModal({
               />
             </Field>
 
-            <Field label="Logo" sub="Shown in the app header and on the PDF (keep under ~1 MB)">
+            <Field label="Logo — Dark version" sub="Used on light backgrounds — app header, printed pages (keep under ~1 MB)">
               <div className="flex items-center gap-3">
                 <div className="flex h-14 w-28 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
                   {form.logo?.dataUrl ? (
@@ -201,6 +204,38 @@ export default function SettingsModal({
                     <button
                       type="button"
                       onClick={() => set('logo', null)}
+                      className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-red-600"
+                    >
+                      <Trash2 size={13} /> Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            </Field>
+
+            <Field label="Logo — Light version" sub="Used on dark backgrounds like the PDF banner — usually white artwork (optional)">
+              <div className="flex items-center gap-3">
+                <div className="flex h-14 w-28 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800">
+                  {form.logoLight?.dataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={form.logoLight.dataUrl}
+                      alt="Light logo preview"
+                      className="max-h-12 max-w-[6.5rem] object-contain"
+                    />
+                  ) : (
+                    <span className="text-xs text-slate-500">No light logo</span>
+                  )}
+                </div>
+                <div className="flex flex-col items-start gap-1.5">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+                    <Upload size={14} /> Upload
+                    <input type="file" accept="image/*" className="hidden" onChange={onLogoFor('logoLight')} />
+                  </label>
+                  {form.logoLight && (
+                    <button
+                      type="button"
+                      onClick={() => set('logoLight', null)}
                       className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-red-600"
                     >
                       <Trash2 size={13} /> Remove

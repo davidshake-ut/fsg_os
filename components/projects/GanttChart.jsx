@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Palette, X } from 'lucide-react';
 import { cn, initials } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 import { PALETTE, PALETTE_MAP } from '@/hooks/useRoleColors';
 
 // ── Tech section colors (unchanged) ─────────────────────────────────────────
@@ -38,7 +39,7 @@ function addDays(dateStr, days) {
 
 function fmtShort(iso) {
   if (!iso) return null;
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDateShared(iso);
 }
 
 // ── GanttDateField — click-to-edit date chip ─────────────────────────────────
@@ -133,7 +134,7 @@ function TodayLine({ minDate, totalDays }) {
     <div
       className="absolute top-0 bottom-0 z-10 w-0.5 bg-red-400 opacity-70"
       style={{ left: off * DAY_PX }}
-      title={`Today: ${today.toLocaleDateString()}`}
+      title={`Today: ${fmtDateShared(today)}`}
     />
   );
 }

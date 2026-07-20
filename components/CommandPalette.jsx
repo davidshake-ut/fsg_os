@@ -13,7 +13,7 @@ const GROUPS = [
   { key: 'tasks',     label: 'Tasks',           icon: CheckSquare,  href: (r) => `/projects/${r.project_id}`,  text: (r) => r.title },
   { key: 'quotes',    label: 'Quotes',          icon: FileCheck,    href: (r) => `/builder?project=${r.id}`,   text: (r) => r.project_name },
   { key: 'invoices',  label: 'Invoices',        icon: Receipt,      href: () => `/invoices`,                    text: (r) => `${r.title} (${r.invoice_number})` },
-  { key: 'tickets',   label: 'Support Tickets', icon: LifeBuoy,     href: (r) => `/support/${r.id}`,           text: (r) => r.title },
+  { key: 'tickets',   label: 'Support Cases', icon: LifeBuoy,     href: (r) => `/support/${r.id}`,           text: (r) => r.title },
   { key: 'resources', label: 'Resources',       icon: BookOpen,     href: () => `/resources`,                   text: (r) => r.title },
 ];
 
@@ -89,7 +89,7 @@ export default function CommandPalette() {
                 ref={inputRef}
                 value={query}
                 onChange={(e) => onChange(e.target.value)}
-                placeholder="Search accounts, projects, tasks, quotes, invoices, tickets, resources…"
+                placeholder="Search accounts, projects, tasks, quotes, invoices, cases, resources…"
                 className="flex-1 text-sm outline-none placeholder:text-slate-300"
               />
               {loading && <Loader2 size={14} className="shrink-0 animate-spin text-slate-300" />}

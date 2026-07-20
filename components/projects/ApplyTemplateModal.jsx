@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { X, ChevronDown, ChevronRight, Layers, Clock, User, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 
 // Add N business days (Mon-Fri) to a date.
 function addBusinessDays(date, days) {
@@ -20,7 +21,7 @@ function addBusinessDays(date, days) {
 }
 
 function fmtDate(d) {
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtDateShared(d);
 }
 
 // Compute sequential start/end dates for every phase given a kickoff date.

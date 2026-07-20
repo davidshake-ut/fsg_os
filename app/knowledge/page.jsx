@@ -12,6 +12,7 @@ import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
 import { cn } from '@/lib/utils';
+import { fmtDate } from '@/lib/format';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 
@@ -67,10 +68,6 @@ function fmtSize(bytes) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-function fmtDate(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 // ── HighlightedSnippet ────────────────────────────────────────────────────────
 // Parses ts_headline output that uses ⟦matched⟧ delimiters.

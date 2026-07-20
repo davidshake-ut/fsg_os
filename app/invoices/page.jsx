@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Plus, Search, Receipt, Trash2, X, Loader2, ChevronDown, ChevronUp,
-  CheckCircle2, Send, Clock, Ban, FilePlus, Printer,
+  CheckCircle2, Send, Clock, Ban, FilePlus, Printer, Pencil, FileDown, FileSpreadsheet,
   Calendar, DollarSign, Building2, GitPullRequest, AlertTriangle,
 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
@@ -12,7 +12,12 @@ import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useInvoices } from '@/hooks/useInvoices';
 import { useUnbilledWork } from '@/hooks/useUnbilledWork';
+import { useBranding } from '@/hooks/useBranding';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { exportInvoiceCSV, exportInvoicePDF } from '@/lib/exportInvoice';
+import { pickLogo } from '@/lib/colors';
 import { cn } from '@/lib/utils';
+import { fmtDate } from '@/lib/format';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { StatusBadge } from '@/components/ui/primitives';
@@ -37,10 +42,6 @@ function fmtMoney(n) {
   return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function todayIso()    { return new Date().toISOString().split('T')[0]; }
 function plusDays(d,n) { const dt = new Date(d + 'T00:00:00'); dt.setDate(dt.getDate() + n); return dt.toISOString().split('T')[0]; }
@@ -225,7 +226,7 @@ function InvoiceModal({ initial = {}, onSave, onClose }) {
 }
 
 // ── Invoice detail drawer ─────────────────────────────────────────────────
-function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
+function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete, onEdit, canWrite, branding = {} }) {
   const [saving, setSaving] = useState(false);
   if (!inv) return null;
 
@@ -237,11 +238,18 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
   const lineItems = Array.isArray(inv.line_items) ? inv.line_items : [];
 
   const handlePrint = () => {
+    // Printed page is white — use the dark-artwork logo variant.
+    const printLogo = pickLogo(branding, '#ffffff');
+    const logo = printLogo?.dataUrl
+      ? `<img src="${printLogo.dataUrl}" alt="" style="max-height:64px;max-width:240px;object-fit:contain" />`
+      : '';
     const w = window.open('', '_blank');
     w.document.write(`
       <html><head><title>Invoice ${inv.invoice_number}</title>
       <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; color: #1e293b; }
+        .brand-head { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; padding-bottom: 16px; border-bottom: 2px solid #e2e8f0; }
+        .brand-head .co { font-size: 15px; font-weight: 700; color: #334155; }
         h1 { font-size: 28px; margin: 0; } .inv-num { color: #64748b; font-size: 14px; margin-top: 4px; }
         .row { display: flex; justify-content: space-between; }
         table { width: 100%; border-collapse: collapse; margin-top: 24px; }
@@ -253,6 +261,7 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
         .grand-total { font-weight: 700; font-size: 16px; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 4px; }
         .notes { margin-top: 32px; font-size: 12px; color: #64748b; }
       </style></head><body>
+      ${(logo || branding.companyName) ? `<div class="brand-head">${logo}<div class="co">${branding.companyName || ''}</div></div>` : ''}
       <h1>${inv.title}</h1>
       <p class="inv-num">${inv.invoice_number}</p>
       <div class="row" style="margin-top:24px">
@@ -275,7 +284,9 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
       ${inv.notes ? `<div class="notes"><strong>Notes:</strong><br>${inv.notes}</div>` : ''}
       </body></html>`);
     w.document.close();
-    w.print();
+    w.focus();
+    // Give the data-URL logo a beat to decode before the print dialog opens.
+    setTimeout(() => w.print(), 300);
   };
 
   return (
@@ -293,6 +304,20 @@ function InvoiceDetail({ invoice: inv, onClose, onUpdate, onDelete }) {
             {inv.customer_name && <p className="text-xs text-slate-500">{inv.customer_name}</p>}
           </div>
           <div className="flex items-center gap-1">
+            {canWrite && (
+              <button type="button" onClick={() => onEdit(inv)} title="Edit invoice"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <Pencil size={14} />
+              </button>
+            )}
+            <button type="button" onClick={() => exportInvoicePDF(inv, branding)} title="Download PDF"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+              <FileDown size={14} />
+            </button>
+            <button type="button" onClick={() => exportInvoiceCSV(inv)} title="Download CSV"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+              <FileSpreadsheet size={14} />
+            </button>
             <button type="button" onClick={handlePrint} title="Print"
               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
               <Printer size={14} />
@@ -456,6 +481,7 @@ function InvoicesContent() {
   const { invoices, loading, loadError, hasMore, totalCount, loadMore, refresh, createInvoice, updateInvoice, deleteInvoice } =
     useInvoices(session, company, user);
   const { items: unbilled, unbilledProjects, totalValue: unbilledValue, refresh: refreshUnbilled } = useUnbilledWork(session, company);
+  const { branding } = useBranding({ configured: isSupabaseConfigured(), company });
 
   const [search,        setSearch]        = useState('');
   const [statusFilter,  setStatusFilter]  = useState('all');
@@ -675,13 +701,24 @@ function InvoicesContent() {
       {modalOpen && (
         <InvoiceModal
           initial={modalInitial}
-          onSave={async (data) => { await createInvoice(data); await refreshUnbilled(); }}
+          onSave={async (data) => {
+            if (modalInitial.id) {
+              await updateInvoice(modalInitial.id, data);
+              setSelectedInvoice((prev) => (prev?.id === modalInitial.id ? { ...prev, ...data } : prev));
+            } else {
+              await createInvoice(data);
+            }
+            await refreshUnbilled();
+          }}
           onClose={() => { setModalOpen(false); setModalInitial({}); }}
         />
       )}
       {selectedInvoice && (
         <InvoiceDetail
           invoice={selectedInvoice}
+          canWrite={canWrite}
+          branding={branding}
+          onEdit={(inv) => { setModalInitial(inv); setModalOpen(true); }}
           onClose={() => setSelectedInvoice(null)}
           onUpdate={async (id, data) => {
             await updateInvoice(id, data);

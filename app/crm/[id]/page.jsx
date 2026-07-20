@@ -14,7 +14,7 @@ import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import { Select, Button } from '@/components/ui/primitives';
 import { EditableField, EditableTextarea } from '@/components/ui/EditableFields';
 import AppToast from '@/components/ui/AppToast';
-import { currency } from '@/lib/format';
+import { currency, fmtDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toneClasses } from '@/lib/statusColors';
 
@@ -36,10 +36,6 @@ const INVOICE_STATUS_TONE = {
   draft: 'neutral', sent: 'info', paid: 'success', overdue: 'danger', void: 'neutral',
 };
 
-function fmtDate(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function Pill({ label, tone }) {
   return <span className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize', toneClasses(tone))}>{label?.replace(/_/g, ' ')}</span>;
@@ -59,7 +55,7 @@ const TABS = [
   { id: 'properties', label: 'Properties' },
   { id: 'quotes', label: 'Proposals' },
   { id: 'projects', label: 'Projects' },
-  { id: 'tickets', label: 'Tickets' },
+  { id: 'tickets', label: 'Cases' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'overview', label: 'Overview' },
 ];
@@ -181,11 +177,9 @@ function AccountDetail() {
             <Link href={`/builder?account=${id}`}>
               <Button size="sm"><FileText size={13} /> New Proposal</Button>
             </Link>
-            <Select className="h-8 w-32 text-xs" value={account.status}
-              onChange={(e) => save({ status: e.target.value })}>
-              <option value="prospect">Prospect</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
+            <Select className="h-8 w-32 text-xs" value={account.stage ?? 'new'}
+              onChange={(e) => save({ stage: e.target.value })}>
+              {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </Select>
           </div>
         </div>
@@ -292,7 +286,7 @@ function AccountDetail() {
         {tab === 'tickets' && (
           <div className="max-w-2xl rounded-xl border border-slate-200 bg-white">
             {tickets.length === 0 ? (
-              <EmptyRow icon={LifeBuoy} message="No support tickets for this account." />
+              <EmptyRow icon={LifeBuoy} message="No support cases for this account." />
             ) : tickets.map((t) => (
               <Link key={t.id} href={`/support/${t.id}`}
                 className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50">

@@ -25,6 +25,7 @@ import ProjectBudget from '@/components/projects/ProjectBudget';
 import ApplyTemplateModal from '@/components/projects/ApplyTemplateModal';
 import ChangeOrderSection from '@/components/projects/ChangeOrderSection';
 import AssetsSection from '@/components/projects/AssetsSection';
+import AttachmentsSection from '@/components/ui/AttachmentsSection';
 import AIAssistantPanel from '@/components/projects/AIAssistantPanel';
 import InstalledEquipment from '@/components/projects/InstalledEquipment';
 import CreateInvoiceModal from '@/components/invoices/CreateInvoiceModal';
@@ -34,6 +35,7 @@ import { EditableField, EditableTextarea } from '@/components/ui/EditableFields'
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TECHNOLOGIES } from '@/lib/templates/index';
 import { cn } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 import { useRoleColors } from '@/hooks/useRoleColors';
 import { useAssets } from '@/hooks/useAssets';
 
@@ -45,12 +47,13 @@ const TABS = [
   { id: 'budget',   label: 'Budget'        },
   { id: 'changes',  label: 'Change Orders' },
   { id: 'assets',   label: 'Assets'        },
+  { id: 'files',    label: 'Files'         },
   { id: 'overview', label: 'Overview'      },
 ];
 
 function fmtDate(iso) {
   if (!iso) return null;
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtDateShared(iso);
 }
 
 function fmt(n) {
@@ -548,6 +551,13 @@ function ProjectDetail() {
             onDelete={deleteAsset}
             bomSnapshot={project.saved_projects?.bom_snapshot}
           />
+        )}
+
+        {/* ── Files ── */}
+        {tab === 'files' && (
+          <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-5">
+            <AttachmentsSection projectId={id} />
+          </div>
         )}
 
         {/* ── Overview ── */}

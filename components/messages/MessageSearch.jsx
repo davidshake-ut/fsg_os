@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { Search, X, Loader2, Hash, FolderKanban, User } from 'lucide-react';
 import { Select } from '@/components/ui/primitives';
 import { cn, initials } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 
 function fmtDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+  return fmtDateShared(iso) +
     ' · ' + new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 

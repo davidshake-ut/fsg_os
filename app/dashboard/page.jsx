@@ -30,6 +30,7 @@ import { useActivityLog } from '@/hooks/useActivityLog';
 import { toneClasses, tileClasses } from '@/lib/statusColors';
 import { KPI_CARDS, PANEL_CARDS, resolveDashboardConfig } from '@/lib/dashboardConfig';
 import { cn } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 
 const ACTIVITY_META = {
   quote:        { icon: FileCheck,      tone: 'info'     },
@@ -48,7 +49,7 @@ function fmtRelative(iso) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDateShared(iso);
 }
 
 function fmtMoney(n) {
@@ -58,7 +59,7 @@ function fmtMoney(n) {
 
 function dueInfo(p) {
   if (!p.end_date) return { text: 'no due date', overdue: false };
-  const label = new Date(p.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const label = fmtDateShared(p.end_date);
   const days = Math.floor((Date.now() - new Date(p.end_date + 'T00:00:00').getTime()) / 86400000);
   if (days > 0 && p.status !== 'complete' && p.status !== 'cancelled') {
     return { text: `due ${label} · ${days}d overdue`, overdue: true };
@@ -93,7 +94,7 @@ function ActiveTicketRow({ ticket: t }) {
             : <span className="font-medium text-rose-400">Unassigned</span>}
           {t.due_date && (
             <span className={overdue ? 'font-semibold text-rose-500' : undefined}>
-              {' '}· due {new Date(t.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {' '}· due {fmtDateShared(t.due_date)}
             </span>
           )}
         </span>
@@ -297,7 +298,7 @@ function DashboardContent() {
     customers: { label: 'Total Customers',   icon: Users,        value: accounts.length,          sub: 'CRM accounts',        loading: loadingCrm,       tone: 'info'     },
     projects:  { label: 'Active Projects',   icon: FolderKanban, value: activeProjects,           sub: 'Planning + active',   loading: loadingPsa,       tone: 'progress' },
     revenue:   { label: 'Revenue Collected', icon: DollarSign,   value: fmtMoney(revenueCollected), sub: 'All paid invoices', loading: loadingInv,       tone: 'success'  },
-    tickets:   { label: 'Open Tickets',      icon: AlertCircle,  value: openTickets,              sub: 'Open + in progress',  loading: loadingTickets,   tone: 'danger'   },
+    tickets:   { label: 'Open Cases',      icon: AlertCircle,  value: openTickets,              sub: 'Open + in progress',  loading: loadingTickets,   tone: 'danger'   },
     proposals: { label: 'Builder Proposals', icon: TrendingUp,   value: savedProjects.length,     sub: 'Saved quotes',        loading: false,            tone: 'warning'  },
     documents: { label: 'Documents',         icon: FileText,     value: resources.length,         sub: `${categoryCount} categor${categoryCount === 1 ? 'y' : 'ies'}`, loading: loadingResources, tone: 'orange' },
   };
@@ -368,7 +369,7 @@ function DashboardContent() {
       <Card className="p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-            <LifeBuoy size={15} className="text-slate-400" /> Active Tickets
+            <LifeBuoy size={15} className="text-slate-400" /> Active Cases
             {activeTickets.length > 0 && (
               <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">{activeTickets.length}</span>
             )}
@@ -381,7 +382,7 @@ function DashboardContent() {
           <Link href="/support"
             className="mb-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100">
             <AlertCircle size={13} className="shrink-0" />
-            {unassignedOpen} open ticket{unassignedOpen !== 1 ? 's' : ''} unassigned — nobody owns {unassignedOpen !== 1 ? 'these' : 'it'} yet
+            {unassignedOpen} open case{unassignedOpen !== 1 ? 's' : ''} unassigned — nobody owns {unassignedOpen !== 1 ? 'these' : 'it'} yet
             <ArrowRight size={12} className="ml-auto shrink-0" />
           </Link>
         )}
@@ -394,7 +395,7 @@ function DashboardContent() {
         ) : activeTickets.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-6 text-slate-400">
             <LifeBuoy size={22} className="text-slate-200" />
-            <p className="text-sm">No open tickets — inbox zero.</p>
+            <p className="text-sm">No open cases — inbox zero.</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -417,7 +418,7 @@ function DashboardContent() {
         ) : activity.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
             <Inbox size={22} className="text-slate-200" />
-            <p className="text-sm">No activity yet — it'll show up here as quotes, projects, and tickets move.</p>
+            <p className="text-sm">No activity yet — it&apos;ll show up here as quotes, projects, and cases move.</p>
           </div>
         ) : (
           <div className="space-y-1.5">

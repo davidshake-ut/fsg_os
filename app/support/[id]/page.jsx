@@ -11,19 +11,12 @@ import { useSupportTicket } from '@/hooks/useSupportTicket';
 import { useConversations } from '@/hooks/useConversations';
 import TicketPriorityBadge, { TicketStatusBadge, TicketCategoryBadge, STATUS_CONFIG, PRIORITY_CONFIG, CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
 import CommentThread from '@/components/support/CommentThread';
+import AttachmentsSection from '@/components/ui/AttachmentsSection';
 import InstalledEquipment from '@/components/projects/InstalledEquipment';
 import { Select, Button } from '@/components/ui/primitives';
+import { fmtDate as fmtDay, fmtDateTime as fmtDate } from '@/lib/format';
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtDay(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
+// Page convention: fmtDate = date + time (opened/resolved stamps), fmtDay = date only.
 const ASSET_TYPE_LABELS = {
   access_point: 'Access Point', camera: 'Camera', switch: 'Switch',
   gateway: 'Gateway', nvr: 'NVR', smart_device: 'Smart Device',
@@ -59,7 +52,7 @@ function TicketDetail() {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-500">
         <AlertCircle size={28} className="text-slate-300" />
-        <p className="text-sm">Ticket not found.</p>
+        <p className="text-sm">Case not found.</p>
         <Link href="/support" className="text-sm text-blue-600 hover:underline">← Back to Support</Link>
       </div>
     );
@@ -232,6 +225,11 @@ function TicketDetail() {
               </dl>
             </div>
 
+            {/* Attachments */}
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <AttachmentsSection ticketId={id} />
+            </div>
+
             {/* Comments */}
             <div className="rounded-xl border border-slate-200 bg-white p-5">
               <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -251,7 +249,7 @@ function TicketDetail() {
             {priorTickets.length > 0 && (
               <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  <History size={12} /> Previous tickets for this account
+                  <History size={12} /> Previous cases for this account
                 </h2>
                 <div className="space-y-1">
                   {priorTickets.map((t) => (

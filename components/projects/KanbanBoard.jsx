@@ -17,12 +17,13 @@ import {
 } from '@dnd-kit/core';
 import { CheckSquare, Calendar, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fmtDate as fmtDateShared } from '@/lib/format';
 import { taskStatusClasses } from './ProjectStatusBadge';
 import { DEFAULT_BOARD_COLUMNS, SYSTEM_COLUMN_IDS, newColumnId } from '@/lib/boardColumns';
 
 function fmtDate(iso) {
   if (!iso) return null;
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtDateShared(iso);
 }
 
 function initials(name, email) {

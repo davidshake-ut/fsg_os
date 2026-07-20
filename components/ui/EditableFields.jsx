@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Pencil, Check, X } from 'lucide-react';
+import { fmtDate } from '@/lib/format';
 
 // Inline click-to-edit fields (pencil → input → ✓/✕), the overview-card
 // editing pattern shared by the CRM 360° and project detail pages.
@@ -33,7 +34,7 @@ export function EditableField({ label, value, onSave, type = 'text', placeholder
       <p className="mb-0.5 text-xs font-medium text-slate-400">{label}</p>
       <button type="button" onClick={() => { setDraft(value ?? ''); setEditing(true); }} aria-label={`Edit ${label}`}
         className="group flex items-center gap-1 text-sm text-slate-700 hover:text-blue-600">
-        {value || <span className="text-slate-300 italic">—</span>}
+        {value ? (type === 'date' ? fmtDate(value) : value) : <span className="text-slate-300 italic">—</span>}
         <Pencil size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
       </button>
     </div>

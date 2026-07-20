@@ -35,7 +35,7 @@ const CONTACT_MAILTO =
   'mailto:david.shake@fusionsg.com?subject=FSG%20OS%20%E2%80%94%20New%20Partner%20Inquiry';
 
 const MODULES = [
-  { icon: LayoutDashboard, name: 'Dashboard', blurb: 'Live KPIs, active projects, and open tickets — customizable per team.' },
+  { icon: LayoutDashboard, name: 'Dashboard', blurb: 'Live KPIs, active projects, and open cases — customizable per team.' },
   { icon: Users, name: 'CRM', blurb: 'Accounts, contacts, properties, and a pipeline that flows into quotes.' },
   { icon: Wrench, name: 'System Builder', blurb: 'CPQ with design calculators — rooms and ratios in, full BOM and labor out.' },
   { icon: FolderKanban, name: 'Projects', blurb: 'PSA with task plans, Gantt + dependencies, kanban, and time tracking.' },
@@ -49,7 +49,7 @@ const FLOW = [
   { step: 'Sell', text: 'Track the account in CRM and design the system in the Builder — every technology, side by side.' },
   { step: 'Propose', text: 'One click turns the design into a customer-ready proposal PDF with scope of work, filed and versioned.' },
   { step: 'Deliver', text: 'An accepted proposal becomes a project with a generated task plan, schedule, and budget split.' },
-  { step: 'Support & Bill', text: 'Installed equipment feeds support tickets; completed work feeds invoices. Nothing falls through.' },
+  { step: 'Support & Bill', text: 'Installed equipment feeds support cases; completed work feeds invoices. Nothing falls through.' },
 ];
 
 const TECHS = [
@@ -163,7 +163,7 @@ export default function LandingPage() {
                   {[
                     ['Pipeline', '$412k'],
                     ['Active projects', '9'],
-                    ['Open tickets', '4'],
+                    ['Open cases', '4'],
                   ].map(([k, v]) => (
                     <div key={k} className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-sm">
                       <p className="text-[9px] uppercase tracking-wide text-slate-400">{k}</p>
