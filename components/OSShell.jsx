@@ -3,9 +3,15 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import { useSession } from '@/components/SessionProvider';
+import { useTrainingReminders } from '@/hooks/useTrainingReminders';
 
 export default function OSShell({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Once-per-session training reminder sweep (overdue + cert expirations) —
+  // runs on any page load so reminders don't depend on visiting Training.
+  const { session, company, user } = useSession();
+  useTrainingReminders(session, company, user);
 
   return (
     <div className="flex h-screen overflow-hidden">

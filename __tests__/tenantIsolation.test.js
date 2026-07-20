@@ -143,6 +143,80 @@ describe.skipIf(!configured)('tenant isolation', () => {
     expect(data.some((r) => r.company_id === teams.a.id)).toBe(false);
   }, TIMEOUT);
 
+  it('training: courses are tenant-isolated and admin-write-only (0058)', async () => {
+    // Service role seeds a published course in team A.
+    const { data: course, error: cErr } = await svc.from('training_courses')
+      .insert({ company_id: teams.a.id, title: 'A course', status: 'published' })
+      .select().single();
+    expect(cErr).toBeNull();
+
+    // Team B can't see it, even by id.
+    const { data: bView } = await users.b.client.from('training_courses').select('*').eq('id', course.id);
+    expect(bView).toEqual([]);
+
+    // A regular member (role 'user') can't author courses — admin-only writes.
+    const { error: memberWrite } = await users.a.client.from('training_courses')
+      .insert({ company_id: teams.a.id, title: 'Member-created course' });
+    expect(memberWrite).not.toBeNull();
+
+    // An item in the course, an assignment for user A (seeded by service role).
+    const { data: item, error: iErr } = await svc.from('training_course_items')
+      .insert({ company_id: teams.a.id, course_id: course.id, sort_order: 0, title: 'Item', item_type: 'external_url', external_url: 'https://example.com' })
+      .select().single();
+    expect(iErr).toBeNull();
+    const { data: assignment, error: aErr } = await svc.from('training_assignments')
+      .insert({ company_id: teams.a.id, course_id: course.id, user_id: users.a.id })
+      .select().single();
+    expect(aErr).toBeNull();
+
+    // User B (other tenant) can't complete an item on A's assignment…
+    const { error: bComplete } = await users.b.client.from('training_item_completions')
+      .insert({ company_id: teams.a.id, assignment_id: assignment.id, course_item_id: item.id, user_id: users.b.id });
+    expect(bComplete).not.toBeNull();
+
+    // …and can't forge it in the owner's name either.
+    const { error: bForged } = await users.b.client.from('training_item_completions')
+      .insert({ company_id: teams.a.id, assignment_id: assignment.id, course_item_id: item.id, user_id: users.a.id });
+    expect(bForged).not.toBeNull();
+
+    // The owner CAN complete their own item, and the server-side trigger
+    // (not the client) flips the assignment to completed.
+    const { error: ownComplete } = await users.a.client.from('training_item_completions')
+      .insert({ company_id: teams.a.id, assignment_id: assignment.id, course_item_id: item.id, user_id: users.a.id });
+    expect(ownComplete).toBeNull();
+    const { data: after } = await svc.from('training_assignments').select('status, completed_at').eq('id', assignment.id).single();
+    expect(after.status).toBe('completed');
+    expect(after.completed_at).not.toBeNull();
+
+    // Duplicate completion is rejected by the unique constraint.
+    const { error: dup } = await users.a.client.from('training_item_completions')
+      .insert({ company_id: teams.a.id, assignment_id: assignment.id, course_item_id: item.id, user_id: users.a.id });
+    expect(dup).not.toBeNull();
+
+    // A learner can't write their own assignment status directly.
+    await users.a.client.from('training_assignments').update({ status: 'not_started', completed_at: null }).eq('id', assignment.id);
+    const { data: still } = await svc.from('training_assignments').select('status').eq('id', assignment.id).single();
+    expect(still.status).toBe('completed');
+  }, TIMEOUT);
+
+  it('training: certifications are visible to their owner only (plus admins)', async () => {
+    const { data: cert, error } = await svc.from('training_certifications')
+      .insert({ company_id: teams.a.id, user_id: users.a.id, name: 'A cert' })
+      .select().single();
+    expect(error).toBeNull();
+
+    // Owner sees it; the other tenant doesn't.
+    const { data: own } = await users.a.client.from('training_certifications').select('id').eq('id', cert.id);
+    expect(own).toHaveLength(1);
+    const { data: other } = await users.b.client.from('training_certifications').select('id').eq('id', cert.id);
+    expect(other).toEqual([]);
+
+    // A regular member can't edit their own certification record.
+    await users.a.client.from('training_certifications').update({ name: 'Edited by owner' }).eq('id', cert.id);
+    const { data: after } = await svc.from('training_certifications').select('name').eq('id', cert.id).single();
+    expect(after.name).toBe('A cert');
+  }, TIMEOUT);
+
   it("a user cannot escalate their own role", async () => {
     await users.a.client.from('users').update({ role: 'super_admin' }).eq('id', users.a.id);
     const { data } = await svc.from('users').select('role').eq('id', users.a.id).single();

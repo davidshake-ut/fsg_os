@@ -11,6 +11,7 @@ import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase';
+import { getSupabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -903,10 +904,21 @@ function KnowledgeContent() {
       onConfirm: () => deleteGroup(id),
     });
   };
-  const handleDeleteDocument = (id, name) => {
+  const handleDeleteDocument = async (id, name) => {
+    // Warn when this document is a training course item (0058) — deleting
+    // it cascade-removes those items and any completions on them.
+    let usedIn = 0;
+    const sb = getSupabase();
+    if (sb) {
+      const { count } = await sb.from('training_course_items')
+        .select('id', { count: 'exact', head: true }).eq('kb_document_id', id);
+      usedIn = count ?? 0;
+    }
     setConfirmState({
       title: 'Delete document',
-      message: `Delete "${name}"? This cannot be undone.`,
+      message: usedIn > 0
+        ? `"${name}" is used in ${usedIn} training course${usedIn !== 1 ? 's' : ''}. Deleting it removes it from those courses (and any completion of it). This cannot be undone.`
+        : `Delete "${name}"? This cannot be undone.`,
       onConfirm: () => deleteDocument(id),
     });
   };
@@ -942,6 +954,19 @@ function KnowledgeContent() {
       setSelectedDoc(null);
     }
   }, [documents, selectedDoc]);
+
+  // Deep link: /knowledge?doc=<id> opens that document in the viewer once
+  // the library has loaded (used by Resources > Training course items).
+  const deepLinkConsumed = useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumed.current || documents.length === 0) return;
+    deepLinkConsumed.current = true;
+    const docId = new URLSearchParams(window.location.search).get('doc');
+    const doc = docId ? documents.find((d) => d.id === docId) : null;
+    if (!doc) return;
+    const t = setTimeout(() => setSelectedDoc(doc), 0);
+    return () => clearTimeout(t);
+  }, [documents]);
 
   const groupById = (id) => groups.find((g) => g.id === id);
 

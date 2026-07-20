@@ -70,8 +70,9 @@ export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const { isAdmin, isSuperAdmin, configured, session, user, company, signOut } = useSession();
   const { isEnabled } = useModules();
-  // Manual chevron override; null = auto (open while on /builder).
+  // Manual chevron overrides; null = auto (open while on the section).
   const [builderManual, setBuilderManual] = useState(null);
+  const [resourcesManual, setResourcesManual] = useState(null);
   // The Builder publishes the current quote's enabled techs (which sub-links
   // to list) and its active tab (which sub-link is lit); before it has,
   // fall back to the default-on pair.
@@ -131,6 +132,14 @@ export default function Sidebar({ onClose }) {
           // While a Builder sub-tab is active, the sub-link carries the
           // highlight and the parent goes quiet.
           const builderSubActive = isBuilder && pathname === '/builder' && !!activeTab;
+          // Resources expands the same way: Training + Knowledge Base ride
+          // under it, and the parent goes quiet while a sub-page is active.
+          const isResources = key === 'resources';
+          const onResourcesSub = pathname.startsWith('/resources/training') || pathname.startsWith('/knowledge');
+          const resourcesExpanded = isResources
+            && (resourcesManual ?? (pathname.startsWith('/resources') || pathname.startsWith('/knowledge')));
+          const hasChevron = isBuilder || isResources;
+          const expanded = isBuilder ? builderExpanded : resourcesExpanded;
           return (
             <div key={key}>
               {showHeader && (
@@ -141,24 +150,26 @@ export default function Sidebar({ onClose }) {
                   {group}
                 </p>
               )}
-              {isBuilder ? (
+              {hasChevron ? (
                 <div className="flex items-center">
                   <div className="min-w-0 flex-1">
                     <NavLink
                       href={href}
                       icon={icon}
                       label={label}
-                      active={(pathname === href || pathname.startsWith(href + '/')) && !builderSubActive}
+                      active={isBuilder
+                        ? (pathname === href || pathname.startsWith(href + '/')) && !builderSubActive
+                        : pathname.startsWith(href) && !onResourcesSub}
                       onClick={onClose}
                     />
                   </div>
                   <button
                     type="button"
-                    onClick={() => setBuilderManual(!builderExpanded)}
-                    aria-label="Toggle System Builder pages"
+                    onClick={() => (isBuilder ? setBuilderManual(!expanded) : setResourcesManual(!expanded))}
+                    aria-label={`Toggle ${label} pages`}
                     className="rounded p-1 text-[var(--ui-sidebar-ink)] hover:bg-[var(--ui-sidebar-active-bg)]"
                   >
-                    <ChevronDown size={13} className={cn('transition-transform', builderExpanded && 'rotate-180')} />
+                    <ChevronDown size={13} className={cn('transition-transform', expanded && 'rotate-180')} />
                   </button>
                 </div>
               ) : (
@@ -169,6 +180,34 @@ export default function Sidebar({ onClose }) {
                   active={pathname === href || pathname.startsWith(href + '/')}
                   onClick={onClose}
                 />
+              )}
+              {resourcesExpanded && (
+                <div
+                  className="ml-5 mt-0.5 space-y-0.5 border-l pl-2"
+                  style={{ borderColor: 'var(--ui-sidebar-border)' }}
+                >
+                  {[
+                    { href: '/resources/training', label: 'Training' },
+                    { href: '/knowledge', label: 'Knowledge Base' },
+                  ].map((sub) => {
+                    const subActive = pathname === sub.href || pathname.startsWith(sub.href + '/');
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        onClick={onClose}
+                        className={cn(
+                          'block truncate rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors',
+                          subActive
+                            ? 'bg-[var(--ui-sidebar-active-bg)] font-semibold text-[var(--ui-sidebar-active-ink)]'
+                            : 'text-[var(--ui-sidebar-ink)] hover:bg-[var(--ui-sidebar-active-bg)] hover:text-[var(--ui-sidebar-active-ink)]'
+                        )}
+                      >
+                        {sub.label}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
               {builderExpanded && (
                 <div

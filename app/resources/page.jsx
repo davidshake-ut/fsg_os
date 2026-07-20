@@ -1,16 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   Search, Upload, FileText, Video, Link2, BookOpen, Layers, Trash2,
   ExternalLink, Download, Plus, Loader2, File, X, MoreHorizontal,
   AlertCircle, LayoutGrid, List, FilePlus, ListOrdered, Code2,
-  Hash, AlignLeft,
+  Hash, AlignLeft, GraduationCap, ChevronRight,
 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useResources } from '@/hooks/useResources';
+import { getSupabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -99,6 +101,13 @@ function CategoriesSidebar({ categories, activeCategory, onSelect, catCounts, to
         <BookOpen size={15} className="text-blue-600" />
         <span className="text-sm font-semibold text-slate-800">Resources</span>
       </div>
+      {/* Resources > Training */}
+      <Link href="/resources/training"
+        className="group flex items-center gap-2 border-b border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-700">
+        <GraduationCap size={15} className="text-slate-400 group-hover:text-blue-600" />
+        <span className="flex-1">Training</span>
+        <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-500" />
+      </Link>
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
         <button type="button" onClick={() => onSelect(null)}
           className={cn('flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors',
@@ -828,10 +837,21 @@ function ResourcesContent() {
   const [confirmState,   setConfirmState]   = useState(null);
   const [toast,          setToast]          = useState(null);
 
-  const handleDeleteResource = (id, title) => {
+  const handleDeleteResource = async (id, title) => {
+    // Warn when this resource is a training course item (0058) — deleting
+    // it cascade-removes those items and any completions on them.
+    let usedIn = 0;
+    const sb = getSupabase();
+    if (sb) {
+      const { count } = await sb.from('training_course_items')
+        .select('id', { count: 'exact', head: true }).eq('resource_id', id);
+      usedIn = count ?? 0;
+    }
     setConfirmState({
       title: 'Delete resource',
-      message: `Delete "${title}"? This cannot be undone.`,
+      message: usedIn > 0
+        ? `"${title}" is used in ${usedIn} training course${usedIn !== 1 ? 's' : ''}. Deleting it removes it from those courses (and any completion of it). This cannot be undone.`
+        : `Delete "${title}"? This cannot be undone.`,
       onConfirm: () => deleteResource(id),
     });
   };
