@@ -7,7 +7,7 @@ import { PRODUCT_CATEGORIES } from '@/lib/catalog';
 import { BUILTIN_TECHNOLOGIES, companyTechnologies } from '@/lib/technologies';
 import { companyTechVendors } from '@/lib/vendors';
 
-const EMPTY = { sku: '', description: '', category: 'Access Point', technology: 'managed_wifi', cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '' };
+const EMPTY = { sku: '', description: '', category: 'Access Point', technology: 'managed_wifi', cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '', discount_pct: '' };
 
 // product === null → Add mode; otherwise Edit (SKU locked for base products).
 function initialForm(product, defaultTechnology) {
@@ -22,6 +22,7 @@ function initialForm(product, defaultTechnology) {
     vendor: product.vendor ?? '',
     preferred_vendor: product.preferred_vendor ?? '',
     product_line: product.product_line ?? '',
+    discount_pct: product.discount_pct ?? '', // '' = no stored discount (distinct from 0%)
   };
 }
 
@@ -62,7 +63,10 @@ export default function ProductModal({ open, product, clone = false, onClose, on
     setBusy(true);
     setErr(null);
     try {
-      await onSave(form);
+      await onSave({
+        ...form,
+        discount_pct: form.discount_pct === '' || form.discount_pct === null ? null : Number(form.discount_pct),
+      });
       onClose();
     } catch (e2) {
       setErr(e2.message);
@@ -154,12 +158,23 @@ export default function ProductModal({ open, product, clone = false, onClose, on
           <Field label="Product Line" sub="Drives automatic Cost calculation — see Settings → Pricing">
             <TextInput value={form.product_line} onChange={(e) => set('product_line', e.target.value)} placeholder="e.g. cnWave, Switches, AP's Indoor…" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Field label="Cost">
               <NumberInput value={form.cost} onChange={(v) => set('cost', v)} />
             </Field>
             <Field label="Price">
               <NumberInput value={form.price} onChange={(v) => set('price', v)} />
+            </Field>
+            <Field label="Discount %">
+              <TextInput
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={form.discount_pct}
+                onChange={(e) => set('discount_pct', e.target.value)}
+                placeholder="—"
+              />
             </Field>
           </div>
           {err && <p className="text-xs text-red-600">{err}</p>}

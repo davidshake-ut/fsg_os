@@ -589,6 +589,7 @@ export default function ProductDatabase({
         <VendorPriceImportModal
           allProducts={allProducts}
           productLineDiscounts={productLineDiscounts}
+          company={company}
           onApply={onBulkUpdate}
           onClose={() => setVendorImportOpen(false)}
         />

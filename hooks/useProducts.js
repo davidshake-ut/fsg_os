@@ -112,7 +112,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
   );
 
   // --- local-mode mutations (mirror the API handlers) ---
-  const addLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
+  const addLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '', discount_pct = null }) => {
     if (!sku || !description || !category) throw new Error('Missing fields');
     const rows = readLocalArray();
     const existing = rows.find((r) => r.sku === sku);
@@ -123,16 +123,16 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     }
     writeLocal([
       ...rows.filter((r) => r.sku !== sku),
-      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, is_custom: !isBase, is_deleted: false },
     ]);
   };
 
-  const editLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '' }) => {
+  const editLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '', discount_pct = null }) => {
     if (!sku) throw new Error('Missing sku');
     const isBase = baseSkus.has(sku);
     writeLocal([
       ...readLocalArray().filter((r) => r.sku !== sku),
-      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, is_custom: !isBase, is_deleted: false },
     ]);
   };
 
@@ -194,6 +194,9 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         vendor: r.vendor ?? '',
         preferred_vendor: r.preferred_vendor ?? '',
         product_line: r.product_line ?? '',
+        // Mirror the bulk route's preserve-guard: keep the stored discount
+        // unless this import explicitly mapped one.
+        discount_pct: r.discount_pct !== undefined ? r.discount_pct : (bySku.get(r.sku)?.discount_pct ?? null),
         is_custom: !isBase,
         is_deleted: false,
       });

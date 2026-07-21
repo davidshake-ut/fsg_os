@@ -44,6 +44,11 @@ export async function PATCH(request) {
       price: Number(r.price) || 0,
       ...(r.vendor !== undefined ? { vendor: r.vendor } : {}),
       ...(r.preferred_vendor !== undefined ? { preferred_vendor: r.preferred_vendor } : {}),
+      // Same preserve-guard: only touch the stored discount % when the
+      // import mapped a Discount column for this row.
+      ...(r.discount_pct !== undefined && Number.isFinite(Number(r.discount_pct))
+        ? { discount_pct: Number(r.discount_pct) }
+        : {}),
       product_line: r.product_line ?? '',
       is_custom: !baseSkus.has(r.sku),
       is_deleted: false,

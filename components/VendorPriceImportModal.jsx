@@ -1,18 +1,20 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { X, Upload, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Upload, AlertTriangle } from 'lucide-react';
 import { Card, Button } from '@/components/ui/primitives';
-import { parseVendorPriceList, matchVendorRows, readVendorPriceFile, VENDOR_IMPORT_FIELDS } from '@/lib/vendorPriceImport';
+import { parseVendorPriceList, matchVendorRows, readVendorPriceFile, resolveImportCost, VENDOR_IMPORT_FIELDS } from '@/lib/vendorPriceImport';
 import { costFromDiscount } from '@/lib/pricing';
 import { currency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { PRODUCT_CATEGORIES } from '@/lib/catalog';
+import { companyTechnologies } from '@/lib/technologies';
 
 // Imports a vendor's raw price list (e.g. a distributor/manufacturer price
-// book) and updates Price + recomputes Cost for SKUs already in the catalog.
-// Deliberately never adds new products — anything in the vendor file that
-// isn't already in the catalog is reported and skipped.
-export default function VendorPriceImportModal({ allProducts, productLineDiscounts = {}, onApply, onClose }) {
+// book): updates Price/Cost for SKUs already in the catalog, and offers the
+// file's unknown SKUs as opt-in new products (checked per row, with bulk
+// Technology/Vendor/Source pickers and a per-row Subcategory).
+export default function VendorPriceImportModal({ allProducts, productLineDiscounts = {}, company = null, onApply, onClose }) {
   const [step, setStep] = useState('pick'); // 'pick' | 'map' | 'review' | 'done'
   const [parseErrors, setParseErrors] = useState([]);
   const [fileText, setFileText] = useState('');
@@ -20,13 +22,15 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
   const [header, setHeader] = useState([]);
   const [sampleRows, setSampleRows] = useState([]);
   const [mapping, setMapping] = useState(null); // { sku, price, productLine, description } → column index
-  const [matched, setMatched] = useState([]); // [{ sku, price, productLine, description, oldCost, oldPrice, newCost }]
-  const [unmatchedCount, setUnmatchedCount] = useState(0);
-  const [unmatchedOpen, setUnmatchedOpen] = useState(false);
-  const [unmatchedSkus, setUnmatchedSkus] = useState([]);
+  const [matched, setMatched] = useState([]); // [{ sku, price, productLine, description, oldCost, oldPrice, newCost, fileCost, newDiscount }]
+  const [newRows, setNewRows] = useState([]); // file SKUs not in the catalog — opt-in adds
+  const [newTech, setNewTech] = useState(''); // bulk Technology for checked new rows
+  const [newVendor, setNewVendor] = useState('');
+  const [newSource, setNewSource] = useState('');
   const [applying, setApplying] = useState(false);
   const [applyErr, setApplyErr] = useState(null);
   const [appliedCount, setAppliedCount] = useState(0);
+  const [addedCount, setAddedCount] = useState(0);
   const fileRef = useRef(null);
 
   const lineOptions = Object.keys(productLineDiscounts);
@@ -62,13 +66,19 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     // LAST occurrence (the file's final word) and say so in the review.
     const bySku = new Map();
     for (const hit of m) bySku.set(hit.existing.sku, hit);
-    const dupCount = m.length - bySku.size;
+    const newBySku = new Map();
+    for (const row of unmatched) newBySku.set(row.sku.trim(), row);
+    const dupCount = m.length - bySku.size + (unmatched.length - newBySku.size);
     const fileNotes = dupCount > 0
       ? [...errors, `${dupCount} duplicate SKU row${dupCount !== 1 ? 's' : ''} in the file — the last occurrence was used.`]
       : errors;
     const reviewRows = [...bySku.values()].map(({ vendorRow, existing }) => {
       const productLine = vendorRow.productLine || existing.product_line || '';
-      const hasDiscount = productLine && productLine in productLineDiscounts;
+      const { cost, fromFile } = resolveImportCost(vendorRow, {
+        productLine,
+        productLineDiscounts,
+        fallback: existing.cost,
+      });
       return {
         sku: existing.sku,
         desc: existing.desc,
@@ -80,12 +90,24 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
         newPrice: vendorRow.price,
         oldCost: existing.cost,
         productLine,
-        newCost: hasDiscount ? costFromDiscount(vendorRow.price, productLineDiscounts[productLine]) : existing.cost,
+        newCost: cost,
+        fileCost: fromFile, // file-dictated cost — reassigning a line must not recompute it
+        newDiscount: Number.isFinite(vendorRow.discount) ? vendorRow.discount : null,
       };
     });
     setMatched(reviewRows);
-    setUnmatchedCount(unmatched.length);
-    setUnmatchedSkus(unmatched.map((r) => r.sku));
+    setNewRows(
+      [...newBySku.values()].map((row) => ({
+        sku: row.sku.trim(),
+        description: row.description,
+        price: row.price,
+        cost: resolveImportCost(row, { productLine: row.productLine, productLineDiscounts, fallback: 0 }).cost,
+        discount: Number.isFinite(row.discount) ? row.discount : null,
+        productLine: row.productLine,
+        category: '', // per-row Subcategory, assigned in the review step
+        checked: false,
+      }))
+    );
     setParseErrors(fileNotes);
     setStep('review');
   };
@@ -94,6 +116,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     setMatched((rows) =>
       rows.map((r) => {
         if (r.sku !== sku) return r;
+        if (r.fileCost) return { ...r, productLine }; // the file set this cost — keep it
         const hasDiscount = productLine && productLine in productLineDiscounts;
         return {
           ...r,
@@ -104,11 +127,21 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     );
   };
 
+  const toggleNewRow = (sku) =>
+    setNewRows((rows) => rows.map((r) => (r.sku === sku ? { ...r, checked: !r.checked } : r)));
+  const setNewRowCategory = (sku, category) =>
+    setNewRows((rows) => rows.map((r) => (r.sku === sku ? { ...r, category } : r)));
+  const checkedNew = newRows.filter((r) => r.checked);
+  const allNewChecked = newRows.length > 0 && checkedNew.length === newRows.length;
+  const toggleAllNew = () => setNewRows((rows) => rows.map((r) => ({ ...r, checked: !allNewChecked })));
+  // Checked new rows can't be written without a Technology and a Subcategory.
+  const newIssues = checkedNew.length > 0 && (!newTech || checkedNew.some((r) => !r.category));
+
   const apply = async () => {
     setApplying(true);
     setApplyErr(null);
     try {
-      const rows = matched.map((r) => ({
+      const updateRows = matched.map((r) => ({
         sku: r.sku,
         description: r.desc,
         category: r.category,
@@ -118,9 +151,23 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
         product_line: r.productLine,
         price: r.newPrice,
         cost: r.newCost,
+        ...(r.newDiscount !== null ? { discount_pct: r.newDiscount } : {}),
       }));
-      await onApply(rows);
-      setAppliedCount(rows.length);
+      const addRows = checkedNew.map((r) => ({
+        sku: r.sku,
+        description: r.description || r.sku,
+        category: r.category,
+        technology: newTech,
+        vendor: newVendor.trim(),
+        preferred_vendor: newSource.trim(),
+        product_line: r.productLine,
+        price: r.price,
+        cost: r.cost,
+        ...(r.discount !== null ? { discount_pct: r.discount } : {}),
+      }));
+      await onApply([...updateRows, ...addRows]);
+      setAppliedCount(updateRows.length);
+      setAddedCount(addRows.length);
       setStep('done');
     } catch (ex) {
       setApplyErr(ex.message);
@@ -144,6 +191,14 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
   // The same column can't feed two required fields — that's always a mistake.
   const skuPriceCollide = mapping && mapping.sku !== -1 && mapping.sku === mapping.price;
   const mappingReady = mapping && mapping.sku !== -1 && mapping.price !== -1 && !skuPriceCollide;
+
+  // ── New-product picker options ───────────────────────────────────────────
+  const distinctVals = (get) => [...new Set(allProducts.map(get).filter(Boolean))].sort();
+  const registryNames = [
+    ...new Set(Object.values(company?.settings?.technologyVendors ?? {}).flat().map((v) => v?.name).filter(Boolean)),
+  ];
+  const vendorOptions = [...new Set([...distinctVals((p) => p.vendor), ...registryNames])].sort();
+  const sourceOptions = distinctVals((p) => p.preferred_vendor);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm" onMouseDown={onClose}>
@@ -257,23 +312,12 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
                     <AlertTriangle size={12} /> {unresolvedCount} need a Product Line assigned
                   </span>
                 )}
-                {unmatchedCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setUnmatchedOpen((o) => !o)}
-                    className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-500 hover:bg-slate-200"
-                  >
-                    {unmatchedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    {unmatchedCount} not in your catalog — skipped
-                  </button>
+                {newRows.length > 0 && (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-500">
+                    {newRows.length} new in file
+                  </span>
                 )}
               </div>
-
-              {unmatchedOpen && (
-                <div className="max-h-24 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2 font-mono text-xs text-slate-500">
-                  {unmatchedSkus.join(', ')}
-                </div>
-              )}
 
               {parseErrors.length > 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -342,6 +386,131 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
                 </div>
               )}
 
+              {newRows.length > 0 && (
+                <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-800">
+                      Add new products
+                      <span className="ml-2 font-normal text-slate-400">
+                        {checkedNew.length} of {newRows.length} selected
+                      </span>
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      These SKUs aren&apos;t in your catalog. Check the ones to add — unchecked rows are left out.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium text-slate-500">
+                        Technology{checkedNew.length > 0 && <span className="ml-0.5 text-red-400">*</span>}
+                      </span>
+                      <select
+                        value={newTech}
+                        onChange={(e) => setNewTech(e.target.value)}
+                        className={cn(
+                          'w-full rounded-lg border bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400',
+                          checkedNew.length > 0 && !newTech ? 'border-amber-300 bg-amber-50' : 'border-slate-200'
+                        )}
+                      >
+                        <option value="">Choose…</option>
+                        {companyTechnologies(company).map((t) => (
+                          <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium text-slate-500">Vendor</span>
+                      <input
+                        list="vendor-import-new-vendors"
+                        value={newVendor}
+                        onChange={(e) => setNewVendor(e.target.value)}
+                        placeholder="e.g. Ruckus"
+                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium text-slate-500">Source / Distributor</span>
+                      <input
+                        list="vendor-import-new-sources"
+                        value={newSource}
+                        onChange={(e) => setNewSource(e.target.value)}
+                        placeholder="e.g. Warehouse"
+                        className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full min-w-[560px] text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-400">
+                          <th className="w-8 px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={allNewChecked}
+                              onChange={toggleAllNew}
+                              aria-label="Select all new products"
+                            />
+                          </th>
+                          <th className="px-3 py-2 font-medium">SKU</th>
+                          <th className="px-3 py-2 font-medium">Description</th>
+                          <th className="px-3 py-2 font-medium">Subcategory</th>
+                          <th className="px-3 py-2 text-right font-medium">Price</th>
+                          <th className="px-3 py-2 text-right font-medium">Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {newRows.map((r) => (
+                          <tr key={r.sku} className={cn('border-b border-slate-50 last:border-0', !r.checked && 'opacity-60')}>
+                            <td className="px-3 py-1.5">
+                              <input
+                                type="checkbox"
+                                checked={r.checked}
+                                onChange={() => toggleNewRow(r.sku)}
+                                aria-label={`Add ${r.sku}`}
+                              />
+                            </td>
+                            <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{r.sku}</td>
+                            <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-600">{r.description || '—'}</td>
+                            <td className="px-3 py-1.5">
+                              <select
+                                value={r.category}
+                                onChange={(e) => setNewRowCategory(r.sku, e.target.value)}
+                                disabled={!r.checked}
+                                className={cn(
+                                  'w-full min-w-[140px] rounded-lg border bg-white px-2 py-1 text-sm outline-none focus:border-blue-400 disabled:bg-slate-50',
+                                  r.checked && !r.category ? 'border-amber-300 bg-amber-50' : 'border-slate-200'
+                                )}
+                              >
+                                <option value="">Choose…</option>
+                                {PRODUCT_CATEGORIES.map((c) => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{currency(r.price)}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{currency(r.cost)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <datalist id="vendor-import-new-vendors">
+                    {vendorOptions.map((v) => <option key={v} value={v} />)}
+                  </datalist>
+                  <datalist id="vendor-import-new-sources">
+                    {sourceOptions.map((v) => <option key={v} value={v} />)}
+                  </datalist>
+
+                  {newIssues && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      To add the checked products, choose a Technology above and a Subcategory on each checked row.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {applyErr && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{applyErr}</div>
               )}
@@ -352,6 +521,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
             <div className="py-8 text-center">
               <p className="text-sm font-medium text-emerald-700">
                 Updated price/cost for {appliedCount} product{appliedCount !== 1 ? 's' : ''}.
+                {addedCount > 0 && ` Added ${addedCount} new product${addedCount !== 1 ? 's' : ''}.`}
               </p>
             </div>
           )}
@@ -361,8 +531,16 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
           {step === 'review' && (
             <>
               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="button" onClick={apply} disabled={applying || matched.length === 0}>
-                {applying ? 'Applying…' : `Apply to ${matched.length} Product${matched.length !== 1 ? 's' : ''}`}
+              <Button
+                type="button"
+                onClick={apply}
+                disabled={applying || (matched.length === 0 && checkedNew.length === 0) || newIssues}
+              >
+                {applying
+                  ? 'Applying…'
+                  : checkedNew.length > 0
+                    ? `Update ${matched.length} · Add ${checkedNew.length}`
+                    : `Apply to ${matched.length} Product${matched.length !== 1 ? 's' : ''}`}
               </Button>
             </>
           )}
