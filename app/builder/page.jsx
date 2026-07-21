@@ -1287,6 +1287,7 @@ function Calculator() {
               onDelete={removeCatalog}
               onImport={importProducts}
               onBulkUpdate={canManageCatalog ? bulkUpdateProducts : undefined}
+              onBulkDelete={canManageCatalog ? deleteProduct : undefined}
               productLineDiscounts={company?.settings?.productLineDiscounts ?? {}}
             />
           )}
@@ -1307,6 +1308,7 @@ function Calculator() {
               onDelete={removeCatalog}
               onImport={importProducts}
               onBulkUpdate={canManageCatalog ? bulkUpdateProducts : undefined}
+              onBulkDelete={canManageCatalog ? deleteProduct : undefined}
               productLineDiscounts={company?.settings?.productLineDiscounts ?? {}}
             />
           )}

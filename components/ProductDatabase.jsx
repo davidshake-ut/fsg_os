@@ -51,7 +51,7 @@ function BulkField({ label, options, value, other, onChange, onOtherChange, allo
   );
 }
 
-function BulkEditModal({ count, company, allProducts, busy, onApply, onClose }) {
+function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, onClose }) {
   const [fields, setFields] = useState({
     technology: '',
     category: '',
@@ -60,6 +60,8 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onClose }) 
     product_line: '',
   });
   const [others, setOthers] = useState({ vendor: '', preferred_vendor: '', product_line: '' });
+  const [mode, setMode] = useState('edit'); // 'edit' | 'confirm-delete'
+  const [confirmText, setConfirmText] = useState('');
   const set = (k) => (v) => setFields((f) => ({ ...f, [k]: v }));
   const setOther = (k) => (v) => setOthers((o) => ({ ...o, [k]: v }));
 
@@ -86,6 +88,43 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onClose }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={onClose}>
       <Card className="w-full max-w-md p-5" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+        {mode === 'confirm-delete' ? (
+          <>
+            <h3 className="mb-1 text-sm font-semibold text-red-700">
+              Delete {count} product{count !== 1 ? 's' : ''}?
+            </h3>
+            <p className="mb-3 text-xs text-slate-500">
+              This permanently removes the selected product{count !== 1 ? 's' : ''} from your catalog.
+              Saved quotes keep their snapshots, but the part{count !== 1 ? 's' : ''} disappear from
+              pickers, imports, and the Builder. Core products the calculators depend on are skipped
+              automatically.
+            </p>
+            <p className="mb-2 text-xs font-semibold text-red-600">
+              Type DELETE to confirm.
+            </p>
+            <TextInput
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+              autoFocus
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => { setMode('edit'); setConfirmText(''); }}>
+                Back
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                className="disabled:opacity-50"
+                disabled={confirmText !== 'DELETE' || busy}
+                onClick={() => onDelete()}
+              >
+                {busy ? 'Deleting…' : `Delete ${count}`}
+              </Button>
+            </div>
+          </>
+        ) : (
+        <>
         <h3 className="mb-1 text-sm font-semibold text-slate-800">
           Bulk edit {count} product{count !== 1 ? 's' : ''}
         </h3>
@@ -136,14 +175,30 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onClose }) 
             allowClear
           />
         </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" disabled={!dirty || busy} onClick={() => onApply(patch)}>
-            {busy ? 'Applying…' : `Apply to ${count}`}
-          </Button>
+        <div className="mt-4 flex items-center justify-between gap-2">
+          {onDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="!text-red-600 hover:!bg-red-50"
+              onClick={() => setMode('confirm-delete')}
+            >
+              <Trash2 size={14} /> Delete…
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={!dirty || busy} onClick={() => onApply(patch)}>
+              {busy ? 'Applying…' : `Apply to ${count}`}
+            </Button>
+          </div>
         </div>
+        </>
+        )}
       </Card>
     </div>
   );
@@ -157,6 +212,7 @@ export default function ProductDatabase({
   onDelete,
   onImport,
   onBulkUpdate,
+  onBulkDelete, // (sku) => Promise — direct delete, no per-item confirm (the modal's typed DELETE covers it)
   productLineDiscounts = {},
   canManageCatalog = false,
   canViewMargin = true,
@@ -218,6 +274,33 @@ export default function ProductDatabase({
       setBulkOpen(false);
     } catch (err) {
       setNotice({ type: 'error', message: `Bulk edit failed: ${err.message}` });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    setBulkBusy(true);
+    try {
+      const skus = [...selected].filter((s) => !CORE_SKUS.has(s));
+      const skippedCore = selected.size - skus.length;
+      const failures = [];
+      for (const sku of skus) {
+        try {
+          await onBulkDelete(sku);
+        } catch (err) {
+          failures.push(`${sku}: ${err.message}`);
+        }
+      }
+      const deleted = skus.length - failures.length;
+      const bits = [`Deleted ${deleted} product${deleted !== 1 ? 's' : ''}.`];
+      if (skippedCore > 0) bits.push(`Skipped ${skippedCore} core product${skippedCore !== 1 ? 's' : ''}.`);
+      if (failures.length > 0) {
+        bits.push(`${failures.length} failed — ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? '…' : ''}`);
+      }
+      setNotice({ type: failures.length > 0 ? 'error' : 'success', message: bits.join(' ') });
+      setSelected(new Set());
+      setBulkOpen(false);
     } finally {
       setBulkBusy(false);
     }
@@ -601,6 +684,7 @@ export default function ProductDatabase({
           allProducts={allProducts}
           busy={bulkBusy}
           onApply={applyBulk}
+          onDelete={onBulkDelete ? bulkDelete : undefined}
           onClose={() => setBulkOpen(false)}
         />
       )}
