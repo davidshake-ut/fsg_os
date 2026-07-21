@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, FolderOpen, Plus, User, X } from 'lucide-react';
+import { ChevronDown, FolderOpen, MapPin, Plus, User, X } from 'lucide-react';
 import {
   Card,
   Field,
@@ -28,9 +28,16 @@ function Section({ title, children }) {
 // Combined name field + saved-projects dropdown: type to name/rename the
 // current project, or open the menu to load a saved one. Exported for the
 // Property Overview page (components/builder/PropertyOverview.jsx).
-export function ProjectNameField({ value, onChange, projects, currentProjectId, onSelectProject }) {
+export function ProjectNameField({ value, onChange, projects, currentProjectId, onSelectProject, properties = [], onPickProperty = null }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+
+  // CRM properties of the selected customer, minus ones that already appear
+  // as a saved project (the project entry wins — it loads the whole quote).
+  const projectNames = new Set(projects.map((p) => (p.project_name || '').trim().toLowerCase()));
+  const pickableProperties = onPickProperty
+    ? properties.filter((p) => !projectNames.has((p.name || '').trim().toLowerCase()))
+    : [];
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +82,32 @@ export function ProjectNameField({ value, onChange, projects, currentProjectId, 
           >
             <Plus size={15} /> New Project
           </button>
+
+          {pickableProperties.length > 0 && (
+            <>
+              <div className="my-1 h-px bg-slate-100" />
+              <p className="px-2.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Customer Properties
+              </p>
+              {pickableProperties.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    onPickProperty(p);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 truncate rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
+                >
+                  <MapPin size={15} className="shrink-0 text-slate-400" />
+                  <span className="truncate">{p.name}</span>
+                  {p.address && (
+                    <span className="ml-auto shrink-0 max-w-[45%] truncate text-[10px] text-slate-400">{p.address}</span>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
 
           {projects.length > 0 ? (
             <>

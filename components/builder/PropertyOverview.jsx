@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ChevronDown, FileDown, FileText, Link2, Pencil, Plus, Sheet, Sparkles, Trash2, Wrench, X } from 'lucide-react';
 import { Card, Button, Field, TextInput, NumberInput, Segmented, Toggle } from '@/components/ui/primitives';
 import { CustomerPicker, ProjectNameField } from '@/components/InputPanel';
@@ -108,6 +108,20 @@ export default function PropertyOverview({
     ? properties.find((p) => p.name?.trim().toLowerCase() === trimmedName.toLowerCase())
     : null;
 
+  // Auto-fill the address from CRM data once customer + property line up.
+  // Fires only while the field is blank (a hand-typed address is never
+  // clobbered — the "Use address on file" link below covers corrections).
+  // An effect because the match can materialize asynchronously: picking a
+  // customer refetches that account's properties after the fact.
+  const matchedAddress = matchedProperty?.address?.trim() || '';
+  const addressBlank = !(inputs.propertyAddress || '').trim();
+  useEffect(() => {
+    if (matchedAddress && addressBlank) {
+      setInputs((prev) => ({ ...prev, propertyAddress: matchedAddress }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchedAddress, addressBlank]);
+
   const submitNewTech = async () => {
     const v = newTechName.trim();
     if (!v) return;
@@ -133,9 +147,24 @@ export default function PropertyOverview({
             <ProjectNameField
               value={inputs.propertyName}
               onChange={(e) => set('propertyName', e.target.value)}
-              projects={projects}
+              projects={
+                // With a customer selected the dropdown shows only THEIR
+                // saved projects; with none it shows everything as before.
+                crmAccountId
+                  ? projects.filter((p) => (p.crm_account_id ?? p.crmAccountId ?? null) === crmAccountId)
+                  : projects
+              }
               currentProjectId={currentProjectId}
               onSelectProject={onSelectProject}
+              properties={crmAccountId ? properties : []}
+              onPickProperty={(p) =>
+                // Explicit property pick: name it AND take its address on file.
+                setInputs((prev) => ({
+                  ...prev,
+                  propertyName: p.name,
+                  ...(p.address?.trim() ? { propertyAddress: p.address.trim() } : {}),
+                }))
+              }
             />
             {trimmedName && (
               <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
@@ -154,6 +183,15 @@ export default function PropertyOverview({
               onChange={(e) => set('propertyAddress', e.target.value)}
               placeholder="123 Main St, City, ST"
             />
+            {matchedAddress && !addressBlank && inputs.propertyAddress.trim() !== matchedAddress && (
+              <button
+                type="button"
+                onClick={() => set('propertyAddress', matchedAddress)}
+                className="mt-1 text-left text-[11px] text-blue-600 hover:underline"
+              >
+                Use address on file: {matchedAddress}
+              </button>
+            )}
           </Field>
           <Field label="Property Type">
             <Segmented
