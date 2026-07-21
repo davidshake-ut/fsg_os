@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { X, Upload, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, Button } from '@/components/ui/primitives';
-import { parseVendorPriceList, matchVendorRows } from '@/lib/vendorPriceImport';
+import { parseVendorPriceList, matchVendorRows, readVendorPriceFile, VENDOR_IMPORT_FIELDS } from '@/lib/vendorPriceImport';
 import { costFromDiscount } from '@/lib/pricing';
 import { currency } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -13,8 +13,13 @@ import { cn } from '@/lib/utils';
 // Deliberately never adds new products — anything in the vendor file that
 // isn't already in the catalog is reported and skipped.
 export default function VendorPriceImportModal({ allProducts, productLineDiscounts = {}, onApply, onClose }) {
-  const [step, setStep] = useState('pick'); // 'pick' | 'review' | 'done'
+  const [step, setStep] = useState('pick'); // 'pick' | 'map' | 'review' | 'done'
   const [parseErrors, setParseErrors] = useState([]);
+  const [fileText, setFileText] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [header, setHeader] = useState([]);
+  const [sampleRows, setSampleRows] = useState([]);
+  const [mapping, setMapping] = useState(null); // { sku, price, productLine, description } → column index
   const [matched, setMatched] = useState([]); // [{ sku, price, productLine, description, oldCost, oldPrice, newCost }]
   const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
@@ -31,7 +36,22 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     e.target.value = '';
     if (!file) return;
     const text = await file.text();
-    const { rows, errors } = parseVendorPriceList(text);
+    const { error, header: cols, sampleRows: samples, guess } = readVendorPriceFile(text);
+    if (error) {
+      setParseErrors([error]);
+      return;
+    }
+    setFileText(text);
+    setFileName(file.name);
+    setHeader(cols);
+    setSampleRows(samples);
+    setMapping(guess);
+    setParseErrors([]);
+    setStep('map');
+  };
+
+  const runImport = () => {
+    const { rows, errors } = parseVendorPriceList(fileText, mapping);
     if (errors.length && rows.length === 0) {
       setParseErrors(errors);
       return;
@@ -111,6 +131,20 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
 
   const unresolvedCount = matched.filter((r) => !r.productLine).length;
 
+  // ── Mapping-step helpers ─────────────────────────────────────────────────
+  const colLabel = (i) => header[i] || `Column ${i + 1}`;
+  const colSamples = (i) => {
+    if (i === -1) return '';
+    return sampleRows
+      .map((r) => String(r[i] ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(', ');
+  };
+  // The same column can't feed two required fields — that's always a mistake.
+  const skuPriceCollide = mapping && mapping.sku !== -1 && mapping.sku === mapping.price;
+  const mappingReady = mapping && mapping.sku !== -1 && mapping.price !== -1 && !skuPriceCollide;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm" onMouseDown={onClose}>
       <Card
@@ -147,6 +181,71 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
             </div>
           )}
 
+          {step === 'map' && mapping && (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-500">
+                Match the columns in <span className="font-medium text-slate-700">{fileName}</span> to
+                the fields the importer needs — no need to rename anything in the file. We&apos;ve
+                pre-filled our best guess; adjust any that are wrong.
+              </p>
+
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-400">
+                      <th className="px-3 py-2 font-medium">Importer field</th>
+                      <th className="px-3 py-2 font-medium">Column in your file</th>
+                      <th className="hidden px-3 py-2 font-medium sm:table-cell">Sample values</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {VENDOR_IMPORT_FIELDS.map((f) => (
+                      <tr key={f.key} className="border-b border-slate-50 last:border-0">
+                        <td className="px-3 py-2">
+                          <span className="font-medium text-slate-700">{f.label}</span>
+                          {f.required ? (
+                            <span className="ml-1 text-red-400" title="Required">*</span>
+                          ) : (
+                            <span className="ml-1.5 text-[10px] uppercase tracking-wide text-slate-300">optional</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={mapping[f.key]}
+                            onChange={(e) => setMapping((m) => ({ ...m, [f.key]: Number(e.target.value) }))}
+                            className={cn(
+                              'w-full rounded-lg border bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400',
+                              mapping[f.key] === -1 && f.required ? 'border-amber-300 bg-amber-50' : 'border-slate-200'
+                            )}
+                          >
+                            <option value={-1}>{f.required ? 'Choose a column…' : '— Not in this file —'}</option>
+                            {header.map((h, i) => (
+                              <option key={i} value={i}>{colLabel(i)}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="hidden max-w-[220px] truncate px-3 py-2 text-xs text-slate-400 sm:table-cell">
+                          {colSamples(mapping[f.key])}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {skuPriceCollide && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  SKU and Price are mapped to the same column — pick a different column for one of them.
+                </div>
+              )}
+              {parseErrors.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {parseErrors.map((e, i) => <p key={i}>{e}</p>)}
+                </div>
+              )}
+            </div>
+          )}
+
           {step === 'review' && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -173,6 +272,12 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
               {unmatchedOpen && (
                 <div className="max-h-24 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2 font-mono text-xs text-slate-500">
                   {unmatchedSkus.join(', ')}
+                </div>
+              )}
+
+              {parseErrors.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  {parseErrors.map((e, i) => <p key={i}>{e}</p>)}
                 </div>
               )}
 
@@ -263,6 +368,16 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
           )}
           {step === 'pick' && (
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          )}
+          {step === 'map' && (
+            <>
+              <Button type="button" variant="outline" onClick={() => { setParseErrors([]); setStep('pick'); }}>
+                Back
+              </Button>
+              <Button type="button" onClick={runImport} disabled={!mappingReady}>
+                Continue
+              </Button>
+            </>
           )}
           {step === 'done' && (
             <Button type="button" onClick={onClose}>Done</Button>

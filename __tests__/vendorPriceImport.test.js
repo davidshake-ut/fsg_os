@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseVendorPriceList, matchVendorRows } from '../lib/vendorPriceImport';
+import { parseVendorPriceList, matchVendorRows, readVendorPriceFile } from '../lib/vendorPriceImport';
 
 describe('parseVendorPriceList', () => {
   it('parses SKU + Price with no other columns', () => {
@@ -38,6 +38,48 @@ describe('parseVendorPriceList', () => {
     const { rows, errors } = parseVendorPriceList(csv);
     expect(rows.map((r) => r.sku)).toEqual(['A', 'C']);
     expect(errors.length).toBe(1);
+  });
+
+  it('an explicit mapping reads columns no alias would recognize', () => {
+    const csv = ['Item Code,Widget Name,MSRP ($USD)', 'XV2-21X,Indoor AP,"$149.00"'].join('\n');
+    // Auto-detect alone can't find these headers…
+    expect(parseVendorPriceList(csv).errors.length).toBeGreaterThan(0);
+    // …but a user mapping makes them work without renaming anything.
+    const { rows, errors } = parseVendorPriceList(csv, { sku: 0, price: 2, productLine: -1, description: 1 });
+    expect(errors).toEqual([]);
+    expect(rows).toEqual([{ sku: 'XV2-21X', price: 149, productLine: '', description: 'Indoor AP' }]);
+  });
+
+  it('an explicit mapping overrides the auto-guess', () => {
+    // Both "SKU" and "Model" exist; the user says Model is the real key.
+    const csv = ['SKU,Model,Price', 'INTERNAL-1,XV2-21X,149'].join('\n');
+    const { rows } = parseVendorPriceList(csv, { sku: 1, price: 2, productLine: -1, description: -1 });
+    expect(rows[0].sku).toBe('XV2-21X');
+  });
+});
+
+describe('readVendorPriceFile', () => {
+  it('returns header, sample rows, and an auto-guessed mapping', () => {
+    const csv = [
+      'Part Number,Description,Product Family,List Price',
+      'XV3-23T,Outdoor AP,APs,499',
+      'XV2-21X,Indoor AP,APs,149',
+    ].join('\n');
+    const { error, header, sampleRows, guess } = readVendorPriceFile(csv);
+    expect(error).toBeNull();
+    expect(header).toEqual(['Part Number', 'Description', 'Product Family', 'List Price']);
+    expect(sampleRows).toHaveLength(2);
+    expect(guess).toEqual({ sku: 0, price: 3, productLine: 2, description: 1 });
+  });
+
+  it('unrecognized headers guess -1 instead of erroring (the mapping UI takes over)', () => {
+    const { error, guess } = readVendorPriceFile('Item Code,MSRP ($USD)\nA,10');
+    expect(error).toBeNull();
+    expect(guess).toEqual({ sku: -1, price: -1, productLine: -1, description: -1 });
+  });
+
+  it('errors only on an empty file', () => {
+    expect(readVendorPriceFile('').error).toBeTruthy();
   });
 });
 
