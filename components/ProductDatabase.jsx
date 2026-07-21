@@ -58,6 +58,8 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
     vendor: '',
     preferred_vendor: '',
     product_line: '',
+    mount_type: '',
+    quality_tier: '',
   });
   const [others, setOthers] = useState({ vendor: '', preferred_vendor: '', product_line: '' });
   const [mode, setMode] = useState('edit'); // 'edit' | 'confirm-delete'
@@ -79,7 +81,7 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
     return v;
   };
   const patch = Object.fromEntries(
-    ['technology', 'category', 'vendor', 'preferred_vendor', 'product_line']
+    ['technology', 'category', 'vendor', 'preferred_vendor', 'product_line', 'mount_type', 'quality_tier']
       .map((k) => [k, resolve(k)])
       .filter(([, v]) => v !== undefined)
   );
@@ -174,6 +176,26 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
             allowOther
             allowClear
           />
+          <BulkField
+            label="Mount (APs)"
+            options={[
+              { value: 'ceiling', label: 'On Ceiling' },
+              { value: 'wall', label: 'On Wall' },
+            ]}
+            value={fields.mount_type}
+            onChange={set('mount_type')}
+            allowClear
+          />
+          <BulkField
+            label="Quality (APs & Switches)"
+            options={[
+              { value: 'better', label: 'Better' },
+              { value: 'best', label: 'Best' },
+            ]}
+            value={fields.quality_tier}
+            onChange={set('quality_tier')}
+            allowClear
+          />
         </div>
         <div className="mt-4 flex items-center justify-between gap-2">
           {onDelete ? (
@@ -264,6 +286,8 @@ export default function ProductDatabase({
           preferred_vendor:
             patch.preferred_vendor !== undefined ? patch.preferred_vendor : (p.preferred_vendor ?? ''),
           product_line: patch.product_line !== undefined ? patch.product_line : (p.product_line ?? ''),
+          ...(patch.mount_type !== undefined ? { mount_type: patch.mount_type || null } : {}),
+          ...(patch.quality_tier !== undefined ? { quality_tier: patch.quality_tier || null } : {}),
         }));
       const res = await onBulkUpdate(rows);
       setNotice({

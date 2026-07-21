@@ -258,6 +258,100 @@ describe('camera-only quote (includeWifi = false)', () => {
   });
 });
 
+describe('tag-based equipment selection (0061)', () => {
+  // A catalog where David has tagged mount/quality/ports/watts/licenses.
+  const TAGGED = [
+    ...BASE_PRODUCTS,
+    { sku: 'R350', desc: 'Ruckus R350', category: 'Access Point', technology: 'managed_wifi', mount_type: 'ceiling', quality_tier: 'better', poe_watts: 15, license_sku_1yr: 'LIC-R350-1', license_sku_5yr: 'LIC-R350-5', cost: 100, price: 200 },
+    { sku: 'R560', desc: 'Ruckus R560', category: 'Access Point', technology: 'managed_wifi', mount_type: 'ceiling', quality_tier: 'best', poe_watts: 25, license_sku_5yr: 'LIC-R560-5', cost: 300, price: 500 },
+    { sku: 'H350', desc: 'Ruckus H350 wall AP', category: 'Access Point', technology: 'managed_wifi', mount_type: 'wall', quality_tier: 'better', cost: 80, price: 160 },
+    { sku: 'LIC-R350-1', desc: 'R350 1yr license', category: 'License', technology: 'managed_wifi', cost: 5, price: 10 },
+    { sku: 'LIC-R350-5', desc: 'R350 5yr license', category: 'License', technology: 'managed_wifi', cost: 20, price: 40 },
+    { sku: 'LIC-R560-5', desc: 'R560 5yr license', category: 'License', technology: 'managed_wifi', cost: 30, price: 60 },
+    { sku: 'ICX-24P', desc: 'Ruckus ICX 24-port', category: 'Switch', technology: 'managed_wifi', quality_tier: 'better', port_count: 24, poe_budget_watts: 370, cost: 500, price: 900 },
+    { sku: 'ICX-48P', desc: 'Ruckus ICX 48-port', category: 'Switch', technology: 'managed_wifi', quality_tier: 'better', port_count: 48, poe_budget_watts: 740, cost: 900, price: 1500 },
+  ];
+
+  it('ceiling + better picks the tagged AP with its 5yr license (default term)', () => {
+    const bom = run({ deploymentType: 'ceiling', wifiQuality: 'better' }, TAGGED);
+    expect(qtyOf(bom, 'R350')).toBe(50);
+    expect(qtyOf(bom, 'LIC-R350-5')).toBe(50);
+    expect(hasItem(bom, 'XV2-21X')).toBe(false);
+    expect(hasItem(bom, 'MSX-SUB-XV2-21X-5')).toBe(false); // no legacy sub on tagged picks
+  });
+
+  it('license term selects the matching linked SKU; unlinked terms ship hardware only', () => {
+    const oneYr = run({ wifiQuality: 'better', licenseTerm: 1 }, TAGGED);
+    expect(qtyOf(oneYr, 'LIC-R350-1')).toBe(50);
+    expect(hasItem(oneYr, 'LIC-R350-5')).toBe(false);
+    const threeYr = run({ wifiQuality: 'better', licenseTerm: 3 }, TAGGED);
+    expect(hasItem(threeYr, 'LIC-R350-1')).toBe(false);
+    expect(hasItem(threeYr, 'LIC-R350-5')).toBe(false);
+  });
+
+  it('quality best swaps to the best-tier AP', () => {
+    const bom = run({ wifiQuality: 'best' }, TAGGED);
+    expect(qtyOf(bom, 'R560')).toBe(50);
+    expect(hasItem(bom, 'R350')).toBe(false);
+  });
+
+  it('wall deployment uses the wall-tagged AP without Cambium wallplate accessories', () => {
+    const bom = run({ deploymentType: 'wall', wifiQuality: 'better' }, TAGGED);
+    expect(qtyOf(bom, 'H350')).toBe(50);
+    expect(hasItem(bom, 'PL-WALLMNTB-WW')).toBe(false);
+    expect(hasItem(bom, 'XV2-22H')).toBe(false);
+  });
+
+  it('a tagged wall AP is exempt from the Wi-Fi 7 forced-ceiling rule', () => {
+    const bom = run({ deploymentType: 'wall', wifiQuality: 'better', wifiGeneration: 'wifi7' }, TAGGED);
+    expect(qtyOf(bom, 'H350')).toBe(50);
+    expect(hasItem(bom, 'XV3-21X')).toBe(false);
+  });
+
+  it('legacy hallway/inroom input values map to ceiling/wall', () => {
+    const hallway = run({ deploymentType: 'hallway', wifiQuality: 'better' }, TAGGED);
+    expect(qtyOf(hallway, 'R350')).toBe(50); // hallway ≙ ceiling
+    const inroom = run({ deploymentType: 'inroom', wifiQuality: 'better' }, TAGGED);
+    expect(qtyOf(inroom, 'H350')).toBe(50); // inroom ≙ wall
+  });
+
+  it('tier-tagged switches replace the Cambium edge switches by port class', () => {
+    const bom = run({ wifiQuality: 'better' }, TAGGED);
+    // 50 PoE ports / 2 IDFs = 25 per IDF → one 48-class each.
+    expect(qtyOf(bom, 'ICX-48P')).toBe(2);
+    expect(hasItem(bom, 'MXEX2052GxPA01')).toBe(false);
+    expect(hasItem(bom, 'MX-EX2028PxA-U')).toBe(false);
+  });
+
+  it('quality tier without a tagged switch match falls back to legacy switches', () => {
+    const bom = run({ wifiQuality: 'best' }, TAGGED); // switches only tagged "better"
+    expect(hasItem(bom, 'ICX-48P')).toBe(false);
+    expect(qtyOf(bom, 'MXEX2052GxPA01')).toBe(2);
+  });
+
+  it('PoE power budget adds switches when wattage binds before ports', () => {
+    // Best AP draws 25W; give the best-tier switches small budgets so power,
+    // not port count, limits how many APs each can carry: floor(250/25)=10.
+    const POWER = [
+      ...TAGGED,
+      { sku: 'ICX-24P-B', desc: 'Best 24-port', category: 'Switch', technology: 'managed_wifi', quality_tier: 'best', port_count: 24, poe_budget_watts: 250, cost: 700, price: 1200 },
+      { sku: 'ICX-48P-B', desc: 'Best 48-port', category: 'Switch', technology: 'managed_wifi', quality_tier: 'best', port_count: 48, poe_budget_watts: 250, cost: 1100, price: 1900 },
+    ];
+    const bom = run({ wifiQuality: 'best' }, POWER);
+    // 25 ports per IDF at 10-AP capacity → 2× 48-class + 1× 24-class per IDF.
+    expect(bom.idfSwitches48).toBe(4);
+    expect(bom.idfSwitches24).toBe(2);
+    expect(qtyOf(bom, 'ICX-48P-B')).toBe(4);
+    expect(qtyOf(bom, 'ICX-24P-B')).toBe(2);
+  });
+
+  it('an untagged catalog is byte-identical to the legacy engine', () => {
+    const tagged = run({ wifiQuality: 'best', licenseTerm: 3 }); // BASE_PRODUCTS, no tags
+    const legacy = run();
+    expect(tagged.items.map((i) => [i.sku, i.qty])).toEqual(legacy.items.map((i) => [i.sku, i.qty]));
+  });
+});
+
 describe('catalogSnapshot (locked-quote pricing freeze)', () => {
   // A locked quote (sent/accepted/declined) passes its own frozen snapshot so
   // a later catalog/discount change never silently reprices it.

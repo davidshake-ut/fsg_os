@@ -7,7 +7,16 @@ import { PRODUCT_CATEGORIES } from '@/lib/catalog';
 import { BUILTIN_TECHNOLOGIES, companyTechnologies } from '@/lib/technologies';
 import { companyTechVendors } from '@/lib/vendors';
 
-const EMPTY = { sku: '', description: '', category: 'Access Point', technology: 'managed_wifi', cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '', discount_pct: '' };
+const EMPTY = {
+  sku: '', description: '', category: 'Access Point', technology: 'managed_wifi',
+  cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '', discount_pct: '',
+  mount_type: '', quality_tier: '', port_count: '', poe_watts: '', poe_budget_watts: '',
+  license_sku_1yr: '', license_sku_3yr: '', license_sku_5yr: '',
+};
+
+// Empty string in the form = "not set" → null in the database.
+const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+const strOrNull = (v) => (v ? v : null);
 
 // product === null → Add mode; otherwise Edit (SKU locked for base products).
 function initialForm(product, defaultTechnology) {
@@ -23,6 +32,14 @@ function initialForm(product, defaultTechnology) {
     preferred_vendor: product.preferred_vendor ?? '',
     product_line: product.product_line ?? '',
     discount_pct: product.discount_pct ?? '', // '' = no stored discount (distinct from 0%)
+    mount_type: product.mount_type ?? '',
+    quality_tier: product.quality_tier ?? '',
+    port_count: product.port_count ?? '',
+    poe_watts: product.poe_watts ?? '',
+    poe_budget_watts: product.poe_budget_watts ?? '',
+    license_sku_1yr: product.license_sku_1yr ?? '',
+    license_sku_3yr: product.license_sku_3yr ?? '',
+    license_sku_5yr: product.license_sku_5yr ?? '',
   };
 }
 
@@ -65,7 +82,15 @@ export default function ProductModal({ open, product, clone = false, onClose, on
     try {
       await onSave({
         ...form,
-        discount_pct: form.discount_pct === '' || form.discount_pct === null ? null : Number(form.discount_pct),
+        discount_pct: numOrNull(form.discount_pct),
+        mount_type: strOrNull(form.mount_type),
+        quality_tier: strOrNull(form.quality_tier),
+        port_count: numOrNull(form.port_count),
+        poe_watts: numOrNull(form.poe_watts),
+        poe_budget_watts: numOrNull(form.poe_budget_watts),
+        license_sku_1yr: strOrNull(form.license_sku_1yr.trim()),
+        license_sku_3yr: strOrNull(form.license_sku_3yr.trim()),
+        license_sku_5yr: strOrNull(form.license_sku_5yr.trim()),
       });
       onClose();
     } catch (e2) {
@@ -81,7 +106,7 @@ export default function ProductModal({ open, product, clone = false, onClose, on
       onMouseDown={onClose}
     >
       <Card
-        className="w-full max-w-md p-5"
+        className="max-h-[88vh] w-full max-w-md overflow-y-auto p-5"
         role="dialog"
         aria-modal="true"
         onMouseDown={(e) => e.stopPropagation()}
@@ -176,6 +201,81 @@ export default function ProductModal({ open, product, clone = false, onClose, on
                 placeholder="—"
               />
             </Field>
+          </div>
+
+          <div className="border-t border-slate-100 pt-3">
+            <p className="mb-0.5 text-xs font-semibold text-slate-600">System Builder attributes</p>
+            <p className="mb-3 text-[11px] text-slate-400">
+              Optional — the Managed Wi-Fi builder picks APs and switches by these tags
+              (Deployment, Quality, License Term selectors).
+            </p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Mount" sub="APs">
+                  <Select value={form.mount_type} onChange={(e) => set('mount_type', e.target.value)}>
+                    <option value="">—</option>
+                    <option value="ceiling">On Ceiling</option>
+                    <option value="wall">On Wall</option>
+                  </Select>
+                </Field>
+                <Field label="Quality">
+                  <Select value={form.quality_tier} onChange={(e) => set('quality_tier', e.target.value)}>
+                    <option value="">—</option>
+                    <option value="better">Better</option>
+                    <option value="best">Best</option>
+                  </Select>
+                </Field>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Ports" sub="Switches">
+                  <TextInput
+                    type="number" min="0" step="1"
+                    value={form.port_count}
+                    onChange={(e) => set('port_count', e.target.value)}
+                    placeholder="—"
+                  />
+                </Field>
+                <Field label="PoE Draw (W)" sub="APs">
+                  <TextInput
+                    type="number" min="0" step="0.1"
+                    value={form.poe_watts}
+                    onChange={(e) => set('poe_watts', e.target.value)}
+                    placeholder="—"
+                  />
+                </Field>
+                <Field label="PoE Budget (W)" sub="Switches">
+                  <TextInput
+                    type="number" min="0" step="1"
+                    value={form.poe_budget_watts}
+                    onChange={(e) => set('poe_budget_watts', e.target.value)}
+                    placeholder="—"
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="License 1yr" sub="Linked SKU">
+                  <TextInput
+                    value={form.license_sku_1yr}
+                    onChange={(e) => set('license_sku_1yr', e.target.value)}
+                    placeholder="—"
+                  />
+                </Field>
+                <Field label="License 3yr" sub="Linked SKU">
+                  <TextInput
+                    value={form.license_sku_3yr}
+                    onChange={(e) => set('license_sku_3yr', e.target.value)}
+                    placeholder="—"
+                  />
+                </Field>
+                <Field label="License 5yr" sub="Linked SKU">
+                  <TextInput
+                    value={form.license_sku_5yr}
+                    onChange={(e) => set('license_sku_5yr', e.target.value)}
+                    placeholder="—"
+                  />
+                </Field>
+              </div>
+            </div>
           </div>
           {err && <p className="text-xs text-red-600">{err}</p>}
           <div className="flex justify-end gap-2 pt-1">

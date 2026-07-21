@@ -49,6 +49,16 @@ export async function PATCH(request) {
       ...(r.discount_pct !== undefined && Number.isFinite(Number(r.discount_pct))
         ? { discount_pct: Number(r.discount_pct) }
         : {}),
+      // Builder attributes (0061): written only when the caller sent them
+      // (bulk edit's Mount/Quality), never blanked by other bulk callers.
+      ...(r.mount_type !== undefined ? { mount_type: r.mount_type } : {}),
+      ...(r.quality_tier !== undefined ? { quality_tier: r.quality_tier } : {}),
+      ...(r.port_count !== undefined ? { port_count: r.port_count } : {}),
+      ...(r.poe_watts !== undefined ? { poe_watts: r.poe_watts } : {}),
+      ...(r.poe_budget_watts !== undefined ? { poe_budget_watts: r.poe_budget_watts } : {}),
+      ...(r.license_sku_1yr !== undefined ? { license_sku_1yr: r.license_sku_1yr } : {}),
+      ...(r.license_sku_3yr !== undefined ? { license_sku_3yr: r.license_sku_3yr } : {}),
+      ...(r.license_sku_5yr !== undefined ? { license_sku_5yr: r.license_sku_5yr } : {}),
       product_line: r.product_line ?? '',
       is_custom: !baseSkus.has(r.sku),
       is_deleted: false,

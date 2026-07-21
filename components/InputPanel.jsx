@@ -262,15 +262,12 @@ export function CustomerPicker({ accounts = [], crmAccountId, onSelectAccount, o
 export default function InputPanel({ inputs, setInputs, term }) {
   const set = (field, value) => setInputs((prev) => ({ ...prev, [field]: value }));
 
-  const isWifi7 = inputs.wifiGeneration === 'wifi7';
-
-  // Enforce: Wi-Fi 7 forces hallway deployment (mirrors engine fix #8).
-  useEffect(() => {
-    if (isWifi7 && inputs.deploymentType === 'inroom') {
-      set('deploymentType', 'hallway');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isWifi7]);
+  // Legacy saved quotes carry 'hallway' / 'inroom' — show them as their
+  // modern equivalents (hallway APs were ceiling-mount, in-room were wall).
+  // The engine still enforces the Wi-Fi 7 legacy-SKU restriction itself
+  // (fix #8) when no tagged wall AP exists, so no UI lockout is needed.
+  const deployValue =
+    inputs.deploymentType === 'inroom' || inputs.deploymentType === 'wall' ? 'wall' : 'ceiling';
 
   return (
     <div className="space-y-3">
@@ -291,16 +288,34 @@ export default function InputPanel({ inputs, setInputs, term }) {
             <option value="NSE4000">NSE4000</option>
           </Select>
         </Field>
-        <Field
-          label="Deployment Type"
-          sub={isWifi7 ? 'In-room unavailable for Wi-Fi 7 (hallway enforced)' : undefined}
-        >
+        <Field label="Deployment Type">
           <Segmented
-            value={inputs.deploymentType}
+            value={deployValue}
             onChange={(v) => set('deploymentType', v)}
             options={[
-              { value: 'hallway', label: 'Hallway' },
-              { value: 'inroom', label: 'In-Room', disabled: isWifi7 },
+              { value: 'ceiling', label: 'On Ceiling' },
+              { value: 'wall', label: 'On Wall' },
+            ]}
+          />
+        </Field>
+        <Field label="Quality" sub="Picks equipment tagged Better / Best in the Product Database">
+          <Segmented
+            value={inputs.wifiQuality ?? 'better'}
+            onChange={(v) => set('wifiQuality', v)}
+            options={[
+              { value: 'better', label: 'Better' },
+              { value: 'best', label: 'Best' },
+            ]}
+          />
+        </Field>
+        <Field label="License Term" sub="Which linked license ships with tagged equipment">
+          <Segmented
+            value={Number(inputs.licenseTerm) || 5}
+            onChange={(v) => set('licenseTerm', v)}
+            options={[
+              { value: 1, label: '1 Year' },
+              { value: 3, label: '3 Year' },
+              { value: 5, label: '5 Year' },
             ]}
           />
         </Field>

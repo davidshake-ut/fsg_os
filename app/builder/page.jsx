@@ -788,6 +788,16 @@ function Calculator() {
           vendor: p.vendor,
           preferred_vendor: p.preferred_vendor,
           product_line: p.product_line,
+          // Builder attributes (0061) — the engine re-resolves tag-based
+          // selections from this frozen snapshot on locked quotes.
+          mount_type: p.mount_type ?? null,
+          quality_tier: p.quality_tier ?? null,
+          port_count: p.port_count ?? null,
+          poe_watts: p.poe_watts ?? null,
+          poe_budget_watts: p.poe_budget_watts ?? null,
+          license_sku_1yr: p.license_sku_1yr ?? null,
+          license_sku_3yr: p.license_sku_3yr ?? null,
+          license_sku_5yr: p.license_sku_5yr ?? null,
         };
       }
     }

@@ -7,6 +7,15 @@ import { BASE_PRODUCTS, CORE_SKUS } from '@/lib/catalog';
 
 const baseSkus = new Set(BASE_PRODUCTS.map((p) => p.sku));
 
+// Builder-attribute columns (0061). Local-mode mirror of the API routes'
+// preserve-guards: take the caller's value when sent, else keep what's there.
+const BUILDER_ATTRS = [
+  'mount_type', 'quality_tier', 'port_count', 'poe_watts', 'poe_budget_watts',
+  'license_sku_1yr', 'license_sku_3yr', 'license_sku_5yr',
+];
+const builderAttrs = (r, prev = {}) =>
+  Object.fromEntries(BUILDER_ATTRS.map((k) => [k, r[k] !== undefined ? r[k] : prev[k] ?? null]));
+
 // Local-mode catalog edits (no Supabase). Rows mirror the custom_products table
 // shape and are persisted to localStorage, exposed reactively via
 // useSyncExternalStore (hydration-safe + no setState-in-effect). The mutation
@@ -112,7 +121,8 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
   );
 
   // --- local-mode mutations (mirror the API handlers) ---
-  const addLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '', discount_pct = null }) => {
+  const addLocal = (p) => {
+    const { sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '', discount_pct = null } = p;
     if (!sku || !description || !category) throw new Error('Missing fields');
     const rows = readLocalArray();
     const existing = rows.find((r) => r.sku === sku);
@@ -123,16 +133,18 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     }
     writeLocal([
       ...rows.filter((r) => r.sku !== sku),
-      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, ...builderAttrs(p), is_custom: !isBase, is_deleted: false },
     ]);
   };
 
-  const editLocal = ({ sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '', discount_pct = null }) => {
+  const editLocal = (p) => {
+    const { sku, description, category, technology = '', cost, price, vendor = '', preferred_vendor = '', product_line = '', discount_pct = null } = p;
     if (!sku) throw new Error('Missing sku');
     const isBase = baseSkus.has(sku);
+    const prev = readLocalArray().find((r) => r.sku === sku) ?? {};
     writeLocal([
       ...readLocalArray().filter((r) => r.sku !== sku),
-      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, ...builderAttrs(p, prev), is_custom: !isBase, is_deleted: false },
     ]);
   };
 
@@ -197,6 +209,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         // Mirror the bulk route's preserve-guard: keep the stored discount
         // unless this import explicitly mapped one.
         discount_pct: r.discount_pct !== undefined ? r.discount_pct : (bySku.get(r.sku)?.discount_pct ?? null),
+        ...builderAttrs(r, bySku.get(r.sku) ?? {}),
         is_custom: !isBase,
         is_deleted: false,
       });
