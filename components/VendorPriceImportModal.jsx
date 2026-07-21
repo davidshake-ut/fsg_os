@@ -499,8 +499,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
                               <select
                                 value={r.category}
                                 onChange={(e) => setNewRowCategory(r.sku, e.target.value)}
-                                disabled={!r.checked}
-                                className="w-full min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-blue-400 disabled:bg-slate-50"
+                                className="w-full min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-blue-400"
                               >
                                 <option value="">Miscellaneous (default)</option>
                                 {PRODUCT_CATEGORIES.map((c) => (
