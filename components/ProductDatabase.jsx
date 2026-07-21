@@ -602,6 +602,9 @@ export default function ProductDatabase({
               {sortHeader('vendor', 'Vendor')}
               {sortHeader('preferred_vendor', 'Source / Distributor')}
               <th className="px-4 py-2 text-left font-medium">Product Line</th>
+              <th className="px-4 py-2 text-left font-medium" title="System Builder attributes — mount, quality, ports, PoE, linked licenses">
+                Builder Tags
+              </th>
               {canViewMargin && <th className="px-4 py-2 text-right font-medium">Cost</th>}
               <th className="px-4 py-2 text-right font-medium">Price</th>
               <th className="px-4 py-2 text-right font-medium">Actions</th>
@@ -610,7 +613,7 @@ export default function ProductDatabase({
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={bulkable ? 11 : 10} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={bulkable ? 12 : 11} className="px-4 py-8 text-center text-sm text-slate-400">
                   No products match the current search/filter.
                 </td>
               </tr>
@@ -644,6 +647,52 @@ export default function ProductDatabase({
                 <td className="px-4 py-2 text-slate-600">{p.vendor || <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2 text-slate-500">{p.preferred_vendor || <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2 text-slate-500">{p.product_line || <span className="text-slate-300">—</span>}</td>
+                <td className="px-4 py-2">
+                  {(() => {
+                    const licTerms = [1, 3, 5].filter((t) => p[`license_sku_${t}yr`]);
+                    const chips = [
+                      p.mount_type && (
+                        <Badge key="mount" className="border-sky-200 bg-sky-50 text-sky-600">
+                          {p.mount_type === 'wall' ? 'Wall' : 'Ceiling'}
+                        </Badge>
+                      ),
+                      p.quality_tier && (
+                        <Badge key="tier" className="border-amber-200 bg-amber-50 text-amber-700">
+                          {p.quality_tier === 'best' ? 'Best' : 'Better'}
+                        </Badge>
+                      ),
+                      p.port_count ? (
+                        <Badge key="ports" className="border-slate-200 bg-slate-50 text-slate-500">
+                          {p.port_count} ports
+                        </Badge>
+                      ) : null,
+                      p.poe_watts ? (
+                        <Badge key="draw" className="border-emerald-200 bg-emerald-50 text-emerald-600" title="PoE draw">
+                          {Number(p.poe_watts)}W
+                        </Badge>
+                      ) : null,
+                      p.poe_budget_watts ? (
+                        <Badge key="budget" className="border-emerald-200 bg-emerald-50 text-emerald-600" title="PoE budget">
+                          {Number(p.poe_budget_watts)}W budget
+                        </Badge>
+                      ) : null,
+                      licTerms.length > 0 ? (
+                        <Badge
+                          key="lic"
+                          className="border-purple-200 bg-purple-50 text-purple-600"
+                          title={licTerms.map((t) => `${t}yr: ${p[`license_sku_${t}yr`]}`).join('  ·  ')}
+                        >
+                          Lic {licTerms.join('/')}yr
+                        </Badge>
+                      ) : null,
+                    ].filter(Boolean);
+                    return chips.length > 0 ? (
+                      <div className="flex max-w-[240px] flex-wrap gap-1">{chips}</div>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    );
+                  })()}
+                </td>
                 {canViewMargin && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.cost)}</td>}
                 <td className="px-4 py-2 text-right tabular-nums text-slate-700">{currency(p.price)}</td>
                 <td className="px-4 py-2">
