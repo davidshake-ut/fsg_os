@@ -1331,6 +1331,7 @@ function Calculator() {
           product={modal.product}
           clone={modal.clone}
           company={company}
+          allProducts={allProducts}
           defaultTechnology={activeTech ? activeTech.id : 'managed_wifi'}
           onClose={() => setModal({ open: false, product: null })}
           onSave={saveCatalog}

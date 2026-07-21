@@ -6,6 +6,7 @@ import { Card, Button, Field, TextInput, NumberInput, Select } from '@/component
 import { PRODUCT_CATEGORIES } from '@/lib/catalog';
 import { BUILTIN_TECHNOLOGIES, companyTechnologies } from '@/lib/technologies';
 import { companyTechVendors } from '@/lib/vendors';
+import { licenseCandidates, guessLicenses } from '@/lib/licenseMatch';
 
 const EMPTY = {
   sku: '', description: '', category: 'Access Point', technology: 'managed_wifi',
@@ -19,8 +20,11 @@ const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Num
 const strOrNull = (v) => (v ? v : null);
 
 // product === null → Add mode; otherwise Edit (SKU locked for base products).
-function initialForm(product, defaultTechnology) {
+// Empty license fields pre-fill from the catalog matcher (SKU + term markers)
+// so linked licenses rarely need hand-picking; stored values always win.
+function initialForm(product, defaultTechnology, allProducts) {
   if (!product) return { ...EMPTY, technology: defaultTechnology || EMPTY.technology };
+  const guesses = guessLicenses(product, allProducts);
   return {
     sku: product.sku,
     description: product.desc ?? product.description ?? '',
@@ -37,16 +41,16 @@ function initialForm(product, defaultTechnology) {
     port_count: product.port_count ?? '',
     poe_watts: product.poe_watts ?? '',
     poe_budget_watts: product.poe_budget_watts ?? '',
-    license_sku_1yr: product.license_sku_1yr ?? '',
-    license_sku_3yr: product.license_sku_3yr ?? '',
-    license_sku_5yr: product.license_sku_5yr ?? '',
+    license_sku_1yr: product.license_sku_1yr ?? guesses.license_sku_1yr ?? '',
+    license_sku_3yr: product.license_sku_3yr ?? guesses.license_sku_3yr ?? '',
+    license_sku_5yr: product.license_sku_5yr ?? guesses.license_sku_5yr ?? '',
   };
 }
 
 // The modal is mounted only while open (see page.jsx), so initializing form
 // state from `product` here resets it correctly each time it opens — no effect.
-export default function ProductModal({ open, product, clone = false, onClose, onSave, company = null, defaultTechnology = '' }) {
-  const [form, setForm] = useState(() => initialForm(product, defaultTechnology));
+export default function ProductModal({ open, product, clone = false, onClose, onSave, company = null, defaultTechnology = '', allProducts = [] }) {
+  const [form, setForm] = useState(() => initialForm(product, defaultTechnology, allProducts));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   // When the product's technology has registry vendors, Vendor renders as a
@@ -185,10 +189,10 @@ export default function ProductModal({ open, product, clone = false, onClose, on
           </Field>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Cost">
-              <NumberInput value={form.cost} onChange={(v) => set('cost', v)} />
+              <NumberInput step="0.01" value={form.cost} onChange={(v) => set('cost', v)} />
             </Field>
             <Field label="Price">
-              <NumberInput value={form.price} onChange={(v) => set('price', v)} />
+              <NumberInput step="0.01" value={form.price} onChange={(v) => set('price', v)} />
             </Field>
             <Field label="Discount %">
               <TextInput
@@ -253,29 +257,58 @@ export default function ProductModal({ open, product, clone = false, onClose, on
                   />
                 </Field>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <Field label="License 1yr" sub="Linked SKU">
-                  <TextInput
-                    value={form.license_sku_1yr}
-                    onChange={(e) => set('license_sku_1yr', e.target.value)}
-                    placeholder="—"
-                  />
-                </Field>
-                <Field label="License 3yr" sub="Linked SKU">
-                  <TextInput
-                    value={form.license_sku_3yr}
-                    onChange={(e) => set('license_sku_3yr', e.target.value)}
-                    placeholder="—"
-                  />
-                </Field>
-                <Field label="License 5yr" sub="Linked SKU">
-                  <TextInput
-                    value={form.license_sku_5yr}
-                    onChange={(e) => set('license_sku_5yr', e.target.value)}
-                    placeholder="—"
-                  />
-                </Field>
-              </div>
+              {(() => {
+                const candidates = licenseCandidates(
+                  { sku: form.sku, technology: form.technology },
+                  allProducts
+                );
+                const candidateSkus = new Set(candidates.map((c) => c.sku));
+                const licSelect = (key, label) => (
+                  <Field label={label} sub="Linked SKU">
+                    <Select value={form[key]} onChange={(e) => set(key, e.target.value)}>
+                      <option value="">—</option>
+                      {form[key] && !candidateSkus.has(form[key]) && (
+                        <option value={form[key]}>{form[key]}</option>
+                      )}
+                      {candidates.map((c) => (
+                        <option key={c.sku} value={c.sku} title={c.desc}>
+                          {c.sku}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                );
+                return (
+                  <>
+                    <div className="grid grid-cols-3 gap-3">
+                      {licSelect('license_sku_1yr', 'License 1yr')}
+                      {licSelect('license_sku_3yr', 'License 3yr')}
+                      {licSelect('license_sku_5yr', 'License 5yr')}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-slate-400">
+                        Dropdowns list License/Subscription products for this technology —
+                        matches mentioning this SKU are listed first.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const g = guessLicenses({ sku: form.sku, technology: form.technology }, allProducts);
+                          setForm((f) => ({
+                            ...f,
+                            license_sku_1yr: g.license_sku_1yr ?? f.license_sku_1yr,
+                            license_sku_3yr: g.license_sku_3yr ?? f.license_sku_3yr,
+                            license_sku_5yr: g.license_sku_5yr ?? f.license_sku_5yr,
+                          }));
+                        }}
+                        className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-50"
+                      >
+                        Auto-match
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
           {err && <p className="text-xs text-red-600">{err}</p>}

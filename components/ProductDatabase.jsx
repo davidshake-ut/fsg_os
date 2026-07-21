@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Card, Button, Badge, TextInput, Select, Field } from '@/components/ui/primitives';
 import { CORE_SKUS, CATEGORY_ORDER, PRODUCT_CATEGORIES } from '@/lib/catalog';
+import { guessLicenses } from '@/lib/licenseMatch';
 import { companyTechnologies, techLabel } from '@/lib/technologies';
 import { parseCatalogCSV } from '@/lib/csv';
 import { exportCatalogCSV } from '@/lib/exportCSV';
@@ -62,6 +63,7 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
     quality_tier: '',
   });
   const [others, setOthers] = useState({ vendor: '', preferred_vendor: '', product_line: '' });
+  const [autoLicenses, setAutoLicenses] = useState(false);
   const [mode, setMode] = useState('edit'); // 'edit' | 'confirm-delete'
   const [confirmText, setConfirmText] = useState('');
   const set = (k) => (v) => setFields((f) => ({ ...f, [k]: v }));
@@ -85,7 +87,7 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
       .map((k) => [k, resolve(k)])
       .filter(([, v]) => v !== undefined)
   );
-  const dirty = Object.keys(patch).length > 0;
+  const dirty = Object.keys(patch).length > 0 || autoLicenses;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={onClose}>
@@ -197,6 +199,18 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
             onChange={set('quality_tier')}
             allowClear
           />
+          <label className="flex items-start gap-2 pt-1 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={autoLicenses}
+              onChange={(e) => setAutoLicenses(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              Auto-link license SKUs (1/3/5 yr) — matches License/Subscription products that
+              mention each selected product&apos;s SKU. Only fills empty or matched terms, never clears.
+            </span>
+          </label>
         </div>
         <div className="mt-4 flex items-center justify-between gap-2">
           {onDelete ? (
@@ -215,7 +229,11 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" disabled={!dirty || busy} onClick={() => onApply(patch)}>
+            <Button
+              type="button"
+              disabled={!dirty || busy}
+              onClick={() => onApply(autoLicenses ? { ...patch, __autoLicenses: true } : patch)}
+            >
               {busy ? 'Applying…' : `Apply to ${count}`}
             </Button>
           </div>
@@ -274,22 +292,31 @@ export default function ProductDatabase({
   const applyBulk = async (patch) => {
     setBulkBusy(true);
     try {
+      const { __autoLicenses, ...fieldPatch } = patch;
       const rows = allProducts
         .filter((p) => selected.has(p.sku))
-        .map((p) => ({
-          sku: p.sku,
-          description: p.desc,
-          category: patch.category ?? p.category,
-          technology: patch.technology ?? (p.technology ?? ''),
-          cost: p.cost,
-          price: p.price,
-          vendor: patch.vendor !== undefined ? patch.vendor : (p.vendor ?? ''),
-          preferred_vendor:
-            patch.preferred_vendor !== undefined ? patch.preferred_vendor : (p.preferred_vendor ?? ''),
-          product_line: patch.product_line !== undefined ? patch.product_line : (p.product_line ?? ''),
-          ...(patch.mount_type !== undefined ? { mount_type: patch.mount_type || null } : {}),
-          ...(patch.quality_tier !== undefined ? { quality_tier: patch.quality_tier || null } : {}),
-        }));
+        .map((p) => {
+          // Auto-link: fill each term with a catalog license that mentions
+          // this product's SKU; terms with no confident match stay untouched.
+          const auto = __autoLicenses ? guessLicenses(p, allProducts) : {};
+          return {
+            sku: p.sku,
+            description: p.desc,
+            category: fieldPatch.category ?? p.category,
+            technology: fieldPatch.technology ?? (p.technology ?? ''),
+            cost: p.cost,
+            price: p.price,
+            vendor: fieldPatch.vendor !== undefined ? fieldPatch.vendor : (p.vendor ?? ''),
+            preferred_vendor:
+              fieldPatch.preferred_vendor !== undefined ? fieldPatch.preferred_vendor : (p.preferred_vendor ?? ''),
+            product_line: fieldPatch.product_line !== undefined ? fieldPatch.product_line : (p.product_line ?? ''),
+            ...(fieldPatch.mount_type !== undefined ? { mount_type: fieldPatch.mount_type || null } : {}),
+            ...(fieldPatch.quality_tier !== undefined ? { quality_tier: fieldPatch.quality_tier || null } : {}),
+            ...(auto.license_sku_1yr ? { license_sku_1yr: auto.license_sku_1yr } : {}),
+            ...(auto.license_sku_3yr ? { license_sku_3yr: auto.license_sku_3yr } : {}),
+            ...(auto.license_sku_5yr ? { license_sku_5yr: auto.license_sku_5yr } : {}),
+          };
+        });
       const res = await onBulkUpdate(rows);
       setNotice({
         type: 'success',
