@@ -530,19 +530,25 @@ function Calculator() {
       return (
         Object.keys(priceOverrides).length > 0 ||
         customLineItems.length > 0 ||
+        currentCrmAccountId != null ||
+        currentPropertyId != null ||
         JSON.stringify(inputs) !== JSON.stringify(DEFAULT_INPUTS) ||
         JSON.stringify(cameraInputs) !== JSON.stringify(DEFAULT_CAMERA_INPUTS) ||
         JSON.stringify(laborRoles) !== JSON.stringify(DEFAULT_LABOR_ROLES)
       );
     }
     return (
+      // Association changes (customer/property) count as changes too — a
+      // proposal that gains a customer must be saveable as a revision.
+      currentCrmAccountId !== (savedSnapshot.crmAccountId ?? null) ||
+      currentPropertyId !== (savedSnapshot.propertyId ?? null) ||
       JSON.stringify(inputs) !== JSON.stringify(savedSnapshot.inputs) ||
       JSON.stringify(cameraInputs) !== JSON.stringify(savedSnapshot.cameraInputs) ||
       JSON.stringify(priceOverrides) !== JSON.stringify(savedSnapshot.priceOverrides) ||
       JSON.stringify(customLineItems) !== JSON.stringify(savedSnapshot.customLineItems) ||
       JSON.stringify(laborRoles) !== JSON.stringify(savedSnapshot.laborRoles ?? DEFAULT_LABOR_ROLES)
     );
-  }, [inputs, cameraInputs, priceOverrides, customLineItems, laborRoles, savedSnapshot]);
+  }, [inputs, cameraInputs, priceOverrides, customLineItems, laborRoles, currentCrmAccountId, currentPropertyId, savedSnapshot]);
 
   const selectProject = (id) => {
     setNewPsaProjectId(null);
@@ -752,8 +758,16 @@ function Calculator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingCreateProject, currentProjectId]);
 
-  const snapshotCurrent = () =>
-    setSavedSnapshot({ inputs, cameraInputs, priceOverrides, customLineItems, laborRoles });
+  // `overrides` covers values resolved during the save itself (e.g. the
+  // auto-created property id) — the state setter hasn't re-rendered yet, so
+  // closing over state alone would snapshot the stale value and leave the
+  // save button lit after a successful save.
+  const snapshotCurrent = (overrides = {}) =>
+    setSavedSnapshot({
+      inputs, cameraInputs, priceOverrides, customLineItems, laborRoles,
+      crmAccountId: currentCrmAccountId, propertyId: currentPropertyId,
+      ...overrides,
+    });
 
   // Freezes every catalog SKU used by the current (live) bom/cameraBom, right
   // before a quote is first locked (marked Sent). Persisted as catalog_snapshot
@@ -794,7 +808,7 @@ function Calculator() {
         parentQuoteId: currentQuote.parent_quote_id ?? currentQuote.id,
       });
       setCurrentProjectId(saved.id);
-      snapshotCurrent();
+      snapshotCurrent({ propertyId });
       setToast({ type: 'success', message: `Revision v${saved.version ?? (currentQuote.version ?? 1) + 1} created — you are now editing the new draft.` });
     } catch (e) {
       setToast({ type: 'error', message: `Could not create revision: ${e.message}` });
@@ -870,7 +884,7 @@ function Calculator() {
         propertyId,
       });
       setCurrentProjectId(saved.id);
-      snapshotCurrent();
+      snapshotCurrent({ propertyId });
       setToast({ type: 'success', message: 'Proposal saved.' });
     } catch (e) {
       setToast({ type: 'error', message: `Save failed: ${e.message}` });
@@ -950,7 +964,7 @@ function Calculator() {
       } else {
         saved = await saveProject({ id: currentProjectId, ...buildStatePayload(), propertyId });
       }
-      snapshotCurrent();
+      snapshotCurrent({ propertyId });
 
       const doc = exportProposalPDF({ inputs, cameraInputs, term, sections: exportSections(), branding });
 
