@@ -181,6 +181,7 @@ function BulkEditModal({ count, company, allProducts, busy, onApply, onDelete, o
             options={[
               { value: 'ceiling', label: 'On Ceiling' },
               { value: 'wall', label: 'On Wall' },
+              { value: 'rack', label: 'Rack Mount' },
             ]}
             value={fields.mount_type}
             onChange={set('mount_type')}
@@ -653,7 +654,7 @@ export default function ProductDatabase({
                     const chips = [
                       p.mount_type && (
                         <Badge key="mount" className="border-sky-200 bg-sky-50 text-sky-600">
-                          {p.mount_type === 'wall' ? 'Wall' : 'Ceiling'}
+                          {p.mount_type === 'wall' ? 'Wall' : p.mount_type === 'rack' ? 'Rack' : 'Ceiling'}
                         </Badge>
                       ),
                       p.quality_tier && (
