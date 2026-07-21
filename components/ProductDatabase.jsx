@@ -677,7 +677,6 @@ export default function ProductDatabase({
                 <td className="px-4 py-2 text-slate-500">{p.product_line || <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2">
                   {(() => {
-                    const licTerms = [1, 3, 5].filter((t) => p[`license_sku_${t}yr`]);
                     const chips = [
                       p.mount_type && (
                         <Badge key="mount" className="border-sky-200 bg-sky-50 text-sky-600">
@@ -702,15 +701,6 @@ export default function ProductDatabase({
                       p.poe_budget_watts ? (
                         <Badge key="budget" className="border-emerald-200 bg-emerald-50 text-emerald-600" title="PoE budget">
                           {Number(p.poe_budget_watts)}W budget
-                        </Badge>
-                      ) : null,
-                      licTerms.length > 0 ? (
-                        <Badge
-                          key="lic"
-                          className="border-purple-200 bg-purple-50 text-purple-600"
-                          title={licTerms.map((t) => `${t}yr: ${p[`license_sku_${t}yr`]}`).join('  ·  ')}
-                        >
-                          Lic {licTerms.join('/')}yr
                         </Badge>
                       ) : null,
                     ].filter(Boolean);
