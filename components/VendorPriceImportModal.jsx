@@ -25,6 +25,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
   const [matched, setMatched] = useState([]); // [{ sku, price, productLine, description, oldCost, oldPrice, newCost, fileCost, newDiscount }]
   const [newRows, setNewRows] = useState([]); // file SKUs not in the catalog — opt-in adds
   const [newTech, setNewTech] = useState(''); // bulk Technology for checked new rows
+  const [newCategory, setNewCategory] = useState(''); // bulk Subcategory — stamps every new row
   const [newVendor, setNewVendor] = useState('');
   const [newSource, setNewSource] = useState('');
   const [applying, setApplying] = useState(false);
@@ -131,11 +132,18 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     setNewRows((rows) => rows.map((r) => (r.sku === sku ? { ...r, checked: !r.checked } : r)));
   const setNewRowCategory = (sku, category) =>
     setNewRows((rows) => rows.map((r) => (r.sku === sku ? { ...r, category } : r)));
+  // Bulk Subcategory: stamps every new row (per-row selects can still override
+  // afterward). Subcategory is optional — blank rows import as Miscellaneous
+  // and can be fixed later with Bulk Edit.
+  const setAllNewCategories = (category) => {
+    setNewCategory(category);
+    setNewRows((rows) => rows.map((r) => ({ ...r, category })));
+  };
   const checkedNew = newRows.filter((r) => r.checked);
   const allNewChecked = newRows.length > 0 && checkedNew.length === newRows.length;
   const toggleAllNew = () => setNewRows((rows) => rows.map((r) => ({ ...r, checked: !allNewChecked })));
-  // Checked new rows can't be written without a Technology and a Subcategory.
-  const newIssues = checkedNew.length > 0 && (!newTech || checkedNew.some((r) => !r.category));
+  // Checked new rows can't be written without a Technology.
+  const newIssues = checkedNew.length > 0 && !newTech;
 
   const apply = async () => {
     setApplying(true);
@@ -156,7 +164,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
       const addRows = checkedNew.map((r) => ({
         sku: r.sku,
         description: r.description || r.sku,
-        category: r.category,
+        category: r.category || 'Miscellaneous',
         technology: newTech,
         vendor: newVendor.trim(),
         preferred_vendor: newSource.trim(),
@@ -397,10 +405,11 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
                     </h3>
                     <p className="mt-0.5 text-xs text-slate-400">
                       These SKUs aren&apos;t in your catalog. Check the ones to add — unchecked rows are left out.
+                      Subcategory is optional: rows left blank import as Miscellaneous (fix later with Bulk Edit).
                     </p>
                   </div>
 
-                  <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
                     <label className="block">
                       <span className="mb-1 block text-[11px] font-medium text-slate-500">
                         Technology{checkedNew.length > 0 && <span className="ml-0.5 text-red-400">*</span>}
@@ -416,6 +425,19 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
                         <option value="">Choose…</option>
                         {companyTechnologies(company).map((t) => (
                           <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium text-slate-500">Subcategory — all rows</span>
+                      <select
+                        value={newCategory}
+                        onChange={(e) => setAllNewCategories(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-400"
+                      >
+                        <option value="">Miscellaneous (default)</option>
+                        {PRODUCT_CATEGORIES.map((c) => (
+                          <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
                     </label>
@@ -478,12 +500,9 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
                                 value={r.category}
                                 onChange={(e) => setNewRowCategory(r.sku, e.target.value)}
                                 disabled={!r.checked}
-                                className={cn(
-                                  'w-full min-w-[140px] rounded-lg border bg-white px-2 py-1 text-sm outline-none focus:border-blue-400 disabled:bg-slate-50',
-                                  r.checked && !r.category ? 'border-amber-300 bg-amber-50' : 'border-slate-200'
-                                )}
+                                className="w-full min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-blue-400 disabled:bg-slate-50"
                               >
-                                <option value="">Choose…</option>
+                                <option value="">Miscellaneous (default)</option>
                                 {PRODUCT_CATEGORIES.map((c) => (
                                   <option key={c} value={c}>{c}</option>
                                 ))}
@@ -505,7 +524,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
 
                   {newIssues && (
                     <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      To add the checked products, choose a Technology above and a Subcategory on each checked row.
+                      To add the checked products, choose a Technology above.
                     </p>
                   )}
                 </div>
