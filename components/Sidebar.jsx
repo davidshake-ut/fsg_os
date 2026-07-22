@@ -13,7 +13,6 @@ import {
   Shield,
   LogOut,
   Layers,
-  LayoutTemplate,
   Receipt,
   Zap,
   MessageSquare,
@@ -44,7 +43,6 @@ const NAV_ITEMS = [
   { key: 'proposals',  label: 'Proposals',       href: '/proposals',  icon: FileCheck,      group: 'Deliver' },
   { key: 'projects',   label: 'Projects',        href: '/projects',   icon: FolderKanban,   group: 'Deliver' },
   { key: 'invoices',   label: 'Invoices',        href: '/invoices',   icon: Receipt,        group: 'Deliver' },
-  { key: 'templates',  label: 'Templates',       href: '/templates',  icon: LayoutTemplate, group: 'Deliver' },
   { key: 'automations', label: 'Automations',    href: '/automations', icon: Zap,           group: 'Deliver' },
   { key: 'support',    label: 'Support',         href: '/support',    icon: LifeBuoy,       group: 'Support' },
   { key: 'resources',  label: 'Resources',       href: '/resources',  icon: BookOpen,       group: 'Support' },
@@ -78,6 +76,7 @@ export default function Sidebar({ onClose }) {
   // Manual chevron overrides; null = auto (open while on the section).
   const [builderManual, setBuilderManual] = useState(null);
   const [resourcesManual, setResourcesManual] = useState(null);
+  const [projectsManual, setProjectsManual] = useState(null);
   // The Builder publishes the current quote's enabled techs (which sub-links
   // to list) and its active tab (which sub-link is lit); before it has,
   // fall back to the default-on pair.
@@ -87,7 +86,7 @@ export default function Sidebar({ onClose }) {
   );
 
   const visibleItems = NAV_ITEMS.filter((item) => {
-    if (item.key === 'templates' || item.key === 'automations') return isEnabled('projects');
+    if (item.key === 'automations') return isEnabled('projects');
     if (item.key === 'proposals') return isEnabled('builder'); // proposals ARE builder quotes
     return isEnabled(item.key);
   }).map((item) => {
@@ -152,8 +151,12 @@ export default function Sidebar({ onClose }) {
           const onResourcesSub = pathname.startsWith('/resources/training') || pathname.startsWith('/knowledge');
           const resourcesExpanded = isResources
             && (resourcesManual ?? (pathname.startsWith('/resources') || pathname.startsWith('/knowledge')));
-          const hasChevron = isBuilder || isResources;
-          const expanded = isBuilder ? builderExpanded : resourcesExpanded;
+          // Projects expands too: Templates rides under it.
+          const isProjects = key === 'projects';
+          const projectsExpanded = isProjects
+            && (projectsManual ?? (pathname.startsWith('/projects') || pathname.startsWith('/templates')));
+          const hasChevron = isBuilder || isResources || isProjects;
+          const expanded = isBuilder ? builderExpanded : isResources ? resourcesExpanded : projectsExpanded;
           return (
             <div key={key}>
               {showHeader && (
@@ -173,13 +176,17 @@ export default function Sidebar({ onClose }) {
                       label={label}
                       active={isBuilder
                         ? (pathname === href || pathname.startsWith(href + '/')) && !builderSubActive
-                        : pathname.startsWith(href) && !onResourcesSub}
+                        : isResources
+                          ? pathname.startsWith(href) && !onResourcesSub
+                          : pathname.startsWith(href)}
                       onClick={onClose}
                     />
                   </div>
                   <button
                     type="button"
-                    onClick={() => (isBuilder ? setBuilderManual(!expanded) : setResourcesManual(!expanded))}
+                    onClick={() => (isBuilder ? setBuilderManual(!expanded)
+                      : isResources ? setResourcesManual(!expanded)
+                      : setProjectsManual(!expanded))}
                     aria-label={`Toggle ${label} pages`}
                     className="rounded p-1 text-[var(--ui-sidebar-ink)] hover:bg-[var(--ui-sidebar-active-bg)]"
                   >
@@ -221,6 +228,25 @@ export default function Sidebar({ onClose }) {
                       </Link>
                     );
                   })}
+                </div>
+              )}
+              {projectsExpanded && (
+                <div
+                  className="ml-5 mt-0.5 space-y-0.5 border-l pl-2"
+                  style={{ borderColor: 'var(--ui-sidebar-border)' }}
+                >
+                  <Link
+                    href="/templates"
+                    onClick={onClose}
+                    className={cn(
+                      'block truncate rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors',
+                      pathname === '/templates' || pathname.startsWith('/templates/')
+                        ? 'bg-[var(--ui-sidebar-active-bg)] font-semibold text-[var(--ui-sidebar-active-ink)]'
+                        : 'text-[var(--ui-sidebar-ink)] hover:bg-[var(--ui-sidebar-active-bg)] hover:text-[var(--ui-sidebar-active-ink)]'
+                    )}
+                  >
+                    Templates
+                  </Link>
                 </div>
               )}
               {builderExpanded && (
