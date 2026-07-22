@@ -139,7 +139,12 @@ export function useTenant() {
     // delete anything (enforced DB-side by 0049's triggers; UI hides the
     // affordances). canWrite is true in local mode / for every other role.
     isViewer: user?.role === 'viewer',
-    canWrite: user?.role !== 'viewer',
+    // 'guest' (0066) = external view-only login scoped to one CRM account —
+    // sees only that account's proposals/projects/invoices/support cases
+    // (enforced DB-side by restrictive policies + the read-only trigger).
+    isGuest: user?.role === 'guest',
+    guestAccountId: user?.guest_account_id ?? null,
+    canWrite: user?.role !== 'viewer' && user?.role !== 'guest',
     loading,
     error,
     refresh,

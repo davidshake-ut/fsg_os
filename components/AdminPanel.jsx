@@ -468,7 +468,7 @@ function lastSeenLabel(iso) {
   return fmtDateShared(iso);
 }
 
-function MembersTable({ members, companies, selfId, visitCounts = {}, onRole, onRemove, onResend, onReassign, onSaveProfile, superAdmin }) {
+function MembersTable({ members, companies, selfId, visitCounts = {}, onRole, onRemove, onResend, onReassign, onSaveProfile, superAdmin, guestAccounts = [] }) {
   const [editingId, setEditingId] = useState(null);
   const cols = superAdmin ? 6 : 5;
   return (
@@ -516,15 +516,31 @@ function MembersTable({ members, companies, selfId, visitCounts = {}, onRole, on
                   {isSuper ? (
                     <Badge className="border-violet-200 bg-violet-50 text-violet-600">Super Admin</Badge>
                   ) : (
-                    <Select
-                      className="h-8 w-32"
-                      value={m.role}
-                      onChange={(e) => onRole(m.id, e.target.value)}
-                    >
-                      <option value="user">User</option>
-                      <option value="company_admin">Admin</option>
-                      <option value="viewer">View Only</option>
-                    </Select>
+                    <>
+                      <Select
+                        className="h-8 w-32"
+                        value={m.role}
+                        onChange={(e) => onRole(m.id, e.target.value, m.guest_account_id ?? null)}
+                      >
+                        <option value="user">User</option>
+                        <option value="company_admin">Admin</option>
+                        <option value="viewer">View Only</option>
+                        <option value="guest">Guest</option>
+                      </Select>
+                      {m.role === 'guest' && (
+                        <Select
+                          className="mt-1 h-8 w-40 text-xs"
+                          value={m.guest_account_id ?? ''}
+                          title="Which customer account this guest can see — they see ONLY that account's proposals, projects, invoices, and support cases"
+                          onChange={(e) => onRole(m.id, 'guest', e.target.value || null)}
+                        >
+                          <option value="">— no account (sees nothing) —</option>
+                          {(guestAccounts ?? [])
+                            .filter((a) => a.company_id === m.company_id)
+                            .map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </Select>
+                      )}
+                    </>
                   )}
                 </td>
                 <td className="py-2 pr-2">
@@ -803,6 +819,18 @@ export default function AdminPanel() {
   const [newTeam, setNewTeam] = useState({ name: '', adminEmail: '' });
   const [activityPeriod, setActivityPeriod] = useState('7d');
   const [visitCounts, setVisitCounts] = useState({});
+  // CRM accounts for the guest-role scoping dropdown (0066). RLS scopes:
+  // team admins get their team's accounts, super admins get every team's.
+  const [guestAccounts, setGuestAccounts] = useState([]);
+  useEffect(() => {
+    if (!supabase || !session) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.from('crm_accounts').select('id, name, company_id').order('name');
+      if (!cancelled) setGuestAccounts(data ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, session]);
 
   const [confirmState, setConfirmState] = useState(null);
 
@@ -876,7 +904,8 @@ export default function AdminPanel() {
     if (out) inviteFlash(out, m.email);
   };
 
-  const setRole      = (userId, role)      => api('/api/members', 'PATCH',  { userId, role });
+  const setRole      = (userId, role, guestAccountId = null) =>
+    api('/api/members', 'PATCH', { userId, role, guestAccountId });
 
   // Visit counts for the Members activity column (access_log, 0051). RLS
   // scopes the rows: team admins see their team, super admins see all.
@@ -1146,7 +1175,13 @@ export default function AdminPanel() {
                       <option value="user">User</option>
                       <option value="company_admin">Admin</option>
                       <option value="viewer">View Only</option>
+                      <option value="guest">Guest</option>
                     </Select>
+                    {invite.role === 'guest' && (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        After the guest accepts, pick which customer account they can see in the Members table below.
+                      </p>
+                    )}
                   </Field>
                   <Button type="submit">Send Invite</Button>
                 </form>
@@ -1314,6 +1349,7 @@ export default function AdminPanel() {
                   onReassign={isSuperAdmin ? reassignTeam : undefined}
                   onSaveProfile={saveProfile}
                   superAdmin={isSuperAdmin}
+                  guestAccounts={guestAccounts}
                 />
               </div>
             </div>

@@ -43,15 +43,32 @@ async function isLastAdmin(svc, target) {
 
 // Change a member's role (user / company_admin / viewer).
 export async function PATCH(request) {
-  const { userId, role } = await request.json();
-  if (!['user', 'company_admin', 'viewer'].includes(role)) return json({ error: 'Invalid role' }, 400);
+  const { userId, role, guestAccountId } = await request.json();
+  if (!['user', 'company_admin', 'viewer', 'guest'].includes(role)) return json({ error: 'Invalid role' }, 400);
   const { error, svc, target } = await resolve(request, userId);
   if (error) return error;
 
   if (role !== 'company_admin' && (await isLastAdmin(svc, target))) {
     return json({ error: 'Cannot demote the last Admin of a team' }, 400);
   }
-  const { error: dbErr } = await svc.from('users').update({ role }).eq('id', userId);
+
+  // A guest is scoped to one CRM account (0066); the account must belong to
+  // the member's own team so an admin can never point a guest across
+  // tenants. Any other role clears the scoping.
+  let guest_account_id = null;
+  if (role === 'guest' && guestAccountId) {
+    const { data: account } = await svc
+      .from('crm_accounts')
+      .select('id, company_id')
+      .eq('id', guestAccountId)
+      .maybeSingle();
+    if (!account || account.company_id !== target.company_id) {
+      return json({ error: 'Guest account must belong to the member’s team' }, 400);
+    }
+    guest_account_id = account.id;
+  }
+
+  const { error: dbErr } = await svc.from('users').update({ role, guest_account_id }).eq('id', userId);
   if (dbErr) return json({ error: dbErr.message }, 400);
   return json({ ok: true });
 }

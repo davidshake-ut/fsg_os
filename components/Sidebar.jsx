@@ -66,9 +66,13 @@ function NavLink({ href, icon: Icon, label, active, onClick }) {
   );
 }
 
+// The only surfaces a guest login ever sees (0066): a dashboard plus the
+// four account-scoped modules. RLS scopes their data server-side.
+const GUEST_KEYS = new Set(['dashboard', 'proposals', 'projects', 'invoices', 'support']);
+
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
-  const { isAdmin, isSuperAdmin, configured, session, user, company, signOut } = useSession();
+  const { isAdmin, isSuperAdmin, isGuest, configured, session, user, company, signOut } = useSession();
   const { isEnabled } = useModules();
   // Custom-module display names (module variants, 0062) — a team assigned
   // "HVAC Jobs" sees that in place of "Projects".
@@ -88,6 +92,9 @@ export default function Sidebar({ onClose }) {
   );
 
   const visibleItems = NAV_ITEMS.filter((item) => {
+    // Guests only ever see their account-scoped surfaces — no CRM,
+    // Messages, Builder, Automations, Templates, or Resources.
+    if (isGuest && !GUEST_KEYS.has(item.key)) return false;
     if (item.key === 'automations') return isEnabled('projects');
     if (item.key === 'proposals') return isEnabled('builder'); // proposals ARE builder quotes
     return isEnabled(item.key);
@@ -153,8 +160,8 @@ export default function Sidebar({ onClose }) {
           const onResourcesSub = pathname.startsWith('/resources/training') || pathname.startsWith('/knowledge');
           const resourcesExpanded = isResources
             && (resourcesManual ?? (pathname.startsWith('/resources') || pathname.startsWith('/knowledge')));
-          // Projects expands too: Templates rides under it.
-          const isProjects = key === 'projects';
+          // Projects expands too: Templates rides under it (not for guests).
+          const isProjects = key === 'projects' && !isGuest;
           const projectsExpanded = isProjects
             && (projectsManual ?? (pathname.startsWith('/projects') || pathname.startsWith('/templates')));
           const hasChevron = isBuilder || isResources || isProjects;

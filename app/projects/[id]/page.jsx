@@ -158,7 +158,7 @@ function MergeMenu({ tech, others, onMerge }) {
 function ProjectDetail() {
   const { id } = useParams();
   const router = useRouter();
-  const { session, company, user, canWrite } = useSession();
+  const { session, company, user, canWrite, isGuest } = useSession();
   const {
     project, milestones, tasks, timeEntries, technologies, checklistItems, members, loading,
     updateProject,
@@ -265,7 +265,10 @@ function ProjectDetail() {
   };
 
   const boardColumns = resolveBoardColumns(project, projCfg.defaultColumns ?? undefined);
-  const visibleTabs = TABS.filter((t) => t.id !== 'gantt' || features.gantt !== false);
+  // Guests see the customer-facing tabs only — internal economics (time
+  // logs, budget) stay hidden, and RLS blocks the time-entry rows anyway.
+  const visibleTabs = TABS.filter((t) => t.id !== 'gantt' || features.gantt !== false)
+    .filter((t) => !isGuest || (t.id !== 'time' && t.id !== 'budget'));
 
   return (
     <div className="flex min-h-full flex-col">

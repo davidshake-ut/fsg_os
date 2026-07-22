@@ -38,8 +38,8 @@ export async function POST(request) {
 
   const { email, companyId: reqCompanyId, role = 'user', resend = false } = await request.json();
   if (!email) return json({ error: 'Missing email' }, 400);
-  if (!['user', 'company_admin', 'viewer'].includes(role)) {
-    return json({ error: 'Role must be user, company_admin, or viewer' }, 400);
+  if (!['user', 'company_admin', 'viewer', 'guest'].includes(role)) {
+    return json({ error: 'Role must be user, company_admin, viewer, or guest' }, 400);
   }
 
   // Company admins can only invite into their own team.
