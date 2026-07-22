@@ -75,7 +75,7 @@ function EmptyRow({ icon: Icon, message }) {
 
 function SectionCard({ icon: Icon, iconClass, title, count, action = null, children, id }) {
   return (
-    <div id={id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div id={id} className="scroll-mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
         <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', iconClass)}>
           <Icon size={14} />
@@ -91,9 +91,15 @@ function SectionCard({ icon: Icon, iconClass, title, count, action = null, child
   );
 }
 
-function StatTile({ iconClass, icon: Icon, value, label }) {
+// Clicking a tile jumps to its section card further down the page.
+function StatTile({ iconClass, icon: Icon, value, label, targetId }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <button
+      type="button"
+      title={`Go to ${label}`}
+      onClick={() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+    >
       <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', iconClass)}>
         <Icon size={16} />
       </span>
@@ -101,7 +107,7 @@ function StatTile({ iconClass, icon: Icon, value, label }) {
         <p className="truncate text-[17px] font-bold tabular-nums leading-tight text-slate-900">{value}</p>
         <p className="text-[11px] font-semibold text-slate-400">{label}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -376,10 +382,10 @@ function AccountDetail() {
 
         {/* ── Stat tiles ── */}
         <section className="mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-          <StatTile icon={FileText} iconClass={BRAND_FILL} value={currency(pipelineValue)} label="Open pipeline" />
-          <StatTile icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" value={activeProjects} label="Active projects" />
-          <StatTile icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" value={openCases} label="Open cases" />
-          <StatTile icon={Receipt} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white" value={currency(unpaid)} label="Unpaid invoices" />
+          <StatTile icon={FileText} iconClass={BRAND_FILL} value={currency(pipelineValue)} label="Open pipeline" targetId="proposals" />
+          <StatTile icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" value={activeProjects} label="Active projects" targetId="projects" />
+          <StatTile icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" value={openCases} label="Open cases" targetId="cases" />
+          <StatTile icon={Receipt} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white" value={currency(unpaid)} label="Unpaid invoices" targetId="billing" />
         </section>
 
         {/* ── Everything, two columns ── */}
@@ -387,6 +393,7 @@ function AccountDetail() {
           {/* Left: the money trail */}
           <div className="min-w-0 space-y-4">
             <SectionCard
+              id="proposals"
               icon={Building2}
               iconClass={BRAND_FILL}
               title="Properties & Proposals"
@@ -426,7 +433,7 @@ function AccountDetail() {
               </div>
             </SectionCard>
 
-            <SectionCard icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" title="Projects" count={projects.length}>
+            <SectionCard id="projects" icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" title="Projects" count={projects.length}>
               {projects.length === 0 ? (
                 <EmptyRow icon={FolderKanban} message="No projects for this account yet." />
               ) : projects.map((p) => (
@@ -445,6 +452,7 @@ function AccountDetail() {
             </SectionCard>
 
             <SectionCard
+              id="billing"
               icon={Receipt}
               iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white"
               title="Billing"
@@ -476,7 +484,7 @@ function AccountDetail() {
               </div>
             </SectionCard>
 
-            <SectionCard icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" title="Support Cases" count={openCases > 0 ? `${openCases} open` : tickets.length}>
+            <SectionCard id="cases" icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" title="Support Cases" count={openCases > 0 ? `${openCases} open` : tickets.length}>
               {tickets.length === 0 ? (
                 <EmptyRow icon={LifeBuoy} message="No support cases for this account." />
               ) : tickets.map((t) => (
