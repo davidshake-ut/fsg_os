@@ -4,18 +4,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { Puzzle } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
+import { notifyModulesChanged } from '@/hooks/useModules';
 import { Card, Select } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
+// Same order as the sidebar: Dashboard, Messages, CRM, System Builder,
+// Projects, Invoices, Support, Resources. (Proposals, Templates, and
+// Automations aren't separate modules — they follow Builder/Projects.)
 const MODULES = [
   { key: 'dashboard', label: 'Dashboard',          description: 'KPI dashboard and real-time business metrics' },
+  { key: 'messages',  label: 'Message Center',     description: 'Direct messages, group channels, and project channels' },
   { key: 'crm',       label: 'CRM',                description: 'Customer accounts, contacts, and opportunities' },
-  { key: 'builder',   label: 'System Builder',     description: 'CPQ — configure, price, and quote systems' },
-  { key: 'projects',  label: 'Project Management', description: 'PSA — project tracking, scheduling, and resource management' },
-  { key: 'support',   label: 'Customer Support',   description: 'Case system with alerts and SLA tracking' },
+  { key: 'builder',   label: 'System Builder',     description: 'CPQ — configure, price, and quote systems (includes Proposals)' },
+  { key: 'projects',  label: 'Project Management', description: 'PSA — project tracking, scheduling, and resource management (includes Templates & Automations)' },
   { key: 'invoices',  label: 'Invoices',           description: 'Create and send invoices tied to projects and quotes' },
-  { key: 'resources', label: 'Resources',           description: 'Knowledge base, guides, and team tools' },
-  { key: 'messages',  label: 'Message Center',      description: 'Direct messages, group channels, and project channels' },
+  { key: 'support',   label: 'Customer Support',   description: 'Case system with alerts and SLA tracking' },
+  { key: 'resources', label: 'Resources',          description: 'Knowledge base, guides, training, and team tools' },
 ];
 
 function ModuleToggle({ label, description, checked, onChange, saving, variants = [], variantId = null, onSetVariant }) {
@@ -122,6 +126,8 @@ export default function ModulesPanel({ companies }) {
         { company_id: targetId, module_key: key, enabled: val },
         { onConflict: 'company_id,module_key' }
       );
+    // Live-update every mounted useModules (e.g. the sidebar) — no refresh.
+    notifyModulesChanged(targetId);
     setSavingKey(null);
   };
 

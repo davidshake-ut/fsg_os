@@ -198,7 +198,7 @@ function TicketDetail() {
                       onChange={(e) => updateTicket({ project_id: e.target.value || null, asset_id: null })}>
                       <option value="">— none —</option>
                       {projects
-                        .filter((p) => !ticket.account_id || !p.crm_account_id || p.crm_account_id === ticket.account_id)
+                        .filter((p) => !ticket.account_id || p.crm_account_id === ticket.account_id)
                         .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </Select>
                   </dd>

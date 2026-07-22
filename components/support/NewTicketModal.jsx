@@ -47,10 +47,11 @@ export default function NewTicketModal({ open, onClose, onSave, accounts = [], p
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // A chosen account narrows the project list to that customer's projects
-  // (direct FK since migration 0040; unattributed projects stay visible).
+  // A chosen account narrows the project list to ONLY that customer's
+  // projects — unattributed projects are hidden too (David, 2026-07-22).
+  // With no account chosen, every project is available.
   const visibleProjects = form.account_id
-    ? projects.filter((p) => !p.crm_account_id || p.crm_account_id === form.account_id)
+    ? projects.filter((p) => p.crm_account_id === form.account_id)
     : projects;
 
   const handleSubmit = async (e) => {
