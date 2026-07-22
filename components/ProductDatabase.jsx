@@ -346,11 +346,17 @@ export default function ProductDatabase({
       }
       const deleted = skus.length - failures.length;
       const bits = [`Deleted ${deleted} product${deleted !== 1 ? 's' : ''}.`];
-      if (skippedCore > 0) bits.push(`Skipped ${skippedCore} core product${skippedCore !== 1 ? 's' : ''}.`);
+      if (skippedCore > 0) {
+        bits.push(`Skipped ${skippedCore} core product${skippedCore !== 1 ? 's' : ''} — the System Builder calculators depend on ${skippedCore !== 1 ? 'them' : 'it'}, so core SKUs can't be deleted.`);
+      }
       if (failures.length > 0) {
         bits.push(`${failures.length} failed — ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? '…' : ''}`);
       }
-      setNotice({ type: failures.length > 0 ? 'error' : 'success', message: bits.join(' ') });
+      // Nothing deleted = not a success, even when the reason is benign.
+      setNotice({
+        type: failures.length > 0 || (deleted === 0 && skippedCore > 0) ? 'error' : 'success',
+        message: bits.join(' '),
+      });
       setSelected(new Set());
       setBulkOpen(false);
     } finally {
@@ -736,7 +742,7 @@ export default function ProductDatabase({
                         <button
                           title={
                             CORE_SKUS.has(p.sku)
-                              ? 'Core product — cannot be deleted'
+                              ? 'Core product — the System Builder calculators depend on this SKU, so it cannot be deleted'
                               : 'Delete product'
                           }
                           onClick={() => onDelete?.(p)}
