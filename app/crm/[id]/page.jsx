@@ -4,8 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
-  ArrowLeft, Building2, CheckCircle2, FileText, FolderKanban, Globe, LifeBuoy, Loader2,
-  AlertCircle, MapPin, Phone, Plus, Receipt, RotateCcw, Send, User, Users, XCircle,
+  ArrowLeft, ArrowUpRight, Building2, CheckCircle2, FileText, FolderKanban, Globe, LifeBuoy,
+  Loader2, AlertCircle, MapPin, Phone, Plus, Receipt, RotateCcw, Send, User, Users, XCircle,
 } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
@@ -73,14 +73,31 @@ function EmptyRow({ icon: Icon, message }) {
 
 // ── Building blocks ─────────────────────────────────────────────────────────
 
-function SectionCard({ icon: Icon, iconClass, title, count, action = null, children, id }) {
+// Scrolls to a section card and pulses a ring on it — visible feedback even
+// when the whole page already fits on screen and nothing actually moves.
+function jumpToSection(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.classList.add('ring-2', 'ring-blue-400/70', 'ring-offset-2');
+  setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400/70', 'ring-offset-2'), 1400);
+}
+
+function SectionCard({ icon: Icon, iconClass, title, count, action = null, children, id, href = null }) {
   return (
-    <div id={id} className="scroll-mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div id={id} className="scroll-mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow">
       <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
         <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', iconClass)}>
           <Icon size={14} />
         </span>
-        <h3 className="flex-1 text-[13px] font-bold text-slate-800">{title}</h3>
+        {href ? (
+          <Link href={href} title={`Open the full ${title} area`} className="group flex flex-1 items-center gap-1">
+            <h3 className="text-[13px] font-bold text-slate-800 transition-colors group-hover:text-blue-700">{title}</h3>
+            <ArrowUpRight size={13} className="text-slate-300 transition-colors group-hover:text-blue-500" />
+          </Link>
+        ) : (
+          <h3 className="flex-1 text-[13px] font-bold text-slate-800">{title}</h3>
+        )}
         {count != null && (
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">{count}</span>
         )}
@@ -97,7 +114,7 @@ function StatTile({ iconClass, icon: Icon, value, label, targetId }) {
     <button
       type="button"
       title={`Go to ${label}`}
-      onClick={() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      onClick={() => jumpToSection(targetId)}
       className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
     >
       <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', iconClass)}>
@@ -433,7 +450,7 @@ function AccountDetail() {
               </div>
             </SectionCard>
 
-            <SectionCard id="projects" icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" title="Projects" count={projects.length}>
+            <SectionCard id="projects" href="/projects" icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" title="Projects" count={projects.length}>
               {projects.length === 0 ? (
                 <EmptyRow icon={FolderKanban} message="No projects for this account yet." />
               ) : projects.map((p) => (
@@ -453,6 +470,7 @@ function AccountDetail() {
 
             <SectionCard
               id="billing"
+              href="/invoices"
               icon={Receipt}
               iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white"
               title="Billing"
@@ -484,7 +502,7 @@ function AccountDetail() {
               </div>
             </SectionCard>
 
-            <SectionCard id="cases" icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" title="Support Cases" count={openCases > 0 ? `${openCases} open` : tickets.length}>
+            <SectionCard id="cases" href="/support" icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" title="Support Cases" count={openCases > 0 ? `${openCases} open` : tickets.length}>
               {tickets.length === 0 ? (
                 <EmptyRow icon={LifeBuoy} message="No support cases for this account." />
               ) : tickets.map((t) => (
