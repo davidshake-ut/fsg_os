@@ -1,14 +1,239 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, ChevronDown, Copy, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Boxes, ChevronDown, Copy, Lock, Plus, Trash2, X } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { Card, Select, Button, TextInput, Field } from '@/components/ui/primitives';
-import { DEFAULT_MODULE_CONFIG } from '@/lib/moduleConfig';
+import { DEFAULT_MODULE_CONFIG, resolveModuleConfig } from '@/lib/moduleConfig';
+import { toneClasses } from '@/lib/statusColors';
 import { cn } from '@/lib/utils';
 
 const BASE_MODULES = Object.entries(DEFAULT_MODULE_CONFIG).map(([key, cfg]) => ({ key, label: cfg.label }));
+
+// ── CRM deep knobs (Phase B) ────────────────────────────────────────────────
+
+const STAGE_TONES = ['neutral', 'info', 'progress', 'warning', 'success', 'danger'];
+// Semantic anchors — automations and next-step rules key off these ids.
+const LOCKED_STAGE_IDS = new Set(['won', 'lost']);
+
+function slugId(prefix, label, existingIds) {
+  let base = `${prefix}_${label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
+  if (base === `${prefix}_`) base = `${prefix}_item`;
+  let id = base;
+  let i = 2;
+  while (existingIds.has(id)) id = `${base}_${i++}`;
+  return id;
+}
+
+const CARD_OPTIONS = [
+  { key: 'nextSteps', label: '“What to do next” panel' },
+  { key: 'stats', label: 'Stat tiles' },
+  { key: 'projects', label: 'Projects card' },
+  { key: 'billing', label: 'Billing card' },
+  { key: 'cases', label: 'Support cases card' },
+  { key: 'contacts', label: 'Contacts card' },
+];
+
+function CrmVariantEditor({ variant, busy, onSaveConfig }) {
+  const resolved = resolveModuleConfig('crm', variant.config);
+  const [stages, setStages] = useState(resolved.stages);
+  const [types, setTypes] = useState(resolved.accountTypes);
+  const [cards, setCards] = useState({ ...resolved.cards });
+  const [staleDays, setStaleDays] = useState(resolved.nextSteps?.staleSentDays ?? 7);
+  const [newStage, setNewStage] = useState('');
+  const [newType, setNewType] = useState('');
+  const [dirty, setDirty] = useState(false);
+
+  const journey = stages.filter((s) => !LOCKED_STAGE_IDS.has(s.id));
+  const locked = stages.filter((s) => LOCKED_STAGE_IDS.has(s.id));
+
+  const touch = (fn) => (...args) => { setDirty(true); fn(...args); };
+
+  const setStage = touch((id, patch) =>
+    setStages((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s))));
+  const removeStage = touch((id) =>
+    setStages((list) => list.filter((s) => s.id !== id)));
+  const moveStage = touch((id, dir) =>
+    setStages((list) => {
+      const j = list.filter((s) => !LOCKED_STAGE_IDS.has(s.id));
+      const i = j.findIndex((s) => s.id === id);
+      const t = i + dir;
+      if (i === -1 || t < 0 || t >= j.length) return list;
+      [j[i], j[t]] = [j[t], j[i]];
+      return [...j, ...list.filter((s) => LOCKED_STAGE_IDS.has(s.id))];
+    }));
+  const addStage = touch(() => {
+    const label = newStage.trim();
+    if (!label) return;
+    setStages((list) => {
+      const j = list.filter((s) => !LOCKED_STAGE_IDS.has(s.id));
+      const l = list.filter((s) => LOCKED_STAGE_IDS.has(s.id));
+      const id = slugId('st', label, new Set(list.map((s) => s.id)));
+      return [...j, { id, label, tone: 'info' }, ...l];
+    });
+    setNewStage('');
+  });
+
+  const setType = touch((id, label) =>
+    setTypes((list) => list.map((t) => (t.id === id ? { ...t, label } : t))));
+  const removeType = touch((id) => setTypes((list) => list.filter((t) => t.id !== id)));
+  const addType = touch(() => {
+    const label = newType.trim();
+    if (!label) return;
+    setTypes((list) => [...list, { id: slugId('ty', label, new Set(list.map((t) => t.id))), label }]);
+    setNewType('');
+  });
+
+  const save = () => {
+    // Journey order as edited; Won then Lost always anchor the end.
+    const won = stages.find((s) => s.id === 'won');
+    const lost = stages.find((s) => s.id === 'lost');
+    onSaveConfig({
+      ...(variant.config ?? {}),
+      stages: [...journey, won, lost].filter(Boolean),
+      accountTypes: types,
+      cards,
+      nextSteps: { staleSentDays: Math.max(1, Number(staleDays) || 7) },
+    });
+    setDirty(false);
+  };
+
+  return (
+    <div className="space-y-4 border-t border-slate-200 pt-3">
+      <p className="text-xs font-semibold text-slate-600">CRM customization</p>
+
+      {/* Pipeline stages */}
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pipeline stages</p>
+        <div className="space-y-1.5">
+          {journey.map((s, i) => (
+            <div key={s.id} className="flex items-center gap-1.5">
+              <span className="flex shrink-0 flex-col">
+                <button type="button" aria-label="Move up" disabled={i === 0} onClick={() => moveStage(s.id, -1)} className="rounded p-0.5 text-slate-300 hover:text-slate-600 disabled:opacity-30">
+                  <ArrowUp size={11} />
+                </button>
+                <button type="button" aria-label="Move down" disabled={i === journey.length - 1} onClick={() => moveStage(s.id, 1)} className="rounded p-0.5 text-slate-300 hover:text-slate-600 disabled:opacity-30">
+                  <ArrowDown size={11} />
+                </button>
+              </span>
+              <TextInput className="h-8 flex-1" value={s.label} onChange={(e) => setStage(s.id, { label: e.target.value })} />
+              <Select className="h-8 w-28 text-xs" value={s.tone} onChange={(e) => setStage(s.id, { tone: e.target.value })}>
+                {STAGE_TONES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+              <span className={cn('h-4 w-4 shrink-0 rounded-full', toneClasses(s.tone))} />
+              <button
+                type="button"
+                aria-label={`Remove ${s.label}`}
+                disabled={journey.length <= 1}
+                onClick={() => removeStage(s.id)}
+                className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-30"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+          {locked.map((s) => (
+            <div key={s.id} className="flex items-center gap-1.5 opacity-90">
+              <span className="w-[26px] shrink-0" />
+              <TextInput className="h-8 flex-1" value={s.label} onChange={(e) => setStage(s.id, { label: e.target.value })} />
+              <Select className="h-8 w-28 text-xs" value={s.tone} onChange={(e) => setStage(s.id, { tone: e.target.value })}>
+                {STAGE_TONES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+              <span className={cn('h-4 w-4 shrink-0 rounded-full', toneClasses(s.tone))} />
+              <span className="p-1 text-slate-300" title={`"${s.id}" is a system stage — automations depend on it. Rename freely; it can't be removed.`}>
+                <Lock size={12} />
+              </span>
+            </div>
+          ))}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <span className="w-[26px] shrink-0" />
+            <TextInput
+              className="h-8 flex-1"
+              value={newStage}
+              onChange={(e) => setNewStage(e.target.value)}
+              placeholder="New stage name…"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addStage(); } }}
+            />
+            <Button type="button" size="sm" variant="outline" onClick={addStage} disabled={!newStage.trim()}>
+              <Plus size={12} /> Add
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Account types */}
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Account types</p>
+        <div className="flex flex-wrap gap-1.5">
+          {types.map((t) => (
+            <span key={t.id} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white pl-2 pr-1">
+              <input
+                value={t.label}
+                onChange={(e) => setType(t.id, e.target.value)}
+                className="h-7 w-28 bg-transparent text-xs outline-none"
+              />
+              <button
+                type="button"
+                aria-label={`Remove ${t.label}`}
+                disabled={types.length <= 1}
+                onClick={() => removeType(t.id)}
+                className="rounded p-0.5 text-slate-300 hover:text-red-500 disabled:opacity-30"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          <span className="flex items-center gap-1">
+            <TextInput
+              className="h-8 w-32 text-xs"
+              value={newType}
+              onChange={(e) => setNewType(e.target.value)}
+              placeholder="New type…"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addType(); } }}
+            />
+            <Button type="button" size="sm" variant="outline" onClick={addType} disabled={!newType.trim()}>
+              <Plus size={12} />
+            </Button>
+          </span>
+        </div>
+      </div>
+
+      {/* 360 page cards + next-step tuning */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Customer page sections</p>
+          <div className="space-y-1">
+            {CARD_OPTIONS.map((c) => (
+              <label key={c.key} className="flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={cards[c.key] !== false}
+                  onChange={(e) => { setDirty(true); setCards((prev) => ({ ...prev, [c.key]: e.target.checked })); }}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <Field label="Proposal follow-up nudge (days)" sub="How long a sent proposal sits before “What to do next” flags it">
+          <TextInput
+            type="number" min="1" max="60" step="1"
+            className="w-24"
+            value={staleDays}
+            onChange={(e) => { setDirty(true); setStaleDays(e.target.value); }}
+          />
+        </Field>
+      </div>
+
+      <div className="flex justify-end">
+        <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
+          {busy ? 'Saving…' : 'Save CRM settings'}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // Custom Modules (Phase A) — super-admin-only registry of module variants.
 // A variant with no overrides IS a faithful clone of the stock module; the
@@ -174,9 +399,20 @@ export default function CustomModulesPanel() {
                         }}
                       />
                     </Field>
+                    {v.base_module === 'crm' && (
+                      <CrmVariantEditor
+                        key={v.id}
+                        variant={v}
+                        busy={busy}
+                        onSaveConfig={(config) => patchVariant(v.id, { config })}
+                      />
+                    )}
+
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] text-slate-400">
-                        Deeper customization (stages, features, fields) arrives per module — CRM first.
+                        {v.base_module === 'crm'
+                          ? 'Changes apply to every team assigned this module.'
+                          : 'Deeper customization (stages, features, fields) arrives per module — CRM shipped first.'}
                       </p>
                       {confirmDeleteId === v.id ? (
                         <span className="flex items-center gap-2">

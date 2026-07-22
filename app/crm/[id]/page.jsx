@@ -12,7 +12,7 @@ import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useCRMAccount } from '@/hooks/useCRMAccount';
 import ContactSection from '@/components/crm/ContactSection';
-import { STAGES } from '@/components/crm/PipelineBoard';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import { Button } from '@/components/ui/primitives';
 import { EditableField, EditableTextarea } from '@/components/ui/EditableFields';
@@ -21,12 +21,6 @@ import { deriveNextSteps } from '@/lib/crmNextSteps';
 import { currency, fmtDate } from '@/lib/format';
 import { cn, initials } from '@/lib/utils';
 import { toneClasses } from '@/lib/statusColors';
-
-const TYPE_LABELS = {
-  hospitality: 'Hospitality', senior_living: 'Senior Living',
-  multi_family: 'Multi-Family', education: 'Education',
-  healthcare: 'Healthcare', other: 'Other',
-};
 
 const PSA_STATUS_TONE = {
   planning: 'neutral', active: 'info', on_hold: 'warning', complete: 'success', cancelled: 'danger',
@@ -128,20 +122,23 @@ function StatTile({ iconClass, icon: Icon, value, label, targetId }) {
   );
 }
 
-// Clickable pipeline progress: New → Qualifying → Proposal → Negotiation → Won.
-// "Lost" isn't a step on the journey — it's the small escape hatch beside it.
-function PipelineStepper({ stage, onSetStage }) {
-  const steps = STAGES.filter((s) => s.id !== 'lost');
+// Clickable pipeline progress across the variant's stages (minus Lost —
+// that's the small escape hatch beside it, never a step on the journey).
+function PipelineStepper({ stage, onSetStage, stages }) {
+  const steps = stages.filter((s) => s.id !== 'lost');
   const currentIdx = steps.findIndex((s) => s.id === stage);
   const isLost = stage === 'lost';
+  const lostLabel = stages.find((s) => s.id === 'lost')?.label ?? 'Lost';
+  // Reopen to the earliest non-terminal stage after the first.
+  const reopenStage = steps.find((s, i) => i > 0 && s.id !== 'won')?.id ?? steps[0]?.id ?? 'new';
 
   if (isLost) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
         <p className="flex items-center gap-2 text-sm font-semibold text-red-700">
-          <XCircle size={15} /> This deal is marked Lost.
+          <XCircle size={15} /> This deal is marked {lostLabel}.
         </p>
-        <Button variant="outline" size="sm" onClick={() => onSetStage('qualifying')}>
+        <Button variant="outline" size="sm" onClick={() => onSetStage(reopenStage)}>
           <RotateCcw size={13} /> Reopen
         </Button>
       </div>
@@ -188,7 +185,7 @@ function PipelineStepper({ stage, onSetStage }) {
         onClick={() => onSetStage('lost')}
         className="mt-1.5 text-[11px] font-medium text-slate-300 transition-colors hover:text-red-500"
       >
-        Mark lost
+        Mark {lostLabel.toLowerCase()}
       </button>
     </div>
   );
@@ -309,6 +306,7 @@ function AccountDetail() {
   const { id } = useParams();
   const { session } = useSession();
   const { account, contacts, quotes, properties, projects, tickets, invoices, loading, updateAccount, createContact, updateContact, deleteContact, createProperty, setContactProperties } = useCRMAccount(id, session);
+  const { configFor } = useModuleConfigs();
   const [toast, setToast] = useState(null);
   const save = async (patch) => { await updateAccount(patch); setToast({ type: 'success', message: 'Saved.' }); };
 
@@ -325,7 +323,15 @@ function AccountDetail() {
     );
   }
 
-  const nextSteps = deriveNextSteps({ account, contacts, quotes, projects, tickets, invoices });
+  // Team's CRM variant: stages, type labels, card visibility, rule tuning.
+  const crmCfg = configFor('crm');
+  const cards = crmCfg.cards ?? {};
+  const typeLabel = (t) => crmCfg.accountTypes.find((x) => x.id === t)?.label ?? (t ? String(t).replace(/_/g, ' ') : '—');
+  const nextSteps = deriveNextSteps(
+    { account, contacts, quotes, projects, tickets, invoices },
+    undefined, // "now" defaults inside the helper (render must stay pure)
+    crmCfg.nextSteps
+  );
 
   // At-a-glance tiles.
   const openPipeline = quotes
@@ -357,7 +363,7 @@ function AccountDetail() {
               <h1 className="text-lg font-extrabold tracking-tight text-slate-900">{account.name}</h1>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <span className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-700">
-                  {TYPE_LABELS[account.type] ?? account.type}
+                  {typeLabel(account.type)}
                 </span>
                 {account.phone && (
                   <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
@@ -390,20 +396,28 @@ function AccountDetail() {
                 {account.expected_close_date && <> · closes <b className="text-slate-800">{fmtDate(account.expected_close_date)}</b></>}
               </span>
             </div>
-            <PipelineStepper stage={account.stage ?? 'new'} onSetStage={(stage) => save({ stage })} />
+            <PipelineStepper stage={account.stage ?? 'new'} onSetStage={(stage) => save({ stage })} stages={crmCfg.stages} />
           </div>
         </section>
 
         {/* ── Next steps ── */}
-        <NextSteps steps={nextSteps} />
+        {cards.nextSteps !== false && <NextSteps steps={nextSteps} />}
 
-        {/* ── Stat tiles ── */}
-        <section className="mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-          <StatTile icon={FileText} iconClass={BRAND_FILL} value={currency(pipelineValue)} label="Open pipeline" targetId="proposals" />
-          <StatTile icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" value={activeProjects} label="Active projects" targetId="projects" />
-          <StatTile icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" value={openCases} label="Open cases" targetId="cases" />
-          <StatTile icon={Receipt} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white" value={currency(unpaid)} label="Unpaid invoices" targetId="billing" />
-        </section>
+        {/* ── Stat tiles (each shows only when its section is visible) ── */}
+        {cards.stats !== false && (
+          <section className="mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            <StatTile icon={FileText} iconClass={BRAND_FILL} value={currency(pipelineValue)} label="Open pipeline" targetId="proposals" />
+            {cards.projects !== false && (
+              <StatTile icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" value={activeProjects} label="Active projects" targetId="projects" />
+            )}
+            {cards.cases !== false && (
+              <StatTile icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" value={openCases} label="Open cases" targetId="cases" />
+            )}
+            {cards.billing !== false && (
+              <StatTile icon={Receipt} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white" value={currency(unpaid)} label="Unpaid invoices" targetId="billing" />
+            )}
+          </section>
+        )}
 
         {/* ── Everything, two columns ── */}
         <div className="mt-5 grid items-start gap-4 lg:grid-cols-[1.55fr_1fr]">
@@ -450,6 +464,7 @@ function AccountDetail() {
               </div>
             </SectionCard>
 
+            {cards.projects !== false && (
             <SectionCard id="projects" href="/projects" icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" title="Projects" count={projects.length}>
               {projects.length === 0 ? (
                 <EmptyRow icon={FolderKanban} message="No projects for this account yet." />
@@ -467,7 +482,9 @@ function AccountDetail() {
                 </Link>
               ))}
             </SectionCard>
+            )}
 
+            {cards.billing !== false && (
             <SectionCard
               id="billing"
               href="/invoices"
@@ -490,10 +507,12 @@ function AccountDetail() {
                 </Link>
               ))}
             </SectionCard>
+            )}
           </div>
 
           {/* Right: people, support, facts */}
           <div className="min-w-0 space-y-4">
+            {cards.contacts !== false && (
             <SectionCard id="contacts" icon={Users} iconClass={BRAND_FILL} title="Contacts" count={contacts.length}>
               <div className="p-4">
                 <ContactSection contacts={contacts} properties={properties}
@@ -501,7 +520,9 @@ function AccountDetail() {
                   onSetProperties={setContactProperties} />
               </div>
             </SectionCard>
+            )}
 
+            {cards.cases !== false && (
             <SectionCard id="cases" href="/support" icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" title="Support Cases" count={openCases > 0 ? `${openCases} open` : tickets.length}>
               {tickets.length === 0 ? (
                 <EmptyRow icon={LifeBuoy} message="No support cases for this account." />
@@ -519,6 +540,7 @@ function AccountDetail() {
                 </Link>
               ))}
             </SectionCard>
+            )}
 
             <SectionCard icon={User} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white" title="Account Details">
               <div className="space-y-4 p-4">

@@ -38,4 +38,25 @@ describe('resolveModuleConfig', () => {
   it('unknown module keys degrade to a bare label', () => {
     expect(resolveModuleConfig('mystery').label).toBe('mystery');
   });
+
+  it('stock CRM config carries the semantic won/lost stages and default knobs', () => {
+    const crm = resolveModuleConfig('crm');
+    expect(crm.stages.map((s) => s.id)).toContain('won');
+    expect(crm.stages.map((s) => s.id)).toContain('lost');
+    expect(crm.accountTypes.length).toBeGreaterThan(0);
+    expect(crm.nextSteps.staleSentDays).toBe(7);
+    expect(crm.cards.nextSteps).toBe(true);
+  });
+
+  it('a variant stage list replaces the stock list wholesale', () => {
+    const crm = resolveModuleConfig('crm', {
+      stages: [
+        { id: 'st_lead', label: 'Lead', tone: 'info' },
+        { id: 'won', label: 'Sold', tone: 'success' },
+        { id: 'lost', label: 'Dead', tone: 'danger' },
+      ],
+    });
+    expect(crm.stages.map((s) => s.id)).toEqual(['st_lead', 'won', 'lost']);
+    expect(crm.accountTypes.length).toBeGreaterThan(0); // untouched knob keeps stock
+  });
 });

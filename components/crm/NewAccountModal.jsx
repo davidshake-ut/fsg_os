@@ -4,10 +4,16 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Button, Field, TextInput, Select } from '@/components/ui/primitives';
 import { STAGES } from '@/components/crm/PipelineBoard';
+import { DEFAULT_MODULE_CONFIG } from '@/lib/moduleConfig';
 
 const EMPTY = { name: '', type: 'other', stage: 'new', phone: '', website: '', address: '', notes: '' };
 
-export default function NewAccountModal({ open, onClose, onSave }) {
+export default function NewAccountModal({
+  open, onClose, onSave,
+  // Variant-driven lists (stock when the team has no CRM variant).
+  stages = STAGES,
+  accountTypes = DEFAULT_MODULE_CONFIG.crm.accountTypes,
+}) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
@@ -15,8 +21,18 @@ export default function NewAccountModal({ open, onClose, onSave }) {
 
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => { setForm(EMPTY); setErr(null); firstRef.current?.focus(); }, 0);
+    const t = setTimeout(() => {
+      setForm({
+        ...EMPTY,
+        // A variant may not include the stock defaults — start on real options.
+        type: accountTypes.some((x) => x.id === 'other') ? 'other' : (accountTypes[0]?.id ?? 'other'),
+        stage: stages[0]?.id ?? 'new',
+      });
+      setErr(null);
+      firstRef.current?.focus();
+    }, 0);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -67,17 +83,12 @@ export default function NewAccountModal({ open, onClose, onSave }) {
             </Field>
             <Field label="Type">
               <Select value={form.type} onChange={(e) => set('type', e.target.value)}>
-                <option value="hospitality">Hospitality</option>
-                <option value="senior_living">Senior Living</option>
-                <option value="multi_family">Multi-Family</option>
-                <option value="education">Education</option>
-                <option value="healthcare">Healthcare</option>
-                <option value="other">Other</option>
+                {accountTypes.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </Select>
             </Field>
             <Field label="Pipeline Stage">
               <Select value={form.stage} onChange={(e) => set('stage', e.target.value)}>
-                {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                {stages.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </Select>
             </Field>
             <Field label="Phone">

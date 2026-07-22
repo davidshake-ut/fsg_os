@@ -9,7 +9,7 @@ import { useSession } from '@/components/SessionProvider';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 import NewAccountModal from '@/components/crm/NewAccountModal';
-import PipelineBoard, { STAGES } from '@/components/crm/PipelineBoard';
+import PipelineBoard from '@/components/crm/PipelineBoard';
 import { Card, Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import AppToast from '@/components/ui/AppToast';
@@ -17,18 +17,17 @@ import ErrorBanner from '@/components/ui/ErrorBanner';
 import { cn } from '@/lib/utils';
 import { toneClasses } from '@/lib/statusColors';
 
-const TYPE_LABELS = {
-  hospitality: 'Hospitality', senior_living: 'Senior Living',
-  multi_family: 'Multi-Family', education: 'Education',
-  healthcare: 'Healthcare', other: 'Other',
-};
-
-const STAGE_BY_ID = Object.fromEntries(STAGES.map((s) => [s.id, s]));
-
 function CRMContent() {
   const { session, company, user, canWrite } = useSession();
   const { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, updateAccount, deleteAccount } = useCRMAccounts(session, company, user);
   const { configFor } = useModuleConfigs();
+
+  // Stages + account types come from the team's CRM variant (stock when
+  // no variant is assigned).
+  const crmCfg = configFor('crm');
+  const STAGES = crmCfg.stages;
+  const STAGE_BY_ID = Object.fromEntries(STAGES.map((s) => [s.id, s]));
+  const typeLabel = (t) => crmCfg.accountTypes.find((x) => x.id === t)?.label ?? (t ? String(t).replace(/_/g, ' ') : '—');
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [view, setView] = useState('list');
@@ -115,7 +114,7 @@ function CRMContent() {
       </div>
 
       {view === 'pipeline' ? (
-        <PipelineBoard accounts={searchFiltered} onUpdateAccount={updateAccount} />
+        <PipelineBoard accounts={searchFiltered} onUpdateAccount={updateAccount} stages={STAGES} />
       ) : loading ? (
         <p className="py-12 text-center text-sm text-slate-400">Loading accounts…</p>
       ) : filtered.length === 0 ? (
@@ -134,7 +133,7 @@ function CRMContent() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{a.name}</p>
-                  <p className="text-xs text-slate-400">{TYPE_LABELS[a.type] ?? a.type}</p>
+                  <p className="text-xs text-slate-400">{typeLabel(a.type)}</p>
                 </div>
                 <div className="hidden items-center gap-3 sm:flex">
                   {a.phone && <span className="flex items-center gap-1 text-xs text-slate-400"><Phone size={11} />{a.phone}</span>}
@@ -153,6 +152,11 @@ function CRMContent() {
                     toneClasses(STAGE_BY_ID[a.stage ?? 'new']?.tone ?? 'neutral')
                   )}
                 >
+                  {/* Keep an account's out-of-list stage selectable so the
+                      picker never misrepresents its current value. */}
+                  {!STAGE_BY_ID[a.stage ?? 'new'] && (
+                    <option value={a.stage ?? 'new'}>{(a.stage ?? 'new').replace(/_/g, ' ')}</option>
+                  )}
                   {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
                 <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-60" />
@@ -174,7 +178,7 @@ function CRMContent() {
         </div>
       )}
 
-      <NewAccountModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={async (d) => { await createAccount(d); setToast({ type: 'success', message: 'Account created.' }); }} />
+      <NewAccountModal open={modalOpen} onClose={() => setModalOpen(false)} stages={STAGES} accountTypes={crmCfg.accountTypes} onSave={async (d) => { await createAccount(d); setToast({ type: 'success', message: 'Account created.' }); }} />
       <ConfirmModal
         open={!!confirmState}
         title={confirmState?.title}

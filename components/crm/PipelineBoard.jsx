@@ -15,15 +15,11 @@ import { Calendar, Percent } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { currency, fmtDate as fmtDateShared } from '@/lib/format';
 import { toneClasses } from '@/lib/statusColors';
+import { DEFAULT_MODULE_CONFIG } from '@/lib/moduleConfig';
 
-export const STAGES = [
-  { id: 'new',         label: 'New',         tone: 'neutral'  },
-  { id: 'qualifying',  label: 'Qualifying',  tone: 'info'     },
-  { id: 'proposal',    label: 'Proposal',    tone: 'progress' },
-  { id: 'negotiation', label: 'Negotiation', tone: 'warning'  },
-  { id: 'won',         label: 'Won',         tone: 'success'  },
-  { id: 'lost',        label: 'Lost',        tone: 'danger'   },
-];
+// Stock stages — source of truth moved to lib/moduleConfig.js (module
+// variants can redefine the list per team); re-exported for existing imports.
+export const STAGES = DEFAULT_MODULE_CONFIG.crm.stages;
 
 function fmtDate(iso) {
   if (!iso) return null;
@@ -91,16 +87,22 @@ function Column({ stage, accounts, activeId }) {
   );
 }
 
-export default function PipelineBoard({ accounts, onUpdateAccount }) {
+export default function PipelineBoard({ accounts, onUpdateAccount, stages = STAGES }) {
   const [activeId, setActiveId] = useState(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor)
   );
 
-  const columns = STAGES.map((stage) => ({
+  // An account whose stage isn't in this team's stage list (e.g. the variant
+  // was edited after the fact) buckets into the first column instead of
+  // silently disappearing from the board.
+  const stageIds = new Set(stages.map((s) => s.id));
+  const stageOf = (a) => (stageIds.has(a.stage ?? 'new') ? (a.stage ?? 'new') : stages[0]?.id);
+
+  const columns = stages.map((stage) => ({
     stage,
-    accounts: accounts.filter((a) => (a.stage ?? 'new') === stage.id),
+    accounts: accounts.filter((a) => stageOf(a) === stage.id),
   }));
 
   const handleDragEnd = ({ active, over }) => {

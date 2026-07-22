@@ -70,6 +70,16 @@ describe('deriveNextSteps', () => {
     expect(steps[0].href).toBe('/builder?account=a1');
   });
 
+  it('staleSentDays option tunes the follow-up window (CRM variant knob)', () => {
+    const data = {
+      ...base,
+      quotes: [{ id: 'q1', project_name: 'Wi-Fi', status: 'sent', updated_at: daysAgo(4) }],
+    };
+    expect(deriveNextSteps(data, NOW).some((s) => s.id === 'stale-quote-q1')).toBe(false); // default 7
+    expect(deriveNextSteps(data, NOW, { staleSentDays: 3 }).some((s) => s.id === 'stale-quote-q1')).toBe(true);
+    expect(deriveNextSteps(data, NOW, { staleSentDays: 14 }).some((s) => s.id === 'stale-quote-q1')).toBe(false);
+  });
+
   it('a healthy account is "all caught up" and steps cap at 4', () => {
     expect(deriveNextSteps(base, NOW).map((s) => s.id)).toEqual(['all-clear']);
 
