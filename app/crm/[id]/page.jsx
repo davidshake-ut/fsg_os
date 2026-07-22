@@ -45,6 +45,12 @@ const STEP_ICONS = {
   contact: User, check: CheckCircle2,
 };
 
+// Brand-decorative fills come from Team Branding (Platform Settings) via the
+// same CSS vars the app's buttons/sidebar use — never hardcoded hues. The
+// remaining fixed gradients below are semantic category accents (projects/
+// cases/billing), and status pills keep their semantic tones.
+const BRAND_FILL = '[background:var(--ui-button-bg,linear-gradient(135deg,#2563eb,#0891b2))] text-[var(--brand-text,#fff)]';
+
 const STEP_TONES = {
   danger: 'border-red-200 bg-red-50 [&_.step-ico]:bg-red-100 [&_.step-ico]:text-red-600',
   warning: 'border-amber-200 bg-amber-50 [&_.step-ico]:bg-amber-100 [&_.step-ico]:text-amber-600',
@@ -71,7 +77,7 @@ function SectionCard({ icon: Icon, iconClass, title, count, action = null, child
   return (
     <div id={id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
-        <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg text-white', iconClass)}>
+        <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', iconClass)}>
           <Icon size={14} />
         </span>
         <h3 className="flex-1 text-[13px] font-bold text-slate-800">{title}</h3>
@@ -88,7 +94,7 @@ function SectionCard({ icon: Icon, iconClass, title, count, action = null, child
 function StatTile({ iconClass, icon: Icon, value, label }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white', iconClass)}>
+      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', iconClass)}>
         <Icon size={16} />
       </span>
       <div className="min-w-0">
@@ -139,7 +145,7 @@ function PipelineStepper({ stage, onSetStage }) {
                   done || current
                     ? 'border-transparent [background:var(--ui-button-bg,var(--brand,#2563eb))]'
                     : 'border-slate-200 bg-slate-100 group-hover:bg-slate-200',
-                  current && 'ring-[3px] ring-blue-500/25'
+                  current && '[box-shadow:0_0_0_3px_color-mix(in_srgb,var(--brand,#2563eb)_28%,transparent)]'
                 )}
               />
               <span
@@ -318,14 +324,13 @@ function AccountDetail() {
 
         {/* ── Hero ── */}
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="relative h-14 [background:var(--ui-button-bg,linear-gradient(100deg,#2563eb,#0891b2))]">
-            <div className="absolute inset-0 bg-[radial-gradient(500px_70px_at_85%_0%,rgba(255,255,255,0.25),transparent_60%)]" />
-          </div>
-          <div className="flex flex-wrap items-start gap-4 px-5 pb-4">
-            <span className="-mt-7 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-[3px] border-white text-lg font-extrabold text-[var(--brand-text,#fff)] shadow-md [background:var(--ui-button-bg,linear-gradient(135deg,#2563eb,#0891b2))]">
-            {initials(account.name)}
+          {/* Thin brand accent strip — never overlaps the avatar or name. */}
+          <div className="relative h-2.5 [background:var(--ui-button-bg,linear-gradient(100deg,#2563eb,#0891b2))]" />
+          <div className="flex flex-wrap items-center gap-4 px-5 py-4">
+            <span className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-lg font-extrabold shadow-md', BRAND_FILL)}>
+              {initials(account.name)}
             </span>
-            <div className="min-w-0 flex-1 pt-2">
+            <div className="min-w-0 flex-1">
               <h1 className="text-lg font-extrabold tracking-tight text-slate-900">{account.name}</h1>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <span className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-700">
@@ -348,11 +353,9 @@ function AccountDetail() {
                 )}
               </div>
             </div>
-            <div className="pt-3">
-              <Link href={`/builder?account=${id}`}>
-                <Button size="sm"><FileText size={13} /> New Proposal</Button>
-              </Link>
-            </div>
+            <Link href={`/builder?account=${id}`}>
+              <Button size="sm"><FileText size={13} /> New Proposal</Button>
+            </Link>
           </div>
 
           <div className="border-t border-slate-100 px-5 py-4">
@@ -373,10 +376,10 @@ function AccountDetail() {
 
         {/* ── Stat tiles ── */}
         <section className="mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-          <StatTile icon={FileText} iconClass="bg-gradient-to-br from-blue-600 to-cyan-600" value={currency(pipelineValue)} label="Open pipeline" />
-          <StatTile icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600" value={activeProjects} label="Active projects" />
-          <StatTile icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500" value={openCases} label="Open cases" />
-          <StatTile icon={Receipt} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600" value={currency(unpaid)} label="Unpaid invoices" />
+          <StatTile icon={FileText} iconClass={BRAND_FILL} value={currency(pipelineValue)} label="Open pipeline" />
+          <StatTile icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" value={activeProjects} label="Active projects" />
+          <StatTile icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" value={openCases} label="Open cases" />
+          <StatTile icon={Receipt} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white" value={currency(unpaid)} label="Unpaid invoices" />
         </section>
 
         {/* ── Everything, two columns ── */}
@@ -385,7 +388,7 @@ function AccountDetail() {
           <div className="min-w-0 space-y-4">
             <SectionCard
               icon={Building2}
-              iconClass="bg-gradient-to-br from-blue-600 to-cyan-600"
+              iconClass={BRAND_FILL}
               title="Properties & Proposals"
               count={`${properties.length} · ${quotes.length}`}
             >
@@ -423,7 +426,7 @@ function AccountDetail() {
               </div>
             </SectionCard>
 
-            <SectionCard icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600" title="Projects" count={projects.length}>
+            <SectionCard icon={FolderKanban} iconClass="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white" title="Projects" count={projects.length}>
               {projects.length === 0 ? (
                 <EmptyRow icon={FolderKanban} message="No projects for this account yet." />
               ) : projects.map((p) => (
@@ -443,7 +446,7 @@ function AccountDetail() {
 
             <SectionCard
               icon={Receipt}
-              iconClass="bg-gradient-to-br from-emerald-600 to-teal-600"
+              iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white"
               title="Billing"
               count={unpaid > 0 ? `${currency(unpaid)} open` : invoices.length}
             >
@@ -465,7 +468,7 @@ function AccountDetail() {
 
           {/* Right: people, support, facts */}
           <div className="min-w-0 space-y-4">
-            <SectionCard id="contacts" icon={Users} iconClass="bg-gradient-to-br from-blue-600 to-cyan-600" title="Contacts" count={contacts.length}>
+            <SectionCard id="contacts" icon={Users} iconClass={BRAND_FILL} title="Contacts" count={contacts.length}>
               <div className="p-4">
                 <ContactSection contacts={contacts} properties={properties}
                   onAdd={createContact} onUpdate={updateContact} onDelete={deleteContact}
@@ -473,7 +476,7 @@ function AccountDetail() {
               </div>
             </SectionCard>
 
-            <SectionCard icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500" title="Support Cases" count={openCases > 0 ? `${openCases} open` : tickets.length}>
+            <SectionCard icon={LifeBuoy} iconClass="bg-gradient-to-br from-amber-500 to-red-500 text-white" title="Support Cases" count={openCases > 0 ? `${openCases} open` : tickets.length}>
               {tickets.length === 0 ? (
                 <EmptyRow icon={LifeBuoy} message="No support cases for this account." />
               ) : tickets.map((t) => (
@@ -491,7 +494,7 @@ function AccountDetail() {
               ))}
             </SectionCard>
 
-            <SectionCard icon={User} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600" title="Account Details">
+            <SectionCard icon={User} iconClass="bg-gradient-to-br from-emerald-600 to-teal-600 text-white" title="Account Details">
               <div className="space-y-4 p-4">
                 <EditableField label="Phone" value={account.phone} onSave={(v) => save({ phone: v })} type="tel" placeholder="(555) 000-0000" />
                 <EditableField label="Website" value={account.website} onSave={(v) => save({ website: v })} placeholder="https://…" />
