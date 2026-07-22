@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { useSession } from '@/components/SessionProvider';
 import { mergeProducts } from '@/lib/mergeProducts';
 import { BASE_PRODUCTS, CORE_SKUS } from '@/lib/catalog';
 
@@ -73,22 +74,25 @@ function readLocalArray() {
 // In local mode the custom rows come from localStorage instead.
 export function useProducts(session, { teamFilter = 'all' } = {}) {
   const supabase = getSupabase();
+  const { company } = useSession();
   const localRows = useSyncExternalStore(subscribeLocal, getLocalSnapshot, getLocalServerSnapshot);
   const [remoteRows, setRemoteRows] = useState([]);
   const rawRows = supabase ? remoteRows : localRows;
-  // A super admin's read returns every team's custom rows (by RLS); scope the
-  // catalog to the team chosen in the Product Database filter. 'all' = no filter
-  // (and a regular user's rows are already team-scoped, so this is a no-op).
+  // Every catalog read is scoped to exactly ONE team — a super admin's RLS
+  // returns every team's rows, and merging them by SKU rendered one team's
+  // price import as if it applied everywhere (David, 2026-07-22). 'all' /
+  // no filter now means "the team I'm signed into"; an explicit teamFilter
+  // (super-admin Product Database dropdown) views that team's catalog.
+  const targetTeamId = teamFilter && teamFilter !== 'all' ? teamFilter : (company?.id ?? null);
   const customRows =
-    supabase && teamFilter && teamFilter !== 'all'
-      ? rawRows.filter((r) => r.company_id === teamFilter)
-      : rawRows;
+    supabase && targetTeamId ? rawRows.filter((r) => r.company_id === targetTeamId) : rawRows;
 
   const refresh = useCallback(async () => {
     if (!supabase) return;
-    const { data } = await supabase.from('custom_products').select('*');
+    if (!targetTeamId) { setRemoteRows([]); return; } // no team context yet — never show a cross-team merge
+    const { data } = await supabase.from('custom_products').select('*').eq('company_id', targetTeamId);
     setRemoteRows(data || []);
-  }, [supabase]);
+  }, [supabase, targetTeamId]);
 
   useEffect(() => {
     if (!(isSupabaseConfigured && session)) return;

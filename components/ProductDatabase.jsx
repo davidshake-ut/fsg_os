@@ -537,10 +537,12 @@ export default function ProductDatabase({
             <select
               value={teamFilter}
               onChange={(e) => onTeamFilterChange?.(e.target.value)}
-              title="Filter the catalog by team"
+              title="Which team's catalog to view — catalogs are separate per team"
               className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             >
-              <option value="all">All Teams</option>
+              {/* Catalogs are strictly per-team; there is deliberately no
+                  merged "All Teams" view (it read as cross-team edits). */}
+              <option value="all">Current Team</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}

@@ -140,13 +140,19 @@ export async function DELETE(request) {
       );
     if (dbErr) return json({ error: dbErr.message }, 400);
   } else {
-    // Hard-delete a pure custom product (this team's row only).
-    const { error: dbErr } = await svc
+    // Hard-delete a pure custom product (this team's row only). Deleting a
+    // sku that doesn't exist in the caller's team is an error, not a silent
+    // success — it would mean the UI showed a row from some other catalog.
+    const { data: deleted, error: dbErr } = await svc
       .from('custom_products')
       .delete()
       .eq('company_id', companyId)
-      .eq('sku', sku);
+      .eq('sku', sku)
+      .select('id');
     if (dbErr) return json({ error: dbErr.message }, 400);
+    if (!deleted || deleted.length === 0) {
+      return json({ error: `${sku} is not in your team's catalog` }, 404);
+    }
   }
   return json({ ok: true });
 }

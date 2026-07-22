@@ -6,14 +6,17 @@ import { DEFAULT_INPUTS, DEFAULT_CAMERA_INPUTS } from '../lib/defaults';
 import { BASE_PRODUCTS } from '../lib/catalog';
 import { getTerminology } from '../lib/terminology';
 
-const wifiBom = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS);
+// New proposals default to no technologies enabled; this suite describes a
+// Wi-Fi system, so its baseline turns Wi-Fi on explicitly.
+const WIFI_INPUTS = { ...DEFAULT_INPUTS, includeWifi: true };
+const wifiBom = calculateBOM(WIFI_INPUTS, {}, {}, BASE_PRODUCTS);
 const term = getTerminology('hospitality');
 
 describe('buildScopeOfWork', () => {
   it('always describes the Wi-Fi network with AP/switch counts and generation', () => {
     const cameraBom = calculateCameraBOM(DEFAULT_CAMERA_INPUTS, {}, {}, BASE_PRODUCTS);
     const blocks = buildScopeOfWork({
-      inputs: DEFAULT_INPUTS,
+      inputs: WIFI_INPUTS,
       cameraInputs: DEFAULT_CAMERA_INPUTS,
       wifiBom,
       cameraBom,
@@ -29,7 +32,7 @@ describe('buildScopeOfWork', () => {
   it('omits the surveillance block when there are no cameras', () => {
     const cameraBom = calculateCameraBOM(DEFAULT_CAMERA_INPUTS, {}, {}, BASE_PRODUCTS);
     const blocks = buildScopeOfWork({
-      inputs: DEFAULT_INPUTS,
+      inputs: WIFI_INPUTS,
       cameraInputs: DEFAULT_CAMERA_INPUTS,
       wifiBom,
       cameraBom,
@@ -41,7 +44,7 @@ describe('buildScopeOfWork', () => {
   it('describes the camera mix and retention when cameras are configured', () => {
     const cameraInputs = { ...DEFAULT_CAMERA_INPUTS, cam4mpTurret: 6, cam8mpBullet: 4, retention: 'month' };
     const cameraBom = calculateCameraBOM(cameraInputs, {}, {}, BASE_PRODUCTS);
-    const blocks = buildScopeOfWork({ inputs: DEFAULT_INPUTS, cameraInputs, wifiBom, cameraBom, term });
+    const blocks = buildScopeOfWork({ inputs: WIFI_INPUTS, cameraInputs, wifiBom, cameraBom, term });
     const cam = blocks.find((b) => b.title === 'Video Surveillance System');
     expect(cam).toBeTruthy();
     expect(cam.text).toMatch(/10 high-definition cameras/);

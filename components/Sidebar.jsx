@@ -81,8 +81,10 @@ export default function Sidebar({ onClose }) {
   // to list) and its active tab (which sub-link is lit); before it has,
   // fall back to the default-on pair.
   const { enabledIds, activeTab } = useSyncExternalStore(subscribeBuilderTechs, getBuilderTechsSnapshot, getBuilderTechsServerSnapshot);
+  // Before the Builder publishes its quote's techs, list none — a fresh
+  // proposal starts with no technologies enabled.
   const builderSubTechs = companyTechnologies(company).filter((t) =>
-    enabledIds ? enabledIds.includes(t.id) : (t.id === 'managed_wifi' || t.id === 'video_surveillance')
+    enabledIds ? enabledIds.includes(t.id) : false
   );
 
   const visibleItems = NAV_ITEMS.filter((item) => {

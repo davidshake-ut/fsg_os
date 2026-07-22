@@ -562,6 +562,7 @@ function Calculator() {
       setCurrentCrmAccountId(null);
       setCurrentPropertyId(null);
       setSavedSnapshot(null);
+      setActiveTab('overview'); // a fresh proposal always starts on Overview
       return;
     }
     const project = projects.find((p) => p.id === id);

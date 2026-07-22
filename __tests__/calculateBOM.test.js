@@ -4,8 +4,12 @@ import { DEFAULT_INPUTS } from '../lib/defaults';
 import { BASE_PRODUCTS } from '../lib/catalog';
 
 // Helpers ------------------------------------------------------------------
+// New proposals now default to NO technologies enabled; this suite exercises
+// the Wi-Fi engine, so its baseline turns Wi-Fi on explicitly.
+const WIFI_DEFAULTS = { ...DEFAULT_INPUTS, includeWifi: true };
+
 const run = (overrides = {}, products = BASE_PRODUCTS) =>
-  calculateBOM({ ...DEFAULT_INPUTS, ...overrides }, {}, {}, products);
+  calculateBOM({ ...WIFI_DEFAULTS, ...overrides }, {}, {}, products);
 
 const qtyOf = (bom, sku) =>
   bom.items.filter((i) => i.sku === sku).reduce((s, i) => s + i.qty, 0);
@@ -214,8 +218,8 @@ describe('Robustness', () => {
 
 describe('custom line items', () => {
   it('appends custom lines (segment-tagged) and rolls them into totals', () => {
-    const base = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, []);
-    const withCustom = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, [
+    const base = calculateBOM(WIFI_DEFAULTS, {}, {}, BASE_PRODUCTS, []);
+    const withCustom = calculateBOM(WIFI_DEFAULTS, {}, {}, BASE_PRODUCTS, [
       {
         id: 'x1',
         system: 'wifi',
@@ -240,7 +244,7 @@ describe('custom line items', () => {
 
 describe('camera-only quote (includeWifi = false)', () => {
   it('zeroes Wi-Fi equipment and services', () => {
-    const bom = calculateBOM({ ...DEFAULT_INPUTS, includeWifi: false }, {}, {}, BASE_PRODUCTS);
+    const bom = calculateBOM({ ...WIFI_DEFAULTS, includeWifi: false }, {}, {}, BASE_PRODUCTS);
     expect(bom.items).toEqual([]);
     expect(bom.serviceItems).toEqual([]);
     expect(bom.totalAPs).toBe(0);
@@ -249,7 +253,7 @@ describe('camera-only quote (includeWifi = false)', () => {
   });
 
   it('still keeps custom Wi-Fi lines the user added', () => {
-    const bom = calculateBOM({ ...DEFAULT_INPUTS, includeWifi: false }, {}, {}, BASE_PRODUCTS, [
+    const bom = calculateBOM({ ...WIFI_DEFAULTS, includeWifi: false }, {}, {}, BASE_PRODUCTS, [
       { id: 'c1', segment: 'Accessories', sku: 'X', description: 'Misc', qty: 1, cost: 10, price: 20 },
     ]);
     expect(bom.items).toHaveLength(1);
@@ -361,7 +365,7 @@ describe('catalogSnapshot (locked-quote pricing freeze)', () => {
     expect(liveAp.unitCost).toBeCloseTo(98.94, 2);
 
     const snapshot = { 'XV2-21X': { sku: 'XV2-21X', desc: 'Frozen AP', category: 'Access Point', cost: 40, price: 60 } };
-    const frozen = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, [], snapshot);
+    const frozen = calculateBOM(WIFI_DEFAULTS, {}, {}, BASE_PRODUCTS, [], snapshot);
     const frozenAp = frozen.items.find((i) => i.sku === 'XV2-21X');
     expect(frozenAp.unitCost).toBe(40);
     expect(frozenAp.unitPrice).toBe(60);
@@ -369,7 +373,7 @@ describe('catalogSnapshot (locked-quote pricing freeze)', () => {
 
   it('SKUs not in the snapshot still fall back to the live catalog', () => {
     const snapshot = { 'XV2-21X': { sku: 'XV2-21X', desc: 'Frozen AP', category: 'Access Point', cost: 40, price: 60 } };
-    const frozen = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, [], snapshot);
+    const frozen = calculateBOM(WIFI_DEFAULTS, {}, {}, BASE_PRODUCTS, [], snapshot);
     const gateway = frozen.items.find((i) => i.sku === 'NSE3000');
     expect(gateway.unitCost).toBeCloseTo(1295.0, 2); // live BASE_PRODUCTS price, untouched
   });
@@ -377,7 +381,7 @@ describe('catalogSnapshot (locked-quote pricing freeze)', () => {
   it('a project-level priceOverride still wins over a frozen snapshot entry', () => {
     const snapshot = { 'XV2-21X': { sku: 'XV2-21X', desc: 'Frozen AP', category: 'Access Point', cost: 40, price: 60 } };
     const frozen = calculateBOM(
-      DEFAULT_INPUTS,
+      WIFI_DEFAULTS,
       { 'XV2-21X': { cost: 5, price: 10 } },
       {},
       BASE_PRODUCTS,
@@ -390,7 +394,7 @@ describe('catalogSnapshot (locked-quote pricing freeze)', () => {
   });
 
   it('no snapshot (draft/new revision) reads live catalog pricing', () => {
-    const bom = calculateBOM(DEFAULT_INPUTS, {}, {}, BASE_PRODUCTS, [], null);
+    const bom = calculateBOM(WIFI_DEFAULTS, {}, {}, BASE_PRODUCTS, [], null);
     const ap = bom.items.find((i) => i.sku === 'XV2-21X');
     expect(ap.unitCost).toBeCloseTo(98.94, 2);
   });
