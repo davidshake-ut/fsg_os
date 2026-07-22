@@ -150,3 +150,11 @@ h1, h2, h3, h4 {
 :root[data-ui-theme="bold"][data-sidebar-style="solid"] {
   --ui-sidebar-bg: var(--brand, #4338ca);
 }
+
+/* Buttons & accents style — independent of the sidebar choice. "Solid"
+   flattens every brand fill that reads --ui-button-bg: buttons, accent
+   strips, pipeline fills, stat tiles. Bold mode only (muted is already
+   solid). */
+:root[data-ui-theme="bold"][data-accent-style="solid"] {
+  --ui-button-bg: var(--brand, #2563eb);
+}

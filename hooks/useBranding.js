@@ -65,6 +65,7 @@ function companyBranding(company) {
     backgroundColor: company.background_color || DEFAULT_BRANDING.backgroundColor,
     uiTheme: company.ui_theme || DEFAULT_BRANDING.uiTheme,
     sidebarStyle: company.sidebar_style || DEFAULT_BRANDING.sidebarStyle,
+    accentStyle: company.accent_style || DEFAULT_BRANDING.accentStyle,
   };
 }
 
@@ -93,6 +94,7 @@ export function useBranding(opts = {}) {
           background_color: b.backgroundColor,
           ui_theme: b.uiTheme,
           sidebar_style: b.sidebarStyle,
+          accent_style: b.accentStyle ?? 'gradient',
         })
         .eq('id', company.id);
       if (error) throw error;

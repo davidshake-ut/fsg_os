@@ -372,12 +372,23 @@ function BrandingForm({ initial, onSave }) {
         </div>
 
         {form.uiTheme === 'bold' && (
-          <div className="mt-4">
-            <p className="mb-1.5 text-xs text-slate-500">Sidebar style</p>
-            <div className="max-w-xs">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-1.5 text-xs text-slate-500">Sidebar style</p>
               <Segmented
                 value={form.sidebarStyle}
                 onChange={(v) => set('sidebarStyle', v)}
+                options={[
+                  { value: 'gradient', label: 'Gradient' },
+                  { value: 'solid', label: 'Solid' },
+                ]}
+              />
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs text-slate-500">Buttons &amp; accents</p>
+              <Segmented
+                value={form.accentStyle ?? 'gradient'}
+                onChange={(v) => set('accentStyle', v)}
                 options={[
                   { value: 'gradient', label: 'Gradient' },
                   { value: 'solid', label: 'Solid' },
@@ -977,8 +988,9 @@ export default function AdminPanel() {
         secondaryColor: brandingTarget.secondary_color  || '#0891b2',
         uiTheme:        brandingTarget.ui_theme         || 'bold',
         sidebarStyle:   brandingTarget.sidebar_style    || 'gradient',
+        accentStyle:    brandingTarget.accent_style     || 'gradient',
       }
-    : { companyName: '', logo: null, logoLight: null, favicon: null, primaryColor: '#2563eb', accentColor: '#1e40af', secondaryColor: '#0891b2', uiTheme: 'bold', sidebarStyle: 'gradient' };
+    : { companyName: '', logo: null, logoLight: null, favicon: null, primaryColor: '#2563eb', accentColor: '#1e40af', secondaryColor: '#0891b2', uiTheme: 'bold', sidebarStyle: 'gradient', accentStyle: 'gradient' };
 
   const saveSuperBranding = async (form) => {
     if (!supabase || !brandingTargetId) return;
@@ -994,6 +1006,7 @@ export default function AdminPanel() {
         secondary_color: form.secondaryColor,
         ui_theme:        form.uiTheme,
         sidebar_style:   form.sidebarStyle,
+        accent_style:    form.accentStyle ?? 'gradient',
       })
       .eq('id', brandingTargetId);
     if (error) throw error;
@@ -1194,6 +1207,7 @@ export default function AdminPanel() {
                     secondaryColor: ownBranding.secondaryColor || '#0891b2',
                     uiTheme:        ownBranding.uiTheme        || 'bold',
                     sidebarStyle:   ownBranding.sidebarStyle   || 'gradient',
+                    accentStyle:    ownBranding.accentStyle    || 'gradient',
                   }}
                   onSave={saveOwnBranding}
                 />
