@@ -21,7 +21,7 @@ function Row({ label, value, sub, highlight, tone }) {
   );
 }
 
-export default function ProjectBudget({ project, tasks, timeEntries }) {
+export default function ProjectBudget({ project, tasks, timeEntries, showSplit = true }) {
   const budget = project?.budget ? parseFloat(project.budget) : null;
   const quoteName = project?.saved_projects?.project_name;
   const quoteId = project?.quote_id;
@@ -64,10 +64,10 @@ export default function ProjectBudget({ project, tasks, timeEntries }) {
 
         <div className="divide-y divide-slate-100">
           <Row label="Project Budget"  value={fmt(budget)}  highlight />
-          {project?.equipment_budget != null && (
+          {showSplit && project?.equipment_budget != null && (
             <Row label="· Equipment" value={fmt(parseFloat(project.equipment_budget))} sub="(purchase orders)" />
           )}
-          {project?.labor_budget != null && (
+          {showSplit && project?.labor_budget != null && (
             <Row label="· Labor" value={fmt(parseFloat(project.labor_budget))} sub="(time tracking)" />
           )}
           <Row

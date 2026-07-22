@@ -35,6 +35,255 @@ const CARD_OPTIONS = [
   { key: 'contacts', label: 'Contacts card' },
 ];
 
+// ── Projects knobs (Phase C) ────────────────────────────────────────────────
+
+const PROJECT_FEATURES = [
+  { key: 'gantt', label: 'Gantt chart view' },
+  { key: 'dependencies', label: 'Task dependencies' },
+  { key: 'checklists', label: 'Task checklists' },
+  { key: 'budgetSplit', label: 'Equipment / Labor budget split' },
+];
+
+function ProjectsVariantEditor({ variant, busy, onSaveConfig }) {
+  const resolved = resolveModuleConfig('projects', variant.config);
+  const [features, setFeatures] = useState({ ...resolved.features });
+  const [columns, setColumns] = useState(
+    resolved.defaultColumns ?? [
+      { id: 'todo', label: 'To Do' },
+      { id: 'in_progress', label: 'In Progress' },
+      { id: 'done', label: 'Done' },
+    ]
+  );
+  const [newCol, setNewCol] = useState('');
+  const [dirty, setDirty] = useState(false);
+
+  const middles = columns.filter((c) => c.id !== 'todo' && c.id !== 'done');
+  const anchor = (id) => columns.find((c) => c.id === id);
+
+  const setCol = (id, label) => { setDirty(true); setColumns((l) => l.map((c) => (c.id === id ? { ...c, label } : c))); };
+  const removeCol = (id) => { setDirty(true); setColumns((l) => l.filter((c) => c.id !== id)); };
+  const moveCol = (id, dir) => {
+    setDirty(true);
+    setColumns(() => {
+      const m = [...middles];
+      const i = m.findIndex((c) => c.id === id);
+      const t = i + dir;
+      if (i === -1 || t < 0 || t >= m.length) return columns;
+      [m[i], m[t]] = [m[t], m[i]];
+      return [anchor('todo'), ...m, anchor('done')].filter(Boolean);
+    });
+  };
+  const addCol = () => {
+    const label = newCol.trim();
+    if (!label) return;
+    setDirty(true);
+    setColumns((l) => {
+      const id = slugId('col', label, new Set(l.map((c) => c.id)));
+      return [...l.filter((c) => c.id !== 'done'), { id, label }, anchor('done')].filter(Boolean);
+    });
+    setNewCol('');
+  };
+
+  const save = () => {
+    onSaveConfig({
+      ...(variant.config ?? {}),
+      features,
+      defaultColumns: [anchor('todo'), ...middles, anchor('done')].filter(Boolean),
+    });
+    setDirty(false);
+  };
+
+  return (
+    <div className="space-y-4 border-t border-slate-200 pt-3">
+      <p className="text-xs font-semibold text-slate-600">Projects customization</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Features</p>
+          <div className="space-y-1">
+            {PROJECT_FEATURES.map((f) => (
+              <label key={f.key} className="flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={features[f.key] !== false}
+                  onChange={(e) => { setDirty(true); setFeatures((prev) => ({ ...prev, [f.key]: e.target.checked })); }}
+                />
+                {f.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Default board columns <span className="normal-case text-slate-300">(new projects)</span>
+          </p>
+          <div className="space-y-1.5">
+            {['todo', ...middles.map((c) => c.id), 'done'].map((id) => {
+              const c = columns.find((x) => x.id === id);
+              if (!c) return null;
+              const isAnchor = id === 'todo' || id === 'done';
+              const mi = middles.findIndex((x) => x.id === id);
+              return (
+                <div key={id} className="flex items-center gap-1.5">
+                  {isAnchor ? (
+                    <span className="w-[26px] shrink-0" />
+                  ) : (
+                    <span className="flex shrink-0 flex-col">
+                      <button type="button" aria-label="Move up" disabled={mi === 0} onClick={() => moveCol(id, -1)} className="rounded p-0.5 text-slate-300 hover:text-slate-600 disabled:opacity-30"><ArrowUp size={11} /></button>
+                      <button type="button" aria-label="Move down" disabled={mi === middles.length - 1} onClick={() => moveCol(id, 1)} className="rounded p-0.5 text-slate-300 hover:text-slate-600 disabled:opacity-30"><ArrowDown size={11} /></button>
+                    </span>
+                  )}
+                  <TextInput className="h-8 flex-1" value={c.label} onChange={(e) => setCol(id, e.target.value)} />
+                  {isAnchor ? (
+                    <span className="p-1 text-slate-300" title={`"${id}" is a system column — completion metrics depend on it. Rename freely; it can't be removed.`}>
+                      <Lock size={12} />
+                    </span>
+                  ) : (
+                    <button type="button" aria-label={`Remove ${c.label}`} onClick={() => removeCol(id)} className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500"><X size={13} /></button>
+                  )}
+                </div>
+              );
+            })}
+            <div className="flex items-center gap-1.5">
+              <span className="w-[26px] shrink-0" />
+              <TextInput
+                className="h-8 flex-1"
+                value={newCol}
+                onChange={(e) => setNewCol(e.target.value)}
+                placeholder="New column…"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCol(); } }}
+              />
+              <Button type="button" size="sm" variant="outline" onClick={addCol} disabled={!newCol.trim()}><Plus size={12} /></Button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
+          {busy ? 'Saving…' : 'Save Projects settings'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Support knobs (Phase C) ─────────────────────────────────────────────────
+
+const SUPPORT_STATUS_IDS = ['open', 'in_progress', 'waiting', 'resolved', 'closed'];
+const SUPPORT_PRIORITY_IDS = ['low', 'medium', 'high', 'critical'];
+
+function SupportVariantEditor({ variant, busy, onSaveConfig }) {
+  const resolved = resolveModuleConfig('support', variant.config);
+  const [statuses, setStatuses] = useState({ ...resolved.statuses });
+  const [priorities, setPriorities] = useState({ ...resolved.priorities });
+  const [dirty, setDirty] = useState(false);
+
+  const labelRow = (ids, values, setter) => (
+    <div className="flex flex-wrap gap-1.5">
+      {ids.map((id) => (
+        <span key={id} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2">
+          <span className="text-[10px] uppercase tracking-wide text-slate-300">{id.replace(/_/g, ' ')}</span>
+          <input
+            value={values[id] ?? id}
+            onChange={(e) => { setDirty(true); setter((prev) => ({ ...prev, [id]: e.target.value })); }}
+            className="h-7 w-24 bg-transparent text-xs outline-none"
+          />
+        </span>
+      ))}
+    </div>
+  );
+
+  const save = () => {
+    onSaveConfig({ ...(variant.config ?? {}), statuses, priorities });
+    setDirty(false);
+  };
+
+  return (
+    <div className="space-y-3 border-t border-slate-200 pt-3">
+      <p className="text-xs font-semibold text-slate-600">Support customization</p>
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status labels</p>
+        {labelRow(SUPPORT_STATUS_IDS, statuses, setStatuses)}
+      </div>
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Priority labels</p>
+        {labelRow(SUPPORT_PRIORITY_IDS, priorities, setPriorities)}
+      </div>
+      <p className="text-[11px] text-slate-400">
+        Labels only — the underlying statuses keep their meaning (SLA logic and automations depend on them).
+      </p>
+      <div className="flex justify-end">
+        <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
+          {busy ? 'Saving…' : 'Save Support settings'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Invoices knobs (Phase C) ────────────────────────────────────────────────
+
+function InvoicesVariantEditor({ variant, busy, onSaveConfig }) {
+  const resolved = resolveModuleConfig('invoices', variant.config);
+  const [prefix, setPrefix] = useState(resolved.numberPrefix ?? 'INV');
+  const [tax, setTax] = useState({ ...resolved.tax });
+  const [dirty, setDirty] = useState(false);
+
+  const save = () => {
+    const clean = prefix.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 10) || 'INV';
+    onSaveConfig({
+      ...(variant.config ?? {}),
+      numberPrefix: clean,
+      tax: {
+        stateEnabled: !!tax.stateEnabled,
+        stateRate: Math.max(0, Number(tax.stateRate) || 0),
+        localEnabled: !!tax.localEnabled,
+        localRate: Math.max(0, Number(tax.localRate) || 0),
+      },
+    });
+    setPrefix(clean);
+    setDirty(false);
+  };
+
+  return (
+    <div className="space-y-3 border-t border-slate-200 pt-3">
+      <p className="text-xs font-semibold text-slate-600">Invoices customization</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Invoice number prefix" sub={`New invoices number as ${(prefix.trim() || 'INV').toUpperCase()}-2026-0001`}>
+          <TextInput className="w-32" value={prefix} onChange={(e) => { setDirty(true); setPrefix(e.target.value); }} placeholder="INV" />
+        </Field>
+        <div>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Tax defaults <span className="normal-case text-slate-300">(new invoices)</span>
+          </p>
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input type="checkbox" checked={!!tax.stateEnabled} onChange={(e) => { setDirty(true); setTax((t) => ({ ...t, stateEnabled: e.target.checked })); }} />
+              State tax
+              {tax.stateEnabled && (
+                <TextInput type="number" min="0" step="0.01" className="h-7 w-20 text-xs" value={tax.stateRate}
+                  onChange={(e) => { setDirty(true); setTax((t) => ({ ...t, stateRate: e.target.value })); }} placeholder="%" />
+              )}
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input type="checkbox" checked={!!tax.localEnabled} onChange={(e) => { setDirty(true); setTax((t) => ({ ...t, localEnabled: e.target.checked })); }} />
+              Local tax
+              {tax.localEnabled && (
+                <TextInput type="number" min="0" step="0.01" className="h-7 w-20 text-xs" value={tax.localRate}
+                  onChange={(e) => { setDirty(true); setTax((t) => ({ ...t, localRate: e.target.value })); }} placeholder="%" />
+              )}
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
+          {busy ? 'Saving…' : 'Save Invoices settings'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function CrmVariantEditor({ variant, busy, onSaveConfig }) {
   const resolved = resolveModuleConfig('crm', variant.config);
   const [stages, setStages] = useState(resolved.stages);
@@ -400,19 +649,23 @@ export default function CustomModulesPanel() {
                       />
                     </Field>
                     {v.base_module === 'crm' && (
-                      <CrmVariantEditor
-                        key={v.id}
-                        variant={v}
-                        busy={busy}
-                        onSaveConfig={(config) => patchVariant(v.id, { config })}
-                      />
+                      <CrmVariantEditor key={v.id} variant={v} busy={busy} onSaveConfig={(config) => patchVariant(v.id, { config })} />
+                    )}
+                    {v.base_module === 'projects' && (
+                      <ProjectsVariantEditor key={v.id} variant={v} busy={busy} onSaveConfig={(config) => patchVariant(v.id, { config })} />
+                    )}
+                    {v.base_module === 'support' && (
+                      <SupportVariantEditor key={v.id} variant={v} busy={busy} onSaveConfig={(config) => patchVariant(v.id, { config })} />
+                    )}
+                    {v.base_module === 'invoices' && (
+                      <InvoicesVariantEditor key={v.id} variant={v} busy={busy} onSaveConfig={(config) => patchVariant(v.id, { config })} />
                     )}
 
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] text-slate-400">
-                        {v.base_module === 'crm'
+                        {['crm', 'projects', 'support', 'invoices'].includes(v.base_module)
                           ? 'Changes apply to every team assigned this module.'
-                          : 'Deeper customization (stages, features, fields) arrives per module — CRM shipped first.'}
+                          : 'This module currently supports the Display Name knob; deeper customization arrives later.'}
                       </p>
                       {confirmDeleteId === v.id ? (
                         <span className="flex items-center gap-2">

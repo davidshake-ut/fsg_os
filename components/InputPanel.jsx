@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import QuoteStatusBadge from '@/components/QuoteStatusBadge';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 
 function Section({ title, children }) {
   return (
@@ -153,16 +154,10 @@ export function ProjectNameField({ value, onChange, projects, currentProjectId, 
 }
 
 // ---- Customer picker ----
-const ACCOUNT_TYPES = [
-  { value: 'hospitality', label: 'Hospitality' },
-  { value: 'multi_family', label: 'Multi-Family' },
-  { value: 'senior_living', label: 'Senior Living' },
-  { value: 'education', label: 'Education' },
-  { value: 'healthcare', label: 'Healthcare' },
-  { value: 'other', label: 'Other' },
-];
-
 export function CustomerPicker({ accounts = [], crmAccountId, onSelectAccount, onCreateAccount }) {
+  // Account types follow the team's CRM module variant (stock when none).
+  const { configFor } = useModuleConfigs();
+  const ACCOUNT_TYPES = configFor('crm').accountTypes.map((t) => ({ value: t.id, label: t.label }));
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -179,11 +174,17 @@ export function CustomerPicker({ accounts = [], crmAccountId, onSelectAccount, o
 
   const selected = accounts.find((a) => a.id === crmAccountId);
 
+  // A variant may not include the stock 'other' type — fall back to its
+  // first real option so the create form never submits an unknown type.
+  const effectiveType = ACCOUNT_TYPES.some((t) => t.value === newType)
+    ? newType
+    : (ACCOUNT_TYPES[0]?.value ?? 'other');
+
   const handleCreate = async () => {
     if (!newName.trim()) return;
     setBusy(true);
     try {
-      const acct = await onCreateAccount({ name: newName.trim(), type: newType });
+      const acct = await onCreateAccount({ name: newName.trim(), type: effectiveType });
       onSelectAccount(acct.id);
       setCreating(false);
       setNewName('');
@@ -230,7 +231,7 @@ export function CustomerPicker({ accounts = [], crmAccountId, onSelectAccount, o
                 className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
               />
               <select
-                value={newType}
+                value={effectiveType}
                 onChange={(e) => setNewType(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-blue-400"
               >

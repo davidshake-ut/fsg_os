@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { fmtDate as fmtDateShared } from '@/lib/format';
 import { useRoleColors } from '@/hooks/useRoleColors';
 import { useAssets } from '@/hooks/useAssets';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 
 const TABS = [
   { id: 'tasks',    label: 'Tasks'         },
@@ -176,6 +177,7 @@ function ProjectDetail() {
   const { getRoleColor, setRoleColor, getPalette } = useRoleColors();
   const { openProjectChannel } = useConversations(session, company, user);
   const { createInvoice } = useInvoices(session, company, user);
+  const { configFor } = useModuleConfigs();
 
   const [tab, setTab] = useState('tasks');
   const [editTask, setEditTask] = useState(null); // task open in the shared Edit Task dialog
@@ -227,6 +229,12 @@ function ProjectDetail() {
   const pct        = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0;
   const totalHours = timeEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
 
+  // Module-variant feature toggles + default board columns (Custom Modules
+  // Phase C). Checklist handlers are simply not passed when the feature is
+  // off — TaskSection already hides that UI when handlers are absent.
+  const projCfg = configFor('projects');
+  const features = projCfg.features ?? {};
+
   // Shared TaskSection props
   const sharedTaskSectionProps = {
     allProjectMilestones: milestones,
@@ -243,14 +251,20 @@ function ProjectDetail() {
     getPalette,
     members,
     checklistItems,
-    onCreateChecklistItem: createChecklistItem,
-    onToggleChecklistItem: toggleChecklistItem,
-    onDeleteChecklistItem: deleteChecklistItem,
+    ...(features.checklists !== false
+      ? {
+          onCreateChecklistItem: createChecklistItem,
+          onToggleChecklistItem: toggleChecklistItem,
+          onDeleteChecklistItem: deleteChecklistItem,
+        }
+      : {}),
     allProjectTasks: tasks,
     onEditTask: setEditTask,
+    showDependencies: features.dependencies !== false,
   };
 
-  const boardColumns = resolveBoardColumns(project);
+  const boardColumns = resolveBoardColumns(project, projCfg.defaultColumns ?? undefined);
+  const visibleTabs = TABS.filter((t) => t.id !== 'gantt' || features.gantt !== false);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -312,7 +326,7 @@ function ProjectDetail() {
         )}
 
         <div className="mt-4 flex gap-1">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -488,7 +502,7 @@ function ProjectDetail() {
         )}
 
         {/* ── Gantt ── */}
-        {tab === 'gantt' && (
+        {tab === 'gantt' && features.gantt !== false && (
           <GanttChart
             technologies={technologies}
             milestones={milestones}
@@ -499,6 +513,7 @@ function ProjectDetail() {
             onEditTask={setEditTask}
             getRoleColor={getRoleColor}
             setRoleColor={setRoleColor}
+            allowDependencies={features.dependencies !== false}
           />
         )}
 
@@ -534,7 +549,7 @@ function ProjectDetail() {
         {/* ── Budget ── */}
         {tab === 'budget' && (
           <div className="max-w-lg">
-            <ProjectBudget project={project} tasks={tasks} timeEntries={timeEntries} />
+            <ProjectBudget project={project} tasks={tasks} timeEntries={timeEntries} showSplit={features.budgetSplit !== false} />
           </div>
         )}
 
@@ -590,12 +605,14 @@ function ProjectDetail() {
                   onSave={(v) => updateProject({ budget: v ? Number(v) : null })} type="number" placeholder="$0" />
                 {/* Breakdown for future POs (equipment) and time-log tracking
                     (labor); the total above stays the authoritative figure. */}
-                <div className="grid grid-cols-2 gap-4">
-                  <EditableField label="Equipment Budget" value={project.equipment_budget}
-                    onSave={(v) => updateProject({ equipment_budget: v ? Number(v) : null })} type="number" placeholder="$0" />
-                  <EditableField label="Labor Budget" value={project.labor_budget}
-                    onSave={(v) => updateProject({ labor_budget: v ? Number(v) : null })} type="number" placeholder="$0" />
-                </div>
+                {features.budgetSplit !== false && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <EditableField label="Equipment Budget" value={project.equipment_budget}
+                      onSave={(v) => updateProject({ equipment_budget: v ? Number(v) : null })} type="number" placeholder="$0" />
+                    <EditableField label="Labor Budget" value={project.labor_budget}
+                      onSave={(v) => updateProject({ labor_budget: v ? Number(v) : null })} type="number" placeholder="$0" />
+                  </div>
+                )}
                 {project.saved_projects?.project_name && (
                   <div>
                     <p className="mb-0.5 text-xs font-medium text-slate-400">Linked Quote</p>

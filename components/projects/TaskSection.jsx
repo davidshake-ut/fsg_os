@@ -807,9 +807,14 @@ export default function TaskSection({
   onToggleChecklistItem,
   onDeleteChecklistItem,
   allProjectTasks,
+  showDependencies = true,
 }) {
   const [activeId, setActiveId] = useState(null);
   const [activeType, setActiveType] = useState(null);
+
+  // Dependencies off (module variant): rows get no task pool, which hides
+  // the picker AND the blocked-by badges in one stroke.
+  const depTasks = showDependencies ? allProjectTasks : null;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -924,7 +929,7 @@ export default function TaskSection({
                 onAddChecklistItem={onCreateChecklistItem}
                 onToggleChecklistItem={onToggleChecklistItem}
                 onDeleteChecklistItem={onDeleteChecklistItem}
-                allProjectTasks={allProjectTasks}
+                allProjectTasks={depTasks}
               />
             );
           })}
@@ -954,7 +959,7 @@ export default function TaskSection({
                   onAddChecklistItem={onCreateChecklistItem}
                   onToggleChecklistItem={onToggleChecklistItem}
                   onDeleteChecklistItem={onDeleteChecklistItem}
-                  allProjectTasks={allProjectTasks}
+                  allProjectTasks={depTasks}
                 />
               ))}
             </SortableContext>

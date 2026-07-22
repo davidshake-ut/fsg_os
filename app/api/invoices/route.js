@@ -50,17 +50,35 @@ async function checkOwned(svc, table, id, companyId) {
   return !!data;
 }
 
+// The team's invoices module variant can set a custom number prefix
+// (Custom Modules Phase C) — e.g. "HVAC" → HVAC-2026-0001. Stock is INV.
+async function invoiceNumberPrefix(svc, companyId) {
+  const { data } = await svc
+    .from('company_modules')
+    .select('module_variants(config)')
+    .eq('company_id', companyId)
+    .eq('module_key', 'invoices')
+    .maybeSingle();
+  const p = data?.module_variants?.config?.numberPrefix;
+  return typeof p === 'string' && p.trim()
+    ? p.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 10) || 'INV'
+    : 'INV';
+}
+
 async function nextInvoiceNumber(svc, companyId) {
   const year = new Date().getFullYear();
+  const prefix = await invoiceNumberPrefix(svc, companyId);
   const { data } = await svc
     .from('invoices')
     .select('invoice_number')
     .eq('company_id', companyId);
+  // The numeric tail is shared across prefixes so switching prefixes never
+  // resets numbering (uniqueness is (company_id, invoice_number)).
   const max = (data ?? []).reduce((n, inv) => {
     const m = inv.invoice_number?.match(/(\d+)$/);
     return m ? Math.max(n, parseInt(m[1], 10)) : n;
   }, 0);
-  return `INV-${year}-${String(max + 1).padStart(4, '0')}`;
+  return `${prefix}-${year}-${String(max + 1).padStart(4, '0')}`;
 }
 
 export async function POST(request) {

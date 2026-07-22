@@ -94,21 +94,25 @@ function LineItemsEditor({ items, onChange }) {
 }
 
 // ── Create / Edit invoice modal ───────────────────────────────────────────
-function InvoiceModal({ initial = {}, onSave, onClose }) {
+function InvoiceModal({ initial = {}, onSave, onClose, taxDefaults = null }) {
   const today = todayIso();
   // Legacy invoices carry one combined tax_rate; surface it as state tax so
   // editing round-trips cleanly (mirrors the 0059 backfill).
   const legacyStateTax = !initial.state_tax_enabled && !initial.local_tax_enabled && Number(initial.tax_rate) > 0;
+  // Module-variant tax defaults apply to NEW invoices only (no id yet) —
+  // an existing invoice always shows what it saved.
+  const isNew = !initial.id;
+  const dflt = isNew && taxDefaults ? taxDefaults : null;
   const [form, setForm] = useState({
     title:         initial.title         ?? '',
     customer_name: initial.customer_name ?? '',
     invoice_date:  initial.invoice_date  ?? today,
     due_date:      initial.due_date      ?? plusDays(today, 30),
     line_items:    initial.line_items    ?? [],
-    state_tax_enabled: initial.state_tax_enabled ?? legacyStateTax,
-    state_tax_rate:    Number(initial.state_tax_rate) > 0 ? initial.state_tax_rate : (legacyStateTax ? initial.tax_rate : 0),
-    local_tax_enabled: initial.local_tax_enabled ?? false,
-    local_tax_rate:    initial.local_tax_rate ?? 0,
+    state_tax_enabled: initial.state_tax_enabled ?? (legacyStateTax || !!dflt?.stateEnabled),
+    state_tax_rate:    Number(initial.state_tax_rate) > 0 ? initial.state_tax_rate : (legacyStateTax ? initial.tax_rate : (dflt?.stateEnabled ? Number(dflt.stateRate) || 0 : 0)),
+    local_tax_enabled: initial.local_tax_enabled ?? !!dflt?.localEnabled,
+    local_tax_rate:    initial.local_tax_rate ?? (dflt?.localEnabled ? Number(dflt.localRate) || 0 : 0),
     notes:         initial.notes         ?? '',
     project_id:    initial.project_id    ?? null,
     quote_id:      initial.quote_id      ?? null,
@@ -740,6 +744,7 @@ function InvoicesContent() {
       {modalOpen && (
         <InvoiceModal
           initial={modalInitial}
+          taxDefaults={configFor('invoices').tax}
           onSave={async (data) => {
             if (modalInitial.id) {
               await updateInvoice(modalInitial.id, data);

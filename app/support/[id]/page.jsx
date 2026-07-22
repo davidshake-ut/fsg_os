@@ -10,6 +10,7 @@ import { useSession } from '@/components/SessionProvider';
 import { useSupportTicket } from '@/hooks/useSupportTicket';
 import { useConversations } from '@/hooks/useConversations';
 import TicketPriorityBadge, { TicketStatusBadge, TicketCategoryBadge, STATUS_CONFIG, PRIORITY_CONFIG, CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 import CommentThread from '@/components/support/CommentThread';
 import AttachmentsSection from '@/components/ui/AttachmentsSection';
 import InstalledEquipment from '@/components/projects/InstalledEquipment';
@@ -32,6 +33,8 @@ function TicketDetail() {
     loading, updateTicket, addComment, deleteComment,
   } = useSupportTicket(id, session, company);
   const { openProjectChannel } = useConversations(session, company, user);
+  const { configFor } = useModuleConfigs();
+  const supportCfg = configFor('support');
   const [openingChannel, setOpeningChannel] = useState(false);
 
   const messageTeam = async () => {
@@ -97,11 +100,11 @@ function TicketDetail() {
               </Button>
             )}
             <TicketCategoryBadge category={ticket.category} />
-            <TicketPriorityBadge priority={ticket.priority} />
+            <TicketPriorityBadge priority={ticket.priority} labels={supportCfg.priorities} />
             <Select className="h-8 w-36 text-xs" value={ticket.status}
               onChange={(e) => updateTicket({ status: e.target.value })}>
-              {Object.entries(STATUS_CONFIG).map(([val, cfg]) => (
-                <option key={val} value={val}>{cfg.label}</option>
+              {Object.keys(STATUS_CONFIG).map((val) => (
+                <option key={val} value={val}>{supportCfg.statuses?.[val] ?? STATUS_CONFIG[val].label}</option>
               ))}
             </Select>
           </div>
@@ -128,8 +131,8 @@ function TicketDetail() {
                   <dd className="mt-0.5">
                     <Select className="h-8 w-full text-xs" value={ticket.priority}
                       onChange={(e) => updateTicket({ priority: e.target.value })}>
-                      {Object.entries(PRIORITY_CONFIG).map(([val, cfg]) => (
-                        <option key={val} value={val}>{cfg.label}</option>
+                      {Object.keys(PRIORITY_CONFIG).map((val) => (
+                        <option key={val} value={val}>{supportCfg.priorities?.[val] ?? PRIORITY_CONFIG[val].label}</option>
                       ))}
                     </Select>
                   </dd>
@@ -168,7 +171,7 @@ function TicketDetail() {
                     )}
                   </dd>
                 </div>
-                <div><dt className="text-xs text-slate-400">Status</dt><dd className="mt-0.5"><TicketStatusBadge status={ticket.status} /></dd></div>
+                <div><dt className="text-xs text-slate-400">Status</dt><dd className="mt-0.5"><TicketStatusBadge status={ticket.status} labels={supportCfg.statuses} /></dd></div>
                 <div><dt className="text-xs text-slate-400">Opened on</dt><dd className="mt-0.5 text-slate-800">{fmtDate(ticket.created_at)}</dd></div>
                 {ticket.crm_accounts?.name && (
                   <div className="col-span-2">

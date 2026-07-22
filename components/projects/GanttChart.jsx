@@ -381,6 +381,7 @@ export default function GanttChart({
   onEditTask,
   getRoleColor,
   setRoleColor,
+  allowDependencies = true, // module-variant toggle: hides the connect handles
 }) {
   const [showColors, setShowColors] = useState(false);
   const scrollRef = useRef(null);
@@ -688,7 +689,7 @@ export default function GanttChart({
                       }
                       onOpenEdit={row.kind === 'task' && onEditTask ? () => onEditTask(row.item) : undefined}
                       onConnectStart={
-                        row.kind === 'task' && onUpdateTask ? startConnect(row.item, i) : undefined
+                        row.kind === 'task' && onUpdateTask && allowDependencies ? startConnect(row.item, i) : undefined
                       }
                     />
                   )}

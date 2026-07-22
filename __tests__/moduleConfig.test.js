@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_MODULE_CONFIG, deepMerge, resolveModuleConfig } from '../lib/moduleConfig';
+import { resolveBoardColumns, DEFAULT_BOARD_COLUMNS } from '../lib/boardColumns';
 
 describe('deepMerge', () => {
   it('overlays nested objects without losing sibling keys', () => {
@@ -48,6 +49,24 @@ describe('resolveModuleConfig', () => {
     expect(crm.cards.nextSteps).toBe(true);
   });
 
+  it('stock projects/support/invoices configs carry the Phase C knobs', () => {
+    const p = resolveModuleConfig('projects');
+    expect(p.features).toEqual({ gantt: true, dependencies: true, checklists: true, budgetSplit: true });
+    expect(p.defaultColumns).toBeNull();
+    const s = resolveModuleConfig('support');
+    expect(s.statuses.resolved).toBe('Resolved');
+    expect(s.priorities.critical).toBe('Critical');
+    const i = resolveModuleConfig('invoices');
+    expect(i.numberPrefix).toBe('INV');
+    expect(i.tax.stateEnabled).toBe(false);
+  });
+
+  it('variant feature toggles merge without clobbering siblings', () => {
+    const p = resolveModuleConfig('projects', { features: { gantt: false } });
+    expect(p.features.gantt).toBe(false);
+    expect(p.features.dependencies).toBe(true);
+  });
+
   it('a variant stage list replaces the stock list wholesale', () => {
     const crm = resolveModuleConfig('crm', {
       stages: [
@@ -58,5 +77,34 @@ describe('resolveModuleConfig', () => {
     });
     expect(crm.stages.map((s) => s.id)).toEqual(['st_lead', 'won', 'lost']);
     expect(crm.accountTypes.length).toBeGreaterThan(0); // untouched knob keeps stock
+  });
+});
+
+describe('resolveBoardColumns with a variant fallback', () => {
+  const VARIANT_COLS = [
+    { id: 'todo', label: 'Backlog' },
+    { id: 'col_rough', label: 'Rough-In' },
+    { id: 'col_trim', label: 'Trim-Out' },
+    { id: 'done', label: 'Complete' },
+  ];
+
+  it('a project with no saved columns takes the variant defaults', () => {
+    expect(resolveBoardColumns({ board_columns: null }, VARIANT_COLS)).toEqual(VARIANT_COLS);
+  });
+
+  it('a project with saved columns ignores the variant defaults', () => {
+    const saved = [{ id: 'todo', label: 'To Do' }, { id: 'done', label: 'Done' }];
+    expect(resolveBoardColumns({ board_columns: saved }, VARIANT_COLS)).toEqual(saved);
+  });
+
+  it('variant defaults missing the anchors get them re-added', () => {
+    const cols = resolveBoardColumns({}, [{ id: 'col_x', label: 'Only Middle' }]);
+    expect(cols[0].id).toBe('todo');
+    expect(cols[cols.length - 1].id).toBe('done');
+  });
+
+  it('no variant, no saved → stock columns (legacy behavior)', () => {
+    expect(resolveBoardColumns({})).toEqual(DEFAULT_BOARD_COLUMNS);
+    expect(resolveBoardColumns(null, undefined)).toEqual(DEFAULT_BOARD_COLUMNS);
   });
 });

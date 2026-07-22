@@ -37,6 +37,10 @@ function SupportContent() {
   const { accounts } = useCRMAccounts(session, company, user);
   const { projects } = usePSAProjects(session, company, user);
   const { configFor } = useModuleConfigs();
+  // Variant label overrides for statuses/priorities (ids stay semantic).
+  const supportCfg = configFor('support');
+  const statusLabel = (s) => supportCfg.statuses?.[s] ?? STATUS_CONFIG[s]?.label ?? s;
+  const priorityLabel = (p) => supportCfg.priorities?.[p] ?? PRIORITY_CONFIG[p]?.label ?? p;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -115,8 +119,8 @@ function SupportContent() {
         </div>
         <Select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="h-9 sm:w-40">
           <option value="all">All priorities</option>
-          {Object.entries(PRIORITY_CONFIG).map(([val, cfg]) => (
-            <option key={val} value={val}>{cfg.label}</option>
+          {Object.keys(PRIORITY_CONFIG).map((val) => (
+            <option key={val} value={val}>{priorityLabel(val)}</option>
           ))}
         </Select>
         <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="h-9 sm:w-44">
@@ -138,7 +142,7 @@ function SupportContent() {
           <button key={s} onClick={() => setStatusFilter(s)}
             className={cn('whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
               statusFilter === s ? '[background:var(--ui-button-bg,var(--brand,#2563eb))] text-[var(--brand-text,#fff)] shadow-sm' : 'text-slate-500 hover:bg-slate-100')}>
-            {STATUS_CONFIG[s].label} <span className="ml-0.5 text-xs opacity-70">{counts[s] || 0}</span>
+            {statusLabel(s)} <span className="ml-0.5 text-xs opacity-70">{counts[s] || 0}</span>
           </button>
         ))}
       </div>
@@ -151,7 +155,7 @@ function SupportContent() {
           <Inbox size={32} className="mx-auto mb-3 text-slate-300" />
           <p className="text-sm font-medium text-slate-600">
             {filtersActive ? 'No cases match your filters'
-              : statusFilter === 'all' ? 'No cases yet' : `No ${STATUS_CONFIG[statusFilter]?.label.toLowerCase()} cases`}
+              : statusFilter === 'all' ? 'No cases yet' : `No ${statusLabel(statusFilter).toLowerCase()} cases`}
           </p>
           {!filtersActive && statusFilter === 'all' && canWrite && <Button size="sm" className="mt-4" onClick={() => setModalOpen(true)}><Plus size={14} /> New Case</Button>}
         </Card>
@@ -177,8 +181,8 @@ function SupportContent() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <TicketCategoryBadge category={t.category} className="hidden sm:inline-flex" />
-                  <TicketPriorityBadge priority={t.priority} />
-                  <TicketStatusBadge status={t.status} />
+                  <TicketPriorityBadge priority={t.priority} labels={supportCfg.priorities} />
+                  <TicketStatusBadge status={t.status} labels={supportCfg.statuses} />
                 </div>
               </Link>
               <button onClick={() => handleDelete(t)} disabled={deleting === t.id}

@@ -32,14 +32,16 @@ export const CATEGORY_CONFIG = {
   other:           { label: 'Other',             tone: 'neutral'  },
 };
 
-export default function TicketPriorityBadge({ priority, className }) {
+// `labels` (optional): module-variant label overrides keyed by id — tones and
+// ids stay semantic, only the words change.
+export default function TicketPriorityBadge({ priority, className, labels }) {
   const cfg = PRIORITY_CONFIG[priority] ?? PRIORITY_CONFIG.medium;
-  return <StatusBadge tone={cfg.tone} className={className}>{cfg.label}</StatusBadge>;
+  return <StatusBadge tone={cfg.tone} className={className}>{labels?.[priority] ?? cfg.label}</StatusBadge>;
 }
 
-export function TicketStatusBadge({ status, className }) {
+export function TicketStatusBadge({ status, className, labels }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.open;
-  return <StatusBadge tone={cfg.tone} className={className}>{cfg.label}</StatusBadge>;
+  return <StatusBadge tone={cfg.tone} className={className}>{labels?.[status] ?? cfg.label}</StatusBadge>;
 }
 
 export function TicketCategoryBadge({ category, className }) {
