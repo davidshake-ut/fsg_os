@@ -22,7 +22,9 @@ import {
   X,
 } from 'lucide-react';
 import { useSession } from '@/components/SessionProvider';
-import { useModules } from '@/hooks/useModules';
+import { useModules, ALL_MODULE_KEYS } from '@/hooks/useModules';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
+import { DEFAULT_MODULE_CONFIG } from '@/lib/moduleConfig';
 import NotificationBell from '@/components/NotificationBell';
 import CommandPalette from '@/components/CommandPalette';
 import { companyTechnologies } from '@/lib/technologies';
@@ -70,6 +72,9 @@ export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const { isAdmin, isSuperAdmin, configured, session, user, company, signOut } = useSession();
   const { isEnabled } = useModules();
+  // Custom-module display names (module variants, 0062) — a team assigned
+  // "HVAC Jobs" sees that in place of "Projects".
+  const { configFor } = useModuleConfigs();
   // Manual chevron overrides; null = auto (open while on the section).
   const [builderManual, setBuilderManual] = useState(null);
   const [resourcesManual, setResourcesManual] = useState(null);
@@ -85,6 +90,15 @@ export default function Sidebar({ onClose }) {
     if (item.key === 'templates' || item.key === 'automations') return isEnabled('projects');
     if (item.key === 'proposals') return isEnabled('builder'); // proposals ARE builder quotes
     return isEnabled(item.key);
+  }).map((item) => {
+    // Module nav entries take their variant's display name; non-module
+    // entries (proposals/templates/automations) keep their static labels.
+    const cfg = ALL_MODULE_KEYS.includes(item.key) ? configFor(item.key) : null;
+    // Sidebar keeps its own short stock names (e.g. "Support" for the
+    // support module) — only an explicit variant label overrides them.
+    return cfg?.label && cfg.label !== DEFAULT_MODULE_CONFIG[item.key]?.label
+      ? { ...item, label: cfg.label }
+      : item;
   });
 
   return (

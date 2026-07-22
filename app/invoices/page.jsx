@@ -11,6 +11,7 @@ import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useInvoices } from '@/hooks/useInvoices';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 import { useUnbilledWork } from '@/hooks/useUnbilledWork';
 import { useBranding } from '@/hooks/useBranding';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
@@ -519,6 +520,7 @@ function InvoicesContent() {
     useInvoices(session, company, user);
   const { items: unbilled, unbilledProjects, totalValue: unbilledValue, refresh: refreshUnbilled } = useUnbilledWork(session, company);
   const { branding } = useBranding({ configured: isSupabaseConfigured, company });
+  const { configFor } = useModuleConfigs();
 
   const [search,        setSearch]        = useState('');
   const [statusFilter,  setStatusFilter]  = useState('all');
@@ -558,7 +560,7 @@ function InvoicesContent() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Invoices</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{configFor('invoices').label}</h1>
           <p className="mt-1 text-sm text-slate-500">
             {invoices.length} invoice{invoices.length !== 1 ? 's' : ''} total
             {invoices.filter(i => i.status === 'paid').length > 0 && (

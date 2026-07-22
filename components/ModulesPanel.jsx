@@ -18,7 +18,7 @@ const MODULES = [
   { key: 'messages',  label: 'Message Center',      description: 'Direct messages, group channels, and project channels' },
 ];
 
-function ModuleToggle({ label, description, checked, onChange, saving }) {
+function ModuleToggle({ label, description, checked, onChange, saving, variants = [], variantId = null, onSetVariant }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3">
       <div className="min-w-0">
@@ -26,6 +26,19 @@ function ModuleToggle({ label, description, checked, onChange, saving }) {
         <p className="text-xs text-slate-400">{description}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        {variants.length > 0 && (
+          <Select
+            className="h-7 w-40 text-xs"
+            value={variantId ?? ''}
+            onChange={(e) => onSetVariant(e.target.value || null)}
+            title="Which version of this module the team runs"
+          >
+            <option value="">Standard</option>
+            {variants.map((v) => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </Select>
+        )}
         {saving && <span className="text-[11px] text-slate-400">saving…</span>}
         <button
           type="button"
@@ -55,6 +68,8 @@ export default function ModulesPanel({ companies }) {
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [moduleStates, setModuleStates] = useState({});
+  const [variantStates, setVariantStates] = useState({}); // module_key -> variant_id
+  const [allVariants, setAllVariants] = useState([]); // custom modules registry
   const [savingKey, setSavingKey] = useState(null);
 
   // Module visibility is platform-level policy — super admin only (the RLS
@@ -66,12 +81,17 @@ export default function ModulesPanel({ companies }) {
       if (!supabase || !cid) return;
       const { data } = await supabase
         .from('company_modules')
-        .select('module_key, enabled')
+        .select('module_key, enabled, variant_id')
         .eq('company_id', cid);
       const states = {};
+      const vStates = {};
       MODULES.forEach((m) => { states[m.key] = true; });
-      (data || []).forEach((r) => { states[r.module_key] = r.enabled; });
+      (data || []).forEach((r) => {
+        states[r.module_key] = r.enabled;
+        vStates[r.module_key] = r.variant_id ?? null;
+      });
       setModuleStates(states);
+      setVariantStates(vStates);
     },
     [supabase]
   );
@@ -83,6 +103,15 @@ export default function ModulesPanel({ companies }) {
     })();
   }, [targetId, loadModules]);
 
+  // Custom-module registry — populates the per-module variant dropdowns.
+  useEffect(() => {
+    if (!supabase || !isSuperAdmin) return;
+    void (async () => {
+      const { data } = await supabase.from('module_variants').select('id, base_module, name').order('name');
+      setAllVariants(data ?? []);
+    })();
+  }, [supabase, isSuperAdmin]);
+
   const toggleModule = async (key, val) => {
     if (!supabase || !targetId) return;
     setSavingKey(key);
@@ -91,6 +120,19 @@ export default function ModulesPanel({ companies }) {
       .from('company_modules')
       .upsert(
         { company_id: targetId, module_key: key, enabled: val },
+        { onConflict: 'company_id,module_key' }
+      );
+    setSavingKey(null);
+  };
+
+  const setVariant = async (key, variantId) => {
+    if (!supabase || !targetId) return;
+    setSavingKey(key);
+    setVariantStates((prev) => ({ ...prev, [key]: variantId }));
+    await supabase
+      .from('company_modules')
+      .upsert(
+        { company_id: targetId, module_key: key, enabled: moduleStates[key] ?? true, variant_id: variantId },
         { onConflict: 'company_id,module_key' }
       );
     setSavingKey(null);
@@ -129,6 +171,9 @@ export default function ModulesPanel({ companies }) {
               checked={moduleStates[m.key] ?? true}
               onChange={(val) => toggleModule(m.key, val)}
               saving={savingKey === m.key}
+              variants={allVariants.filter((v) => v.base_module === m.key)}
+              variantId={variantStates[m.key] ?? null}
+              onSetVariant={(vid) => setVariant(m.key, vid)}
             />
           ))}
         </div>

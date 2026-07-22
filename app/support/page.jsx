@@ -7,6 +7,7 @@ import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useSupportTickets } from '@/hooks/useSupportTickets';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
 import NewTicketModal from '@/components/support/NewTicketModal';
@@ -35,6 +36,7 @@ function SupportContent() {
   const { tickets, members, loading, loadError, hasMore, totalCount, loadMore, refresh, createTicket, deleteTicket } = useSupportTickets(session, company, user);
   const { accounts } = useCRMAccounts(session, company, user);
   const { projects } = usePSAProjects(session, company, user);
+  const { configFor } = useModuleConfigs();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -81,7 +83,7 @@ function SupportContent() {
       <ErrorBanner error={loadError} onRetry={refresh} />
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Customer Support</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{configFor('support').label}</h1>
           <p className="mt-1 text-sm text-slate-500">{tickets.length} case{tickets.length !== 1 ? 's' : ''} total</p>
         </div>
         {canWrite && <Button size="sm" onClick={() => setModalOpen(true)}><Plus size={14} /> New Case</Button>}

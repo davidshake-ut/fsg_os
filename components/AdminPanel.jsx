@@ -9,6 +9,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { Card, Button, Field, TextInput, Select, Badge, Segmented } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ModulesPanel from '@/components/ModulesPanel';
+import CustomModulesPanel from '@/components/CustomModulesPanel';
 import { costFromDiscount, DEFAULT_PRODUCT_LINE_DISCOUNTS } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 import { fmtDate as fmtDateShared } from '@/lib/format';
@@ -1142,11 +1143,15 @@ export default function AdminPanel() {
 
           {/* ── MODULE SETTINGS — super admin only ─────────────────── */}
           {activeTab === 'modules' && isSuperAdmin && (
-            <div className="space-y-1">
-              <p className="text-sm text-slate-500">
-                Select a team to configure which modules they can access.
-              </p>
-              <ModulesPanel companies={companies} />
+            <div className="space-y-4">
+              <CustomModulesPanel />
+              <div className="space-y-1">
+                <p className="text-sm text-slate-500">
+                  Select a team to configure which modules they can access — and, per module,
+                  which custom version they run.
+                </p>
+                <ModulesPanel companies={companies} />
+              </div>
             </div>
           )}
 

@@ -7,6 +7,7 @@ import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 import NewAccountModal from '@/components/crm/NewAccountModal';
 import PipelineBoard, { STAGES } from '@/components/crm/PipelineBoard';
 import { Card, Button } from '@/components/ui/primitives';
@@ -27,6 +28,7 @@ const STAGE_BY_ID = Object.fromEntries(STAGES.map((s) => [s.id, s]));
 function CRMContent() {
   const { session, company, user, canWrite } = useSession();
   const { accounts, loading, loadError, hasMore, totalCount, loadMore, refresh, createAccount, updateAccount, deleteAccount } = useCRMAccounts(session, company, user);
+  const { configFor } = useModuleConfigs();
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [view, setView] = useState('list');
@@ -69,7 +71,7 @@ function CRMContent() {
       <ErrorBanner error={loadError} onRetry={refresh} />
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">CRM</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{configFor('crm').label}</h1>
           <p className="mt-1 text-sm text-slate-500">{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
         </div>
         {canWrite && (

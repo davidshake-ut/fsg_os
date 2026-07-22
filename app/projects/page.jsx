@@ -17,6 +17,7 @@ import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
 import { usePSAProjects } from '@/hooks/usePSAProjects';
+import { useModuleConfigs } from '@/hooks/useModuleConfigs';
 import { useProjects } from '@/hooks/useProjects';
 import { useInvoices } from '@/hooks/useInvoices';
 import ProjectStatusBadge, { STATUS_CONFIG, STATUS_STRIPE } from '@/components/projects/ProjectStatusBadge';
@@ -55,6 +56,7 @@ function ProjectsContent() {
   const { projects: quotes } = useProjects(session, company, user);
   const { createInvoice } = useInvoices(session, company, user);
   const vitals = useProjectVitals(session, company, projects);
+  const { configFor } = useModuleConfigs();
 
   const [search,        setSearch]        = useState('');
   const [statusFilter,  setStatusFilter]  = useState('all');
@@ -95,7 +97,7 @@ function ProjectsContent() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Projects</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{configFor('projects').label}</h1>
           <p className="mt-1 text-sm text-slate-500">
             {projects.length} project{projects.length !== 1 ? 's' : ''} total
           </p>
