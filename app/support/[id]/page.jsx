@@ -11,6 +11,7 @@ import { useSupportTicket } from '@/hooks/useSupportTicket';
 import { useConversations } from '@/hooks/useConversations';
 import TicketPriorityBadge, { TicketStatusBadge, TicketCategoryBadge, STATUS_CONFIG, PRIORITY_CONFIG, CATEGORY_CONFIG } from '@/components/support/TicketPriorityBadge';
 import { useModuleConfigs } from '@/hooks/useModuleConfigs';
+import CustomFieldsSection from '@/components/CustomFieldsSection';
 import CommentThread from '@/components/support/CommentThread';
 import AttachmentsSection from '@/components/ui/AttachmentsSection';
 import InstalledEquipment from '@/components/projects/InstalledEquipment';
@@ -226,6 +227,15 @@ function TicketDetail() {
                   <div className="col-span-2"><dt className="text-xs text-slate-400">Resolved</dt><dd className="mt-0.5 text-slate-800">{fmtDate(ticket.resolved_at)}</dd></div>
                 )}
               </dl>
+              {(supportCfg.fields ?? []).length > 0 && (
+                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                  <CustomFieldsSection
+                    fields={supportCfg.fields}
+                    values={ticket.custom_fields}
+                    onSave={(k, v) => updateTicket({ custom_fields: { ...(ticket.custom_fields ?? {}), [k]: v } })}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Attachments */}

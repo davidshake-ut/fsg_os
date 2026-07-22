@@ -42,6 +42,20 @@ function computeTotals(rawItems, rawTaxRate) {
   return { line_items, tax_rate, subtotal, tax_amount, total };
 }
 
+// Per-variant custom field values (Custom Modules Phase D): a flat map of
+// scalar values. Defense-in-depth caps — keys and values are bounded, nested
+// structures dropped.
+function sanitizeCustomFields(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw).slice(0, 40)) {
+    if (typeof k !== 'string' || k.length > 60) continue;
+    if (v === null || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+    else if (typeof v === 'string') out[k] = v.slice(0, 500);
+  }
+  return out;
+}
+
 // Verify an optional FK belongs to the caller's company (service role bypasses
 // RLS, so this must be checked explicitly).
 async function checkOwned(svc, table, id, companyId) {
@@ -158,6 +172,7 @@ export async function POST(request) {
         invoice_date: body.invoice_date ?? undefined,
         due_date: body.due_date ?? null,
         notes: body.notes ? String(body.notes).slice(0, 5000) : null,
+        custom_fields: sanitizeCustomFields(body.custom_fields),
         line_items: totals.line_items,
         tax_rate: totals.tax_rate,
         subtotal: totals.subtotal,

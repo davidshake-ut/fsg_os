@@ -26,6 +26,67 @@ function slugId(prefix, label, existingIds) {
   return id;
 }
 
+// ── Custom field definitions (Phase D) — shared by all four editors ────────
+
+const FIELD_TYPES = ['text', 'number', 'date', 'select'];
+
+function FieldDefsEditor({ value = [], onChange, entityLabel }) {
+  const [newLabel, setNewLabel] = useState('');
+  const patch = (key, p) => onChange(value.map((f) => (f.key === key ? { ...f, ...p } : f)));
+  const remove = (key) => onChange(value.filter((f) => f.key !== key));
+  const add = () => {
+    const label = newLabel.trim();
+    if (!label) return;
+    onChange([
+      ...value,
+      { key: slugId('cf', label, new Set(value.map((f) => f.key))), label, type: 'text', options: [] },
+    ]);
+    setNewLabel('');
+  };
+
+  return (
+    <div>
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        Custom fields <span className="normal-case text-slate-300">(on each {entityLabel})</span>
+      </p>
+      <div className="space-y-1.5">
+        {value.map((f) => (
+          <div key={f.key} className="flex flex-wrap items-center gap-1.5">
+            <TextInput className="h-8 min-w-[130px] flex-1" value={f.label} onChange={(e) => patch(f.key, { label: e.target.value })} />
+            <Select className="h-8 w-24 text-xs" value={f.type} onChange={(e) => patch(f.key, { type: e.target.value })}>
+              {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </Select>
+            {f.type === 'select' && (
+              <TextInput
+                className="h-8 min-w-[150px] flex-1 text-xs"
+                value={(f.options ?? []).join(', ')}
+                onChange={(e) => patch(f.key, { options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                placeholder="Options, comma-separated"
+              />
+            )}
+            <button type="button" aria-label={`Remove ${f.label}`} onClick={() => remove(f.key)}
+              className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500">
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5">
+          <TextInput
+            className="h-8 flex-1"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="New field name… (e.g. Permit #)"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          />
+          <Button type="button" size="sm" variant="outline" onClick={add} disabled={!newLabel.trim()}>
+            <Plus size={12} /> Add
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const CARD_OPTIONS = [
   { key: 'nextSteps', label: '“What to do next” panel' },
   { key: 'stats', label: 'Stat tiles' },
@@ -47,6 +108,7 @@ const PROJECT_FEATURES = [
 function ProjectsVariantEditor({ variant, busy, onSaveConfig }) {
   const resolved = resolveModuleConfig('projects', variant.config);
   const [features, setFeatures] = useState({ ...resolved.features });
+  const [fields, setFields] = useState(resolved.fields ?? []);
   const [columns, setColumns] = useState(
     resolved.defaultColumns ?? [
       { id: 'todo', label: 'To Do' },
@@ -89,6 +151,7 @@ function ProjectsVariantEditor({ variant, busy, onSaveConfig }) {
       ...(variant.config ?? {}),
       features,
       defaultColumns: [anchor('todo'), ...middles, anchor('done')].filter(Boolean),
+      fields,
     });
     setDirty(false);
   };
@@ -157,6 +220,7 @@ function ProjectsVariantEditor({ variant, busy, onSaveConfig }) {
           </div>
         </div>
       </div>
+      <FieldDefsEditor value={fields} onChange={(v) => { setDirty(true); setFields(v); }} entityLabel="project" />
       <div className="flex justify-end">
         <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
           {busy ? 'Saving…' : 'Save Projects settings'}
@@ -175,6 +239,7 @@ function SupportVariantEditor({ variant, busy, onSaveConfig }) {
   const resolved = resolveModuleConfig('support', variant.config);
   const [statuses, setStatuses] = useState({ ...resolved.statuses });
   const [priorities, setPriorities] = useState({ ...resolved.priorities });
+  const [fields, setFields] = useState(resolved.fields ?? []);
   const [dirty, setDirty] = useState(false);
 
   const labelRow = (ids, values, setter) => (
@@ -193,7 +258,7 @@ function SupportVariantEditor({ variant, busy, onSaveConfig }) {
   );
 
   const save = () => {
-    onSaveConfig({ ...(variant.config ?? {}), statuses, priorities });
+    onSaveConfig({ ...(variant.config ?? {}), statuses, priorities, fields });
     setDirty(false);
   };
 
@@ -211,6 +276,7 @@ function SupportVariantEditor({ variant, busy, onSaveConfig }) {
       <p className="text-[11px] text-slate-400">
         Labels only — the underlying statuses keep their meaning (SLA logic and automations depend on them).
       </p>
+      <FieldDefsEditor value={fields} onChange={(v) => { setDirty(true); setFields(v); }} entityLabel="case" />
       <div className="flex justify-end">
         <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
           {busy ? 'Saving…' : 'Save Support settings'}
@@ -226,6 +292,7 @@ function InvoicesVariantEditor({ variant, busy, onSaveConfig }) {
   const resolved = resolveModuleConfig('invoices', variant.config);
   const [prefix, setPrefix] = useState(resolved.numberPrefix ?? 'INV');
   const [tax, setTax] = useState({ ...resolved.tax });
+  const [fields, setFields] = useState(resolved.fields ?? []);
   const [dirty, setDirty] = useState(false);
 
   const save = () => {
@@ -239,6 +306,7 @@ function InvoicesVariantEditor({ variant, busy, onSaveConfig }) {
         localEnabled: !!tax.localEnabled,
         localRate: Math.max(0, Number(tax.localRate) || 0),
       },
+      fields,
     });
     setPrefix(clean);
     setDirty(false);
@@ -275,6 +343,7 @@ function InvoicesVariantEditor({ variant, busy, onSaveConfig }) {
           </div>
         </div>
       </div>
+      <FieldDefsEditor value={fields} onChange={(v) => { setDirty(true); setFields(v); }} entityLabel="invoice" />
       <div className="flex justify-end">
         <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
           {busy ? 'Saving…' : 'Save Invoices settings'}
@@ -290,6 +359,7 @@ function CrmVariantEditor({ variant, busy, onSaveConfig }) {
   const [types, setTypes] = useState(resolved.accountTypes);
   const [cards, setCards] = useState({ ...resolved.cards });
   const [staleDays, setStaleDays] = useState(resolved.nextSteps?.staleSentDays ?? 7);
+  const [fields, setFields] = useState(resolved.fields ?? []);
   const [newStage, setNewStage] = useState('');
   const [newType, setNewType] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -344,6 +414,7 @@ function CrmVariantEditor({ variant, busy, onSaveConfig }) {
       accountTypes: types,
       cards,
       nextSteps: { staleSentDays: Math.max(1, Number(staleDays) || 7) },
+      fields,
     });
     setDirty(false);
   };
@@ -475,6 +546,7 @@ function CrmVariantEditor({ variant, busy, onSaveConfig }) {
         </Field>
       </div>
 
+      <FieldDefsEditor value={fields} onChange={(v) => { setDirty(true); setFields(v); }} entityLabel="customer" />
       <div className="flex justify-end">
         <Button type="button" size="sm" onClick={save} disabled={!dirty || busy}>
           {busy ? 'Saving…' : 'Save CRM settings'}

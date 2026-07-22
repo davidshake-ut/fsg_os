@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/primitives';
 import { EditableField, EditableTextarea } from '@/components/ui/EditableFields';
 import AppToast from '@/components/ui/AppToast';
 import { deriveNextSteps } from '@/lib/crmNextSteps';
+import CustomFieldsSection from '@/components/CustomFieldsSection';
 import { currency, fmtDate } from '@/lib/format';
 import { cn, initials } from '@/lib/utils';
 import { toneClasses } from '@/lib/statusColors';
@@ -552,6 +553,11 @@ function AccountDetail() {
                   <EditableField label="Probability (%)" value={account.probability} onSave={(v) => save({ probability: v ? Number(v) : null })} type="number" placeholder="0-100" />
                 </div>
                 <EditableField label="Expected Close Date" value={account.expected_close_date} onSave={(v) => save({ expected_close_date: v })} type="date" />
+                <CustomFieldsSection
+                  fields={crmCfg.fields ?? []}
+                  values={account.custom_fields}
+                  onSave={(k, v) => save({ custom_fields: { ...(account.custom_fields ?? {}), [k]: v } })}
+                />
                 <EditableTextarea label="Notes" value={account.notes} onSave={(v) => save({ notes: v })} placeholder="Add notes about this account…" />
               </div>
             </SectionCard>

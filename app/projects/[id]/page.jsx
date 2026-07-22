@@ -39,6 +39,7 @@ import { fmtDate as fmtDateShared } from '@/lib/format';
 import { useRoleColors } from '@/hooks/useRoleColors';
 import { useAssets } from '@/hooks/useAssets';
 import { useModuleConfigs } from '@/hooks/useModuleConfigs';
+import CustomFieldsSection from '@/components/CustomFieldsSection';
 
 const TABS = [
   { id: 'tasks',    label: 'Tasks'         },
@@ -613,6 +614,11 @@ function ProjectDetail() {
                       onSave={(v) => updateProject({ labor_budget: v ? Number(v) : null })} type="number" placeholder="$0" />
                   </div>
                 )}
+                <CustomFieldsSection
+                  fields={projCfg.fields ?? []}
+                  values={project.custom_fields}
+                  onSave={(k, v) => updateProject({ custom_fields: { ...(project.custom_fields ?? {}), [k]: v } })}
+                />
                 {project.saved_projects?.project_name && (
                   <div>
                     <p className="mb-0.5 text-xs font-medium text-slate-400">Linked Quote</p>

@@ -94,7 +94,7 @@ function LineItemsEditor({ items, onChange }) {
 }
 
 // ── Create / Edit invoice modal ───────────────────────────────────────────
-function InvoiceModal({ initial = {}, onSave, onClose, taxDefaults = null }) {
+function InvoiceModal({ initial = {}, onSave, onClose, taxDefaults = null, customFieldDefs = [] }) {
   const today = todayIso();
   // Legacy invoices carry one combined tax_rate; surface it as state tax so
   // editing round-trips cleanly (mirrors the 0059 backfill).
@@ -114,6 +114,7 @@ function InvoiceModal({ initial = {}, onSave, onClose, taxDefaults = null }) {
     local_tax_enabled: initial.local_tax_enabled ?? !!dflt?.localEnabled,
     local_tax_rate:    initial.local_tax_rate ?? (dflt?.localEnabled ? Number(dflt.localRate) || 0 : 0),
     notes:         initial.notes         ?? '',
+    custom_fields: initial.custom_fields ?? {},
     project_id:    initial.project_id    ?? null,
     quote_id:      initial.quote_id      ?? null,
     crm_account_id:initial.crm_account_id?? null,
@@ -193,6 +194,29 @@ function InvoiceModal({ initial = {}, onSave, onClose, taxDefaults = null }) {
               <input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)}
                 className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400" />
             </div>
+            {customFieldDefs.map((f) => (
+              <div key={f.key}>
+                <label className="mb-1 block text-xs font-medium text-slate-700">{f.label}</label>
+                {f.type === 'select' ? (
+                  <select
+                    value={form.custom_fields?.[f.key] ?? ''}
+                    onChange={(e) => set('custom_fields', { ...form.custom_fields, [f.key]: e.target.value || null })}
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-400"
+                  >
+                    <option value="">—</option>
+                    {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                    step={f.type === 'number' ? 'any' : undefined}
+                    value={form.custom_fields?.[f.key] ?? ''}
+                    onChange={(e) => set('custom_fields', { ...form.custom_fields, [f.key]: e.target.value || null })}
+                    className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400"
+                  />
+                )}
+              </div>
+            ))}
             <div className="col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-700">Taxes</label>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -745,6 +769,7 @@ function InvoicesContent() {
         <InvoiceModal
           initial={modalInitial}
           taxDefaults={configFor('invoices').tax}
+          customFieldDefs={configFor('invoices').fields ?? []}
           onSave={async (data) => {
             if (modalInitial.id) {
               await updateInvoice(modalInitial.id, data);

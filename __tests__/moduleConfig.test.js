@@ -67,6 +67,16 @@ describe('resolveModuleConfig', () => {
     expect(p.features.dependencies).toBe(true);
   });
 
+  it('custom field definitions default empty and replace wholesale (Phase D)', () => {
+    for (const key of ['crm', 'projects', 'support', 'invoices']) {
+      expect(resolveModuleConfig(key).fields).toEqual([]);
+    }
+    const defs = [{ key: 'cf_permit', label: 'Permit #', type: 'text', options: [] }];
+    const cfg = resolveModuleConfig('projects', { fields: defs });
+    expect(cfg.fields).toEqual(defs);
+    expect(cfg.features.gantt).toBe(true); // sibling knobs keep stock
+  });
+
   it('a variant stage list replaces the stock list wholesale', () => {
     const crm = resolveModuleConfig('crm', {
       stages: [
