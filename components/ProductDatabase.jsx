@@ -254,6 +254,7 @@ export default function ProductDatabase({
   onImport,
   onBulkUpdate,
   onBulkDelete, // (sku) => Promise — direct delete, no per-item confirm (the modal's typed DELETE covers it)
+  superAdmin = false, // platform owner: may edit/delete ANY product, core SKUs included
   productLineDiscounts = {},
   canManageCatalog = false,
   canViewMargin = true,
@@ -294,13 +295,13 @@ export default function ProductDatabase({
     try {
       const { __autoLicenses, ...fieldPatch } = patch;
       const rows = allProducts
-        .filter((p) => selected.has(p.sku))
+        .filter((p) => selected.has(p.baseSku ?? p.sku))
         .map((p) => {
           // Auto-link: fill each term with a catalog license that mentions
           // this product's SKU; terms with no confident match stay untouched.
           const auto = __autoLicenses ? guessLicenses(p, allProducts) : {};
           return {
-            sku: p.sku,
+            sku: p.baseSku ?? p.sku, // identity — never the display alias
             description: p.desc,
             category: fieldPatch.category ?? p.category,
             technology: fieldPatch.technology ?? (p.technology ?? ''),
@@ -334,7 +335,9 @@ export default function ProductDatabase({
   const bulkDelete = async () => {
     setBulkBusy(true);
     try {
-      const skus = [...selected].filter((s) => !CORE_SKUS.has(s));
+      // The super admin may delete core SKUs (fixing wrong platform data);
+      // team admins are protected from breaking their own calculators.
+      const skus = superAdmin ? [...selected] : [...selected].filter((s) => !CORE_SKUS.has(s));
       const skippedCore = selected.size - skus.length;
       const failures = [];
       for (const sku of skus) {
@@ -432,6 +435,7 @@ export default function ProductDatabase({
       list = list.filter(
         (p) =>
           p.sku.toLowerCase().includes(q) ||
+          (p.baseSku ?? '').toLowerCase().includes(q) ||
           p.desc.toLowerCase().includes(q) ||
           p.category.toLowerCase().includes(q) ||
           (p.vendor || '').toLowerCase().includes(q) ||
@@ -616,14 +620,14 @@ export default function ProductDatabase({
                   <input
                     type="checkbox"
                     title="Select all filtered products"
-                    checked={filtered.length > 0 && filtered.every((p) => selected.has(p.sku))}
+                    checked={filtered.length > 0 && filtered.every((p) => selected.has(p.baseSku ?? p.sku))}
                     onChange={() =>
                       setSelected((prev) => {
-                        const all = filtered.every((p) => prev.has(p.sku));
+                        const all = filtered.every((p) => prev.has(p.baseSku ?? p.sku));
                         const next = new Set(prev);
                         for (const p of filtered) {
-                          if (all) next.delete(p.sku);
-                          else next.add(p.sku);
+                          if (all) next.delete(p.baseSku ?? p.sku);
+                          else next.add(p.baseSku ?? p.sku);
                         }
                         return next;
                       })
@@ -655,13 +659,13 @@ export default function ProductDatabase({
               </tr>
             )}
             {filtered.map((p) => (
-              <tr key={p.sku} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+              <tr key={p.baseSku ?? p.sku} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
                 {bulkable && (
                   <td className="px-3 py-2">
                     <input
                       type="checkbox"
-                      checked={selected.has(p.sku)}
-                      onChange={() => toggleSelected(p.sku)}
+                      checked={selected.has(p.baseSku ?? p.sku)}
+                      onChange={() => toggleSelected(p.baseSku ?? p.sku)}
                     />
                   </td>
                 )}
@@ -741,12 +745,14 @@ export default function ProductDatabase({
                         </button>
                         <button
                           title={
-                            CORE_SKUS.has(p.sku)
-                              ? 'Core product — the System Builder calculators depend on this SKU, so it cannot be deleted'
+                            CORE_SKUS.has(p.baseSku ?? p.sku)
+                              ? superAdmin
+                                ? 'Core product — deleting it removes its lines from this team’s Builder quotes. Super admin only.'
+                                : 'Core product — the System Builder calculators depend on this SKU, so it cannot be deleted'
                               : 'Delete product'
                           }
                           onClick={() => onDelete?.(p)}
-                          disabled={CORE_SKUS.has(p.sku)}
+                          disabled={CORE_SKUS.has(p.baseSku ?? p.sku) && !superAdmin}
                           className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                         >
                           <Trash2 size={15} />

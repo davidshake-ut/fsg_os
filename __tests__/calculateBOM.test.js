@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { calculateBOM } from '../lib/calculateBOM';
 import { DEFAULT_INPUTS } from '../lib/defaults';
 import { BASE_PRODUCTS } from '../lib/catalog';
+import { mergeProducts } from '../lib/mergeProducts';
 
 // Helpers ------------------------------------------------------------------
 // New proposals now default to NO technologies enabled; this suite exercises
@@ -22,6 +23,30 @@ const switchQty = (bom) =>
     .reduce((s, i) => s + i.qty, 0);
 
 // Tests --------------------------------------------------------------------
+describe('per-team SKU display alias (0065)', () => {
+  const aliased = mergeProducts([
+    {
+      sku: 'NSE3000', display_sku: 'FSG-GW-1', description: 'Gateway (team SKU)',
+      category: 'Router', cost: 100, price: 200, is_custom: false, is_deleted: false,
+    },
+  ]);
+
+  it('the engine still resolves the literal core SKU and lines show the alias', () => {
+    const bom = run({}, aliased);
+    expect(hasItem(bom, 'FSG-GW-1')).toBe(true);
+    expect(hasItem(bom, 'NSE3000')).toBe(false);
+    const line = bom.items.find((i) => i.sku === 'FSG-GW-1');
+    expect(line.baseSku).toBe('NSE3000'); // identity preserved for overrides/snapshots
+    expect(line.unitPrice).toBe(200); // override row's pricing applies
+  });
+
+  it('price overrides keyed by the identity still apply to aliased lines', () => {
+    const bom = calculateBOM({ ...WIFI_DEFAULTS }, { NSE3000: { cost: 5, price: 10 } }, {}, aliased);
+    const line = bom.items.find((i) => i.sku === 'FSG-GW-1');
+    expect(line.unitPrice).toBe(10);
+  });
+});
+
 describe('100-room / 2-IDF / Wi-Fi 6 hallway (defaults)', () => {
   const bom = run();
 

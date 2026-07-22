@@ -49,7 +49,7 @@ function initialForm(product, defaultTechnology, allProducts) {
 
 // The modal is mounted only while open (see page.jsx), so initializing form
 // state from `product` here resets it correctly each time it opens — no effect.
-export default function ProductModal({ open, product, clone = false, onClose, onSave, company = null, defaultTechnology = '', allProducts = [] }) {
+export default function ProductModal({ open, product, clone = false, onClose, onSave, company = null, defaultTechnology = '', allProducts = [], superAdmin = false }) {
   const [form, setForm] = useState(() => initialForm(product, defaultTechnology, allProducts));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -75,7 +75,17 @@ export default function ProductModal({ open, product, clone = false, onClose, on
 
   // Clone pre-fills from a product but saves as a NEW product (editable SKU).
   const isEdit = Boolean(product) && !clone;
-  const skuLocked = isEdit && !product.isCustom; // base products keep their SKU
+  // SKUs are editable by the SUPER ADMIN only. Custom products truly rename
+  // (with a proposal-migration offer); base/core products get a per-team
+  // DISPLAY alias — the engines keep their identity, the team sees the new
+  // number. Team admins can't touch SKUs (editing used to silently create
+  // a duplicate product).
+  const skuLocked = isEdit && !superAdmin;
+  const skuRenaming = isEdit && !skuLocked && form.sku.trim() !== product.sku;
+  const skuNote = !skuRenaming ? undefined
+    : product.isCustom
+      ? `Renaming from ${product.sku} — you'll be offered a list of proposals to update.`
+      : `Base product: ${product.baseSku ?? product.sku} keeps working internally; this team's catalog and quotes will show the new SKU.`;
   const title = clone ? 'Clone Product' : isEdit ? 'Edit Product' : 'Add Product';
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -122,7 +132,7 @@ export default function ProductModal({ open, product, clone = false, onClose, on
           </button>
         </div>
         <form onSubmit={submit} className="space-y-3">
-          <Field label="SKU">
+          <Field label="SKU" sub={skuNote}>
             <TextInput value={form.sku} onChange={(e) => set('sku', e.target.value)} disabled={skuLocked} required />
           </Field>
           <Field label="Description">

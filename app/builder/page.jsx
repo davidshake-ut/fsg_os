@@ -11,6 +11,7 @@ import { useBranding } from '@/hooks/useBranding';
 import SummaryCards from '@/components/SummaryCards';
 import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
+import SkuRenameProposalsModal from '@/components/SkuRenameProposalsModal';
 import PropertyOverview from '@/components/builder/PropertyOverview';
 import TechnologyPage from '@/components/builder/TechnologyPage';
 import TechVendorsCard from '@/components/builder/TechVendorsCard';
@@ -115,6 +116,9 @@ function Calculator() {
 
   const [catalogTeamId, setCatalogTeamId] = useState('all');
   const [teams, setTeams] = useState([]);
+  // After a super-admin SKU rename: { from, to, companyId } drives the
+  // "update proposals?" migration modal.
+  const [skuRename, setSkuRename] = useState(null);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -160,10 +164,10 @@ function Calculator() {
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
+  // A super admin can edit/delete/add products in ANY team's catalog (the
+  // API honors their target_company_id); team admins manage their own only.
   const canManageCatalog = configured
-    ? (role === 'company_admin' || isSuperAdmin) &&
-      !!company &&
-      (!isSuperAdmin || catalogTeamId === 'all' || catalogTeamId === company.id)
+    ? isSuperAdmin || (role === 'company_admin' && !!company)
     : true;
 
   const bom = useMemo(
@@ -774,10 +778,12 @@ function Calculator() {
   // before a quote is first locked (marked Sent). Persisted as catalog_snapshot
   // so a later catalog/discount change never silently reprices this quote.
   const buildCatalogSnapshot = () => {
-    const skus = new Set([...bom.items, ...cameraBom.items].map((i) => i.sku).filter(Boolean));
+    // Keyed by the line's IDENTITY (baseSku) — the engines look snapshots up
+    // by the literal SKUs they reference, which a display alias never changes.
+    const skus = new Set([...bom.items, ...cameraBom.items].map((i) => i.baseSku ?? i.sku).filter(Boolean));
     const snapshot = {};
     for (const sku of skus) {
-      const p = allProducts.find((prod) => prod.sku === sku);
+      const p = allProducts.find((prod) => prod.sku === sku || prod.baseSku === sku);
       if (p) {
         snapshot[sku] = {
           sku: p.sku,
@@ -1004,8 +1010,37 @@ function Calculator() {
   };
 
   const saveCatalog = async (form) => {
-    if (modal.product && !modal.clone) await editProduct(form);
-    else await addProduct(form);
+    if (modal.product && !modal.clone) {
+      // Super admin changed the SKU: custom products truly rename (then
+      // offer proposal migration); base products get a per-team display
+      // alias (identity unchanged — proposals keep working untouched).
+      const newSku = form.sku.trim();
+      const identity = modal.product.baseSku ?? modal.product.sku;
+      if (isSuperAdmin && newSku !== modal.product.sku) {
+        if (modal.product.isCustom) {
+          await editProduct({ ...form, sku: newSku, rename_from: identity });
+          setSkuRename({
+            from: identity,
+            to: newSku,
+            companyId: catalogTeamId && catalogTeamId !== 'all' ? catalogTeamId : company?.id,
+          });
+        } else if (newSku === identity) {
+          // Restoring the original base SKU — clear the alias.
+          await editProduct({ ...form, sku: identity, display_sku: null });
+          setToast({ type: 'success', message: `SKU restored to ${identity}.` });
+        } else {
+          await editProduct({ ...form, sku: newSku, rename_from: identity });
+          setToast({ type: 'success', message: `${identity} now shows as ${newSku} for this team — quotes and exports pick it up automatically.` });
+        }
+      } else {
+        // Always write against the IDENTITY sku — for an aliased base
+        // product, form.sku is the display alias and would otherwise
+        // upsert a bogus row under the alias.
+        await editProduct({ ...form, sku: identity });
+      }
+    } else {
+      await addProduct(form);
+    }
   };
 
   const removeCatalog = (p) => {
@@ -1296,6 +1331,7 @@ function Calculator() {
               canViewMargin={canViewMargin}
               company={company}
               teams={isSuperAdmin ? teams : null}
+              superAdmin={isSuperAdmin}
               teamFilter={catalogTeamId}
               onTeamFilterChange={setCatalogTeamId}
               onAdd={() => setModal({ open: true, product: null })}
@@ -1317,6 +1353,7 @@ function Calculator() {
               canViewMargin={canViewMargin}
               company={company}
               teams={isSuperAdmin ? teams : null}
+              superAdmin={isSuperAdmin}
               teamFilter={catalogTeamId}
               onTeamFilterChange={setCatalogTeamId}
               onAdd={() => setModal({ open: true, product: null })}
@@ -1341,11 +1378,19 @@ function Calculator() {
           clone={modal.clone}
           company={company}
           allProducts={allProducts}
+          superAdmin={isSuperAdmin}
           defaultTechnology={activeTech ? activeTech.id : 'managed_wifi'}
           onClose={() => setModal({ open: false, product: null })}
           onSave={saveCatalog}
         />
       )}
+
+      <SkuRenameProposalsModal
+        key={skuRename ? `${skuRename.from}->${skuRename.to}` : 'idle'}
+        rename={skuRename}
+        onClose={() => setSkuRename(null)}
+        onToast={setToast}
+      />
 
       {/* Convert proposal → PSA project modal */}
       {toProjectOpen && (

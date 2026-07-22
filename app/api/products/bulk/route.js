@@ -16,9 +16,6 @@ export async function PATCH(request) {
   if (!canManageCatalog(caller.role)) {
     return json({ error: 'Forbidden — catalog edits require an Admin' }, 403);
   }
-  if (!caller.company_id) {
-    return json({ error: 'No team context — catalog edits must be made within a team' }, 400);
-  }
 
   const body = await request.json();
   const rows = Array.isArray(body.rows) ? body.rows : null;
@@ -26,7 +23,13 @@ export async function PATCH(request) {
   if (rows.length === 0) return json({ updated: 0, errors: [] });
   if (rows.length > MAX_ROWS) return json({ error: `Too many rows (max ${MAX_ROWS})` }, 400);
 
-  const companyId = caller.company_id;
+  // Same super-admin target override as the single-row routes: the platform
+  // owner may bulk-edit any team's catalog; everyone else writes their own.
+  const isSuper = caller.role === 'super_admin';
+  const companyId = (isSuper && body.target_company_id) ? body.target_company_id : caller.company_id;
+  if (!companyId) {
+    return json({ error: 'No team context — catalog edits must be made within a team' }, 400);
+  }
   const errors = [];
   const upsertRows = [];
   for (const r of rows) {

@@ -648,7 +648,7 @@ function PricingDiscountsForm() {
         const newCost = costFromDiscount(p.price, discountMap[p.product_line]);
         if (newCost !== p.cost) {
           changed.push({
-            sku: p.sku,
+            sku: p.baseSku ?? p.sku, // identity — never the display alias
             description: p.desc,
             category: p.category,
             technology: p.technology,

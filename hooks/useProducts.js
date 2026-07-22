@@ -102,7 +102,9 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
   }, [session, refresh]);
 
   // Privileged mutations go through the service-role route handler, which
-  // re-checks the caller's role (company_admin / super_admin).
+  // re-checks the caller's role (company_admin / super_admin). The viewed
+  // team rides along as target_company_id — the API honors it only for a
+  // super admin, letting the platform owner fix any team's catalog.
   const callApi = useCallback(
     async (method, body) => {
       if (!supabase || !session) throw new Error('Not authenticated');
@@ -112,7 +114,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: body ? JSON.stringify(body) : undefined,
+        body: body ? JSON.stringify({ ...body, target_company_id: targetTeamId ?? undefined }) : undefined,
       });
       if (!res.ok) {
         const msg = await res.json().catch(() => ({}));
@@ -121,7 +123,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
       await refresh();
       return res.json();
     },
-    [supabase, session, refresh]
+    [supabase, session, targetTeamId, refresh]
   );
 
   // --- local-mode mutations (mirror the API handlers) ---
@@ -260,7 +262,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ rows }),
+      body: JSON.stringify({ rows, target_company_id: targetTeamId ?? undefined }),
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(payload.error || `Request failed (${res.status})`);

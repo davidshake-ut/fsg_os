@@ -66,7 +66,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     // variants) — one upsert can't touch the same row twice, so keep the
     // LAST occurrence (the file's final word) and say so in the review.
     const bySku = new Map();
-    for (const hit of m) bySku.set(hit.existing.sku, hit);
+    for (const hit of m) bySku.set(hit.existing.baseSku ?? hit.existing.sku, hit);
     const newBySku = new Map();
     for (const row of unmatched) newBySku.set(row.sku.trim(), row);
     const dupCount = m.length - bySku.size + (unmatched.length - newBySku.size);
@@ -81,7 +81,8 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
         fallback: existing.cost,
       });
       return {
-        sku: existing.sku,
+        sku: existing.sku, // display (shown in the review table)
+        writeSku: existing.baseSku ?? existing.sku, // identity (written to the DB)
         desc: existing.desc,
         category: existing.category,
         technology: existing.technology,
@@ -150,7 +151,7 @@ export default function VendorPriceImportModal({ allProducts, productLineDiscoun
     setApplyErr(null);
     try {
       const updateRows = matched.map((r) => ({
-        sku: r.sku,
+        sku: r.writeSku ?? r.sku, // identity — never the display alias
         description: r.desc,
         category: r.category,
         technology: r.technology,
