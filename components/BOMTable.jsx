@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, RotateCcw, Trash2, Undo2 } from 'lucide-react';
 import { Card, Button, Badge } from '@/components/ui/primitives';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { CATEGORY_ORDER } from '@/lib/catalog';
 import { SEGMENT_ORDER, segmentOf } from '@/lib/segments';
 import { currency, percent, marginColor } from '@/lib/format';
@@ -60,10 +61,12 @@ export default function BOMTable({
   onAddCustom,
   onUpdateCustom,
   onRemoveCustom,
+  onDiscard,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [hidden, setHidden] = useState(() => new Set());
   const [sortBy, setSortBy] = useState('category');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const groups = useMemo(() => groupBySegment(bom.items), [bom.items]);
   const segmentsPresent = useMemo(() => groups.map(([seg]) => seg), [groups]);
@@ -88,15 +91,39 @@ export default function BOMTable({
       return next;
     });
 
-  const setOverride = (sku, field, value, line) =>
+  // Overrides are keyed by the line's ORIGINAL sku (baseSku) so editing the
+  // displayed SKU doesn't orphan the row's other overrides.
+  const keyOf = (line) => line.baseSku ?? line.sku;
+
+  const setOverride = (line, field, value) =>
     setPriceOverrides((prev) => ({
       ...prev,
-      [sku]: {
-        cost: prev[sku]?.cost ?? line.unitCost,
-        price: prev[sku]?.price ?? line.unitPrice,
+      [keyOf(line)]: {
+        cost: prev[keyOf(line)]?.cost ?? line.unitCost,
+        price: prev[keyOf(line)]?.price ?? line.unitPrice,
+        ...prev[keyOf(line)],
         [field]: value,
       },
     }));
+
+  // Deleting keeps the line's identity in the override (description for the
+  // restore strip below the table).
+  const removeLine = (line) =>
+    setPriceOverrides((prev) => ({
+      ...prev,
+      [keyOf(line)]: {
+        ...prev[keyOf(line)],
+        description: prev[keyOf(line)]?.description ?? line.description,
+        removed: true,
+      },
+    }));
+
+  const restoreOne = (sku) =>
+    setPriceOverrides((prev) => {
+      const entry = { ...prev[sku] };
+      delete entry.removed;
+      return { ...prev, [sku]: entry };
+    });
 
   const resetOne = (sku) =>
     setPriceOverrides((prev) => {
@@ -105,9 +132,12 @@ export default function BOMTable({
       return next;
     });
 
+  const removedLines = Object.entries(priceOverrides).filter(([, ov]) => ov?.removed);
+
   const visibleGroups = groups.filter(([seg]) => !hidden.has(seg));
 
-  const colCount = showCost ? 8 : 5;
+  const editing = editable && editPrices;
+  const colCount = (showCost ? 8 : 5) + (editing ? 1 : 0);
   const th = 'px-4 py-2.5 font-medium';
   const thNum = `${th} text-right whitespace-nowrap`;
   const td = 'px-4 py-2 whitespace-nowrap';
@@ -155,6 +185,16 @@ export default function BOMTable({
             </select>
           </label>
 
+          {editable && editPrices && onDiscard && (
+            <button
+              type="button"
+              onClick={() => setConfirmDiscard(true)}
+              className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            >
+              <Undo2 size={13} /> Discard Changes
+            </button>
+          )}
+
           {editable && (
             <button
               type="button"
@@ -164,7 +204,7 @@ export default function BOMTable({
               title="Edit cost & price for this project only (does not change the catalog)"
               className="flex items-center gap-2 text-xs font-medium text-slate-600"
             >
-              <span>Edit Prices</span>
+              <span>Edit Line Items</span>
               <span
                 className={cn(
                   'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
@@ -191,8 +231,9 @@ export default function BOMTable({
 
       {editPrices && (
         <p className="px-1 text-xs text-slate-400">
-          Editing cost &amp; price for <strong>this project only</strong> — the product database is
-          unchanged. Slide off when done; values are kept and saved with the project.
+          Editing SKU, description, quantity, cost &amp; price for <strong>this project only</strong> —
+          the product database is unchanged. Use ✕ to remove a line and the section + to add one.
+          Slide off when done; values are kept and saved with the project.
         </p>
       )}
 
@@ -209,6 +250,7 @@ export default function BOMTable({
                 {showCost && <th className={thNum}>Total Cost</th>}
                 <th className={thNum}>Total Price</th>
                 {showCost && <th className={thNum}>Margin</th>}
+                {editing && <th className={th} aria-label="Actions" />}
               </tr>
             </thead>
 
@@ -270,28 +312,58 @@ export default function BOMTable({
                   {open && (
                     <>
                       {calcRows.map((r, i) => {
-                        const overridden = Boolean(priceOverrides[r.sku]);
+                        const overridden = Boolean(priceOverrides[keyOf(r)]);
                         return (
                         <tr
-                          key={`${r.sku}-${i}`}
+                          key={`${keyOf(r)}-${i}`}
                           className={cn(
                             'border-b border-slate-50 last:border-0',
                             overridden ? 'bg-orange-50/60' : 'hover:bg-slate-50/60'
                           )}
                         >
-                          <td className={`${td} font-mono text-xs text-slate-500`}>{r.sku}</td>
+                          <td className={`${td} font-mono text-xs text-slate-500`}>
+                            {editing ? (
+                              <input
+                                className={`${CUSTOM_INPUT} w-28 font-mono`}
+                                value={r.sku}
+                                onChange={(e) => setOverride(r, 'sku', e.target.value)}
+                              />
+                            ) : (
+                              r.sku
+                            )}
+                          </td>
                           <td className="min-w-[14rem] px-4 py-2 text-slate-700">
-                            <span className="inline-flex items-center gap-2">
-                              <span>{r.description}</span>
-                              <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                                {r.category}
+                            {editing ? (
+                              <input
+                                className={`${CUSTOM_INPUT} w-full min-w-[12rem]`}
+                                value={r.description}
+                                onChange={(e) => setOverride(r, 'description', e.target.value)}
+                              />
+                            ) : (
+                              <span className="inline-flex items-center gap-2">
+                                <span>{r.description}</span>
+                                <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                                  {r.category}
+                                </span>
                               </span>
-                            </span>
+                            )}
                             {r.note && (
                               <span className="block text-xs italic text-slate-400">{r.note}</span>
                             )}
                           </td>
-                          <td className={`${tdNum} text-slate-700`}>{r.qty}</td>
+                          <td className={`${tdNum} text-slate-700`}>
+                            {editing ? (
+                              <input
+                                type="number"
+                                min="0"
+                                className={`${EDIT_INPUT} w-16`}
+                                value={r.qty}
+                                onChange={(e) => setOverride(r, 'qty', Number(e.target.value))}
+                              />
+                            ) : (
+                              r.qty
+                            )}
+                          </td>
 
                           {showCost && (
                             <td className={`${tdNum} text-slate-500`}>
@@ -302,7 +374,7 @@ export default function BOMTable({
                                   step="0.01"
                                   className={EDIT_INPUT}
                                   value={r.unitCost}
-                                  onChange={(e) => setOverride(r.sku, 'cost', Number(e.target.value), r)}
+                                  onChange={(e) => setOverride(r, 'cost', Number(e.target.value))}
                                 />
                               ) : (
                                 currency(r.unitCost)
@@ -312,26 +384,14 @@ export default function BOMTable({
 
                           <td className={`${tdNum} text-slate-700`}>
                             {editPrices ? (
-                              <div className="flex items-center justify-end gap-1">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  className={EDIT_INPUT}
-                                  value={r.unitPrice}
-                                  onChange={(e) => setOverride(r.sku, 'price', Number(e.target.value), r)}
-                                />
-                                {overridden && (
-                                  <button
-                                    type="button"
-                                    title="Reset to catalog cost/price"
-                                    onClick={() => resetOne(r.sku)}
-                                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                                  >
-                                    <RotateCcw size={13} />
-                                  </button>
-                                )}
-                              </div>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className={EDIT_INPUT}
+                                value={r.unitPrice}
+                                onChange={(e) => setOverride(r, 'price', Number(e.target.value))}
+                              />
                             ) : (
                               currency(r.unitPrice)
                             )}
@@ -350,6 +410,30 @@ export default function BOMTable({
                               >
                                 {percent(r.margin, 0)}
                               </span>
+                            </td>
+                          )}
+                          {editing && (
+                            <td className={`${td} text-right`}>
+                              <div className="flex items-center justify-end gap-0.5">
+                                {overridden && (
+                                  <button
+                                    type="button"
+                                    title="Reset this line to the calculated values"
+                                    onClick={() => resetOne(keyOf(r))}
+                                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                  >
+                                    <RotateCcw size={13} />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  title="Remove this line from the quote"
+                                  onClick={() => removeLine(r)}
+                                  className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -432,6 +516,36 @@ export default function BOMTable({
           </table>
         </div>
       </Card>
+
+      <ConfirmModal
+        open={confirmDiscard}
+        title="Discard changes"
+        message="Are you sure you want to discard changes? Every line returns to its last saved state (or the calculated values if this proposal hasn't been saved). This can't be undone."
+        confirmLabel="Discard Changes"
+        onConfirm={() => {
+          onDiscard?.();
+          setConfirmDiscard(false);
+          setEditPrices?.(false);
+        }}
+        onCancel={() => setConfirmDiscard(false)}
+      />
+
+      {editing && removedLines.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-3 py-2">
+          <span className="text-xs font-medium text-slate-500">Removed from this quote:</span>
+          {removedLines.map(([sku, ov]) => (
+            <button
+              key={sku}
+              type="button"
+              title="Restore this line"
+              onClick={() => restoreOne(sku)}
+              className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-blue-300 hover:text-blue-700"
+            >
+              <RotateCcw size={11} /> {ov.description || sku}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

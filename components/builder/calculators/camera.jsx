@@ -35,6 +35,7 @@ function Body({ ctx }) {
         onAddCustom={(seg) => ctx.addCustomLine('camera', seg)}
         onUpdateCustom={ctx.updateCustomLine}
         onRemoveCustom={ctx.removeCustomLine}
+        onDiscard={ctx.discardBomChanges}
       />
     </>
   );

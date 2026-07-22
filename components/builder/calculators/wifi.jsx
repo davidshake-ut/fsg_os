@@ -36,6 +36,7 @@ function Body({ ctx }) {
         onAddCustom={(seg) => ctx.addCustomLine('wifi', seg)}
         onUpdateCustom={ctx.updateCustomLine}
         onRemoveCustom={ctx.removeCustomLine}
+        onDiscard={ctx.discardBomChanges}
       />
     </>
   );

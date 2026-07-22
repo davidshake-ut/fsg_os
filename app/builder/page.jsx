@@ -1020,6 +1020,13 @@ function Calculator() {
 
   // Shared bag handed to calculator components — see the contract in
   // components/builder/calculators/index.js.
+  // Discard in-progress BOM edits: line overrides and custom lines return to
+  // the last saved state (or empty on a never-saved proposal).
+  const discardBomChanges = () => {
+    setPriceOverrides(savedSnapshot?.priceOverrides ?? {});
+    setCustomLineItems(savedSnapshot?.customLineItems ?? []);
+  };
+
   const calcCtx = {
     inputs, setInputs, term,
     cameraInputs, setCameraInputs,
@@ -1029,6 +1036,7 @@ function Calculator() {
     editPrices, setEditPrices,
     canViewMargin,
     addCustomLine, updateCustomLine, removeCustomLine,
+    discardBomChanges,
     products: allProducts,
   };
 

@@ -19,6 +19,7 @@ export default function CameraSystems({
   onAddCustom,
   onUpdateCustom,
   onRemoveCustom,
+  onDiscard,
 }) {
   return (
     <div className="space-y-4">
@@ -47,6 +48,7 @@ export default function CameraSystems({
             onAddCustom={onAddCustom}
             onUpdateCustom={onUpdateCustom}
             onRemoveCustom={onRemoveCustom}
+            onDiscard={onDiscard}
           />
 
           <Card className="overflow-hidden">
