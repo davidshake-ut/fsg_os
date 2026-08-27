@@ -90,6 +90,56 @@ describe('buildOptionComparison', () => {
   });
 });
 
+describe('recurring + financing (Phase 7)', () => {
+  const summary = (o = {}) => ({
+    units: 100,
+    hardware: { cost: 60000, price: 80000 },
+    labor: { cost: 10000, price: 20000 },
+    cabling: { cost: 0, price: 0 },
+    total: { cost: 70000, price: 100000 },
+    ...o,
+  });
+  it('the summary carries the monthly totals and the payment options', () => {
+    const s = buildQuoteSummary({
+      sections: [{ title: 'Wi-Fi', techId: 'managed_wifi', bom: bom({ totalHardwareCost: 60000, totalHardwarePrice: 100000 }) }],
+      bom: { unitCount: 100 },
+      inputs: { recurring: { items: [{ kind: 'support', cost: 900, price: 4.75, priceBasis: 'per_unit' }] } },
+      financing: { enabled: true, apr: 12, terms: [60], lenderDiscountPct: 0 },
+    });
+    expect(s.recurring).toEqual({ monthlyCost: 900, monthlyPrice: 475, perUnitMonth: 4.75, items: 1 });
+    expect(s.financing.enabled).toBe(true);
+    expect(s.financing.principal).toBe(100000);
+    expect(s.financing.options).toHaveLength(1);
+    expect(s.financing.options[0].monthly).toBeCloseTo(2224.44, 2);
+    expect(buildQuoteSummary({}).financing).toBeNull();
+    expect(buildQuoteSummary({}).recurring.items).toBe(0);
+  });
+  it('rows appear only when an option carries them; a missing term reads as null with no delta', () => {
+    const none = buildOptionComparison([{ id: 'a', quote: { summary: summary() } }]);
+    expect(none.rows.some((r) => /^mrc|^finance/.test(r.key))).toBe(false);
+    const cmp = buildOptionComparison([
+      { id: 'a', quote: { summary: summary({ recurring: { monthlyCost: 900, monthlyPrice: 1500, perUnitMonth: 15, items: 2 }, financing: { enabled: true, principal: 100000, uplift: 0, options: [{ months: 60, monthly: 2224.44, total: 133466.4, perUnitMonth: 22.24 }] } }) } },
+      { id: 'b', quote: { summary: summary({ total: { cost: 70000, price: 110000 }, financing: { enabled: true, principal: 110000, uplift: 0, options: [{ months: 36, monthly: 3653.57, total: 0, perUnitMonth: 0 }, { months: 60, monthly: 2446.88, total: 0, perUnitMonth: 0 }] } }) } },
+      { id: 'c', quote: { summary: summary() } },
+    ]);
+    const row = (k) => cmp.rows.find((r) => r.key === k);
+    expect(row('mrcPrice').values).toEqual([1500, 0, 0]);
+    expect(row('mrcPerUnit').values[0]).toBe(15);
+    expect(row('finance36').values).toEqual([null, 3653.57, null]);
+    expect(row('finance36').deltas).toEqual([null, null, null]);
+    expect(row('finance60').values).toEqual([2224.44, 2446.88, null]);
+    expect(row('finance60').deltas[1]).toBeCloseTo(222.44, 2);
+    expect(row('financingUplift').customer).toBe(false);
+    expect(row('mrcCost').customer).toBe(false);
+    expect(row('finance60').customer).toBe(true);
+    // Order: the NRC block, then recurring, then financing, then the facts.
+    const keys = cmp.rows.map((r) => r.key);
+    expect(keys.indexOf('margin')).toBeLessThan(keys.indexOf('mrcCost'));
+    expect(keys.indexOf('mrcPerUnit')).toBeLessThan(keys.indexOf('finance36'));
+    expect(keys.indexOf('financingUplift')).toBeLessThan(keys.indexOf('units'));
+  });
+});
+
 describe('optionHeads / signedText', () => {
   it('returns one latest version per option in creation order', () => {
     const quotes = [

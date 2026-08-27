@@ -12,6 +12,7 @@ import ModulesPanel from '@/components/ModulesPanel';
 import CustomModulesPanel from '@/components/CustomModulesPanel';
 import PricingPolicyForm from '@/components/PricingPolicyForm';
 import LaborTasksForm from '@/components/LaborTasksForm';
+import RecurringSettingsForm from '@/components/RecurringSettingsForm';
 import { costFromDiscount, DEFAULT_PRODUCT_LINE_DISCOUNTS } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 import { fmtDate as fmtDateShared } from '@/lib/format';
@@ -1364,6 +1365,7 @@ export default function AdminPanel() {
             <>
               <PricingDiscountsForm />
               <PricingPolicyForm />
+              <RecurringSettingsForm />
             </>
           )}
 

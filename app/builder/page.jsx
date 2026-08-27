@@ -31,6 +31,8 @@ import { buildWifiTakeoff } from '@/lib/wifiTakeoff';
 import { resolvePricingPolicy, applyPricingPolicy } from '@/lib/pricingPolicy';
 import { DEFAULT_LABOR_TASKS, normalizeLaborTasks } from '@/lib/laborTasks';
 import { buildQuoteSummary } from '@/lib/optionComparison';
+import { computeRecurring, normalizeCarrierCircuits } from '@/lib/recurring';
+import { resolveFinancing } from '@/lib/financing';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
 import { calculateTechBOM } from '@/lib/calculateTechBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
@@ -188,6 +190,10 @@ function Calculator() {
   );
   const pricedProducts = useMemo(() => applyPricingPolicy(allProducts, pricingPolicy), [allProducts, pricingPolicy]);
   // Labor task table (Phase 5): the team's, else the built-in defaults.
+  // Recurring & financing (Phase 7): the team's carrier rate card and its
+  // financing defaults, with this quote's overrides at inputs.financing.
+  const carrierCircuits = useMemo(() => normalizeCarrierCircuits(company?.settings?.carrierCircuits), [company?.settings?.carrierCircuits]);
+  const financingPolicy = useMemo(() => resolveFinancing(company?.settings, inputs.financing), [company?.settings, inputs.financing]);
   const laborTasks = useMemo(
     () => normalizeLaborTasks(company?.settings?.laborTasks) ?? DEFAULT_LABOR_TASKS,
     [company?.settings?.laborTasks]
@@ -737,6 +743,18 @@ function Calculator() {
       cost: round2(secs.reduce((sum, s) => sum + (s.bom.grandTotalCost ?? 0), 0)),
     };
   };
+  // The summary the comparison / proposal read — from the live sections,
+  // this quote's recurring items, and the resolved financing policy.
+  const liveSummary = () =>
+    buildQuoteSummary({
+      sections: exportSections(),
+      labor,
+      bom,
+      inputs,
+      pricingMode: pricingPolicy.mode,
+      unitsHint: inputs.numberOfRooms,
+      financing: financingPolicy,
+    });
   const buildStatePayload = () => {
     const totals = primaryTotals();
     return {
@@ -755,14 +773,7 @@ function Calculator() {
       ...(currentQuote?.option_group_id
         ? { optionGroupId: currentQuote.option_group_id, optionLabel: currentQuote.option_label ?? null }
         : {}),
-      summary: buildQuoteSummary({
-        sections: exportSections(),
-        labor,
-        bom,
-        inputs,
-        pricingMode: pricingPolicy.mode,
-        unitsHint: inputs.numberOfRooms,
-      }),
+      summary: liveSummary(),
     };
   };
 
@@ -1070,7 +1081,16 @@ function Calculator() {
       }
       snapshotCurrent({ propertyId });
 
-      const doc = exportProposalPDF({ inputs, cameraInputs, term, sections: exportSections(), branding });
+      const proposalSummary = liveSummary();
+      const doc = exportProposalPDF({
+        inputs,
+        cameraInputs,
+        term,
+        sections: exportSections(),
+        branding,
+        recurring: computeRecurring(inputs.recurring, { units: proposalSummary.units }),
+        financing: proposalSummary.financing,
+      });
 
       let attached = false;
       const supabase = getSupabase();
@@ -1381,6 +1401,10 @@ function Calculator() {
               sections={exportSections()}
               scope={buildScopeOfWork({ inputs, cameraInputs, wifiBom: bom, cameraBom, term })}
               canViewMargin={canViewMargin}
+              canWrite={!isViewer}
+              summary={liveSummary()}
+              financingPolicy={financingPolicy}
+              carrierCircuits={carrierCircuits}
               laborRoles={laborRoles}
               setLaborRoles={setLaborRoles}
               estimatedHours={estimatedHours}

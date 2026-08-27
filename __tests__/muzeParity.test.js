@@ -19,7 +19,9 @@ import { rollUpAssemblies } from '../lib/assemblies';
 import { computeInfrastructureLines, computeKitLines, infrastructureLaborHours } from '../lib/infrastructureLines';
 import { deriveCablingRuns, computeCablingLines, cablingTotals } from '../lib/cablingTakeoff';
 import { normalizePricingPolicy, applyPricingPolicy, priceWithMarkup } from '../lib/pricingPolicy';
-import { buildOptionComparison, customerRows } from '../lib/optionComparison';
+import { buildOptionComparison, customerRows, buildQuoteSummary } from '../lib/optionComparison';
+import { DEFAULT_CARRIER_CIRCUITS, circuitItem, supportFeeItem, licenseItem, computeRecurring } from '../lib/recurring';
+import { computeFinancing, monthlyPayment } from '../lib/financing';
 import { MULTIFAMILY_TAKEOFF_TASKS } from '../lib/laborTasks';
 import { estimateLaborHours } from '../lib/estimateLaborHours';
 import { calculateLabor } from '../lib/calculateLabor';
@@ -695,6 +697,74 @@ describe('Builder engine parity with the Muze workbook (one todo per phase)', ()
     expect(row('totalPrice').deltas[1]).toBeCloseTo(MUZE.comparison.columns[1].totalPrice - MUZE.comparison.columns[0].totalPrice, 2);
     expect(customerRows(cmp).some((r) => /cost|margin|profit/i.test(r.label))).toBe(false);
   });
-  it.todo('Phase 7: recurring + financing shows $31.87 per unit per month for OPT 1');
+  it('Phase 7: recurring + financing reproduce the Comparison Matrix MRC block and $31.87 per unit per month for OPT 1', () => {
+    const units = MUZE.comparison.units; // 400
+    const col = MUZE.comparison.columns[0];
+    // The workbook's MRC block: Segra 5 Gb and Frontier 5 Gb (both 5-year)
+    // at retail, and a $900/mo support cost sold at $4.75 per unit.
+    const card = DEFAULT_CARRIER_CIRCUITS;
+    const segra = card.find((c) => c.carrier === 'Segra' && c.bandwidth === '5 Gb' && c.termMonths === 60);
+    const frontier = card.find((c) => c.carrier === 'Frontier' && c.bandwidth === '5 Gb' && c.termMonths === 60);
+    expect(segra.mrc).toBe(col.mrc.segra5g); // 1,695
+    expect(frontier.mrc).toBe(col.mrc.frontier5g); // 2,000
+    const recurring = {
+      items: [
+        circuitItem(segra, { id: 'segra' }),
+        circuitItem(frontier, { id: 'frontier' }),
+        supportFeeItem({ id: 'support', cost: col.mrc.supportFeeCost, pricePerUnit: MUZE.comparison.supportFeePerUnitPerMonth }),
+      ],
+    };
+    const rec = computeRecurring(recurring, { units });
+    expect(rec.lines.find((l) => l.id === 'support').monthlyPrice).toBe(col.mrc.supportFeePrice); // 400 × 4.75 = 1,900
+    // B34 sums the two circuits and the support fee (the row is labeled rXg
+    // on OPT 1 but its formula is B25 + B28 + B32); B35 divides by 400.
+    expect(rec.totals.monthlyPrice).toBe(col.mrc.rxgMonthly); // 5,595
+    expect(rec.totals.perUnitMonth).toBeCloseTo(5595 / 400, 6); // 13.9875
+    // rXg from RG Nets: $12,090 billed annually → $1,007.50 a month (D34).
+    const rxg = computeRecurring({ items: [licenseItem({ label: 'rXg', annualCost: 12090 })] }, { units });
+    expect(rxg.totals.monthlyCost).toBeCloseTo(MUZE.comparison.columns[2].mrc.rxgMonthly, 2);
+
+    // The whole pipeline: the OPT 1 buckets as Builder sections → the saved
+    // summary (recurring + financing included) → comparison rows.
+    const hw = MUZE.options[0].hardware[0].expected;
+    const lb = MUZE.options[0].labor.expected;
+    const wr = MUZE.options[0].wiring.expected;
+    const sections = [
+      { title: 'Managed Wi-Fi', techId: 'managed_wifi', bom: { items: [{}], serviceItems: [], totalHardwareCost: hw.cost, totalHardwarePrice: hw.price, shippingCost: 0, shippingPrice: 0 } },
+      { title: 'Digital Infrastructure', techId: 'digital_infrastructure', bom: { items: [], serviceItems: [{ category: 'Cabling', totalCost: wr.cost, totalPrice: wr.price }], totalHardwareCost: 0, totalHardwarePrice: 0, shippingCost: 0, shippingPrice: 0 } },
+    ];
+    const financing = { enabled: true, basis: 'total', apr: MUZE.comparison.financingDiscountPct, terms: [36, 60], lenderDiscountPct: 0 };
+    const summary = buildQuoteSummary({
+      sections,
+      labor: { totalServicesCost: lb.cost, totalServicesPrice: lb.price },
+      bom: { unitCount: units },
+      inputs: { recurring },
+      financing,
+    });
+    expect(summary.total.price).toBeCloseTo(col.totalPrice, 1); // 1,201,900.03
+    expect(summary.recurring).toMatchObject({ monthlyPrice: 5595, items: 3 });
+    const cmp = buildOptionComparison([{ id: 'opt1', label: col.label, quote: { summary } }], { termMonths: MUZE.comparison.termMonths });
+    const row = (k) => cmp.rows.find((r) => r.key === k);
+    expect(row('perUnitPerMonth').values[0]).toBeCloseTo(col.perUnitPerMonth, 5); // 31.87
+    expect(row('mrcPrice').values[0]).toBe(5595);
+    expect(row('mrcPerUnit').values[0]).toBeCloseTo(13.9875, 6);
+    expect(customerRows(cmp).map((r) => r.key)).toEqual(expect.arrayContaining(['mrcPrice', 'mrcPerUnit', 'finance36', 'finance60']));
+    expect(customerRows(cmp).some((r) => r.key === 'mrcCost' || r.key === 'financingUplift')).toBe(false);
+
+    // Financing: the workbook's payments are lender figures typed by hand
+    // (no formulas). A level payment at the "12% discount" rate lands within
+    // 1% of its 60-month figure; the 36-month figure and the uplift follow
+    // a basis the workbook doesn't record — drift, not modeled.
+    const fin = computeFinancing(financing, { principal: col.totalPrice, units });
+    const sixty = fin.options.find((o) => o.months === 60);
+    expect(sixty.monthly).toBeCloseTo(monthlyPayment(col.totalPrice, 60, 12), 6); // 26,735.50
+    expect(Math.abs(sixty.monthly - col.financing.monthly60) / col.financing.monthly60).toBeLessThan(0.01); // 26,877
+    expect(row('finance60').values[0]).toBeCloseTo(sixty.monthly, 1);
+    expect(sixty.perUnitMonth).toBeCloseTo(sixty.monthly / units, 9);
+    MUZE.comparison.columns.forEach((c) => {
+      expect(c.financing.monthly36 / c.financing.monthly60).toBeCloseTo(1.3498, 3);
+      expect(c.financing.upliftNeeded).toBeCloseTo(0.12 * 36 * c.financing.monthly36, -1);
+    });
+  });
   it.todo('Phase 8: XGS-PON reproduces OPT 4 hardware 404,860.26 → 578,929.23 and wiring 196,528 → 330,951.20');
 });

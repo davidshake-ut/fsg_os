@@ -61,6 +61,7 @@ export default function OptionsComparison({
   const rows = view === 'customer' || !canViewMargin ? customerRows(comparison) : comparison.rows;
   const cols = comparison.columns;
   const fmt = (row, v) => {
+    if (v === null || v === undefined) return '—';
     if (row.kind === 'money') return row.precise ? `$${(Number(v) || 0).toFixed(2)}` : currency(Number(v) || 0);
     if (row.kind === 'percent') return percent(Number(v) || 0, 1);
     if (row.kind === 'number') return String(Number(v) || 0);

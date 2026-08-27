@@ -6,6 +6,7 @@ import { Card, Button, Field, TextInput, NumberInput, Segmented, Toggle } from '
 import { CustomerPicker, ProjectNameField } from '@/components/InputPanel';
 import CostSummary from '@/components/CostSummary';
 import LaborTable from '@/components/LaborTable';
+import RecurringSection from '@/components/builder/RecurringSection';
 import { BUILTIN_TECHNOLOGIES, companyTechnologies } from '@/lib/technologies';
 import { cn } from '@/lib/utils';
 
@@ -88,6 +89,11 @@ export default function PropertyOverview({
   laborRoles = [],
   setLaborRoles = () => {},
   estimatedHours = {},
+  // recurring & financing (Phase 7)
+  canWrite = true,
+  summary = null,
+  financingPolicy = null,
+  carrierCircuits = [],
   // actions
   onCreateProposal = () => {},
   onExportCSV = () => {},
@@ -294,6 +300,18 @@ export default function PropertyOverview({
       {/* ── Right: the whole-proposal summary + project-wide labor ── */}
       <div className="min-w-0 space-y-4">
         <CostSummary sections={sections} scope={scope} canViewMargin={canViewMargin} />
+
+        <RecurringSection
+          recurring={inputs.recurring}
+          onChange={(next) => set('recurring', next)}
+          financingOverride={inputs.financing ?? null}
+          onFinancingChange={(next) => set('financing', next)}
+          financingPolicy={financingPolicy}
+          carrierCircuits={carrierCircuits}
+          summary={summary}
+          canViewMargin={canViewMargin}
+          canWrite={canWrite}
+        />
 
         <Card className="overflow-hidden">
           <button type="button" onClick={() => setLaborOpen((o) => !o)}
