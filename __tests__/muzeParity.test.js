@@ -19,6 +19,7 @@ import { rollUpAssemblies } from '../lib/assemblies';
 import { computeInfrastructureLines, computeKitLines, infrastructureLaborHours } from '../lib/infrastructureLines';
 import { deriveCablingRuns, computeCablingLines, cablingTotals } from '../lib/cablingTakeoff';
 import { normalizePricingPolicy, applyPricingPolicy, priceWithMarkup } from '../lib/pricingPolicy';
+import { buildOptionComparison, customerRows } from '../lib/optionComparison';
 import { MULTIFAMILY_TAKEOFF_TASKS } from '../lib/laborTasks';
 import { estimateLaborHours } from '../lib/estimateLaborHours';
 import { calculateLabor } from '../lib/calculateLabor';
@@ -640,7 +641,60 @@ describe('Builder engine parity with the Muze workbook (one todo per phase)', ()
     expect(labor.totalServicesCost).toBeCloseTo(MUZE.options[0].labor.expected.cost, 2); // 141,800
     expect(labor.totalServicesPrice).toBeCloseTo(MUZE.options[0].labor.expected.price, 2); // 235,250
   });
-  it.todo('Phase 6: the options comparison matches the Comparison Matrix NRC block for all five columns');
+  it('Phase 6: the options comparison reproduces the Comparison Matrix NRC block for all five columns', () => {
+    // Each workbook option as a saved quote summary (the buckets the Builder
+    // writes on save): hardware block, pro services, wiring block.
+    const opt = (id, label, o, hwIndex = 0) => {
+      const hw = o.hardware[hwIndex].expected;
+      const lb = o.labor.expected;
+      const wr = o.wiring.expected;
+      return {
+        id,
+        label,
+        quote: {
+          option_label: label,
+          summary: {
+            units: MUZE.comparison.units,
+            hardware: { cost: hw.cost, price: hw.price },
+            labor: { cost: lb.cost, price: lb.price },
+            cabling: { cost: wr.cost, price: wr.price },
+            total: { cost: hw.cost + lb.cost + wr.cost, price: hw.price + lb.price + wr.price },
+          },
+        },
+      };
+    };
+    const [o1, o2, o3, o4] = MUZE.options;
+    const options = [
+      opt('opt1', 'OPT 1: WIFI 6 BASELINE', o1),
+      opt('opt2', 'OPT 2: WIFI 6 EXT COVERAGE', o2),
+      opt('opt3r', 'OPT 3: EXT WIFI 7 w RUCKUS / RG NETS', o3, 1),
+      opt('opt3c', 'OPT 3: EXT WIFI 7 w CAMBIUM', o3, 0),
+      opt('opt4', 'OPT 5: EXT HYBRID FTTU', o4),
+    ];
+    const cmp = buildOptionComparison(options, { termMonths: MUZE.comparison.termMonths });
+    const row = (k) => cmp.rows.find((r) => r.key === k);
+    expect(cmp.columns.map((c) => c.label)).toEqual(MUZE.comparison.columns.map((c) => c.label));
+
+    MUZE.comparison.columns.forEach((col, i) => {
+      expect(row('hardwareCost').values[i]).toBeCloseTo(col.hardwareCost, 2);
+      expect(row('hardwarePrice').values[i]).toBeCloseTo(col.hardwarePrice, 2);
+      expect(row('laborCost').values[i]).toBeCloseTo(col.laborCost, 2);
+      expect(row('laborPrice').values[i]).toBeCloseTo(col.laborPrice, 2);
+      expect(row('managedWifiPrice').values[i]).toBeCloseTo(col.managedWifiPrice, 2);
+      expect(row('perUnitPerMonth').values[i]).toBeCloseTo(col.perUnitPerMonth, 5);
+      expect(row('cablingCost').values[i]).toBeCloseTo(col.cablingCost, 2);
+      expect(row('cablingPrice').values[i]).toBeCloseTo(col.cablingPrice, 2);
+      expect(row('totalCost').values[i]).toBeCloseTo(col.totalCost, 2);
+      expect(row('totalPrice').values[i]).toBeCloseTo(col.totalPrice, 2);
+      expect(row('grossProfit').values[i]).toBeCloseTo(col.markup, 2);
+      // Margin is computed everywhere; the workbook's Cambium Wi-Fi 7 cell is typed (drift).
+      if (i !== 3) expect(row('margin').values[i] / 100).toBeCloseTo(col.margin, 5);
+      else expect(row('margin').values[i] / 100).toBeCloseTo(0.3802, 3);
+    });
+    // Deltas read against the first option, like the matrix's C21 / E21 cells.
+    expect(row('totalPrice').deltas[1]).toBeCloseTo(MUZE.comparison.columns[1].totalPrice - MUZE.comparison.columns[0].totalPrice, 2);
+    expect(customerRows(cmp).some((r) => /cost|margin|profit/i.test(r.label))).toBe(false);
+  });
   it.todo('Phase 7: recurring + financing shows $31.87 per unit per month for OPT 1');
   it.todo('Phase 8: XGS-PON reproduces OPT 4 hardware 404,860.26 → 578,929.23 and wiring 196,528 → 330,951.20');
 });

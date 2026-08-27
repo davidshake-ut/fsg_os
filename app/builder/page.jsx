@@ -22,6 +22,7 @@ import CostSummary from '@/components/CostSummary';
 import { publishBuilderTechs, publishBuilderActiveTab } from '@/lib/builderNavStore';
 import { Button } from '@/components/ui/primitives';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import CloneOptionModal from '@/components/CloneOptionModal';
 import QuoteLifecycleMenu from '@/components/QuoteLifecycleMenu';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
@@ -29,6 +30,7 @@ import { calculateBOM } from '@/lib/calculateBOM';
 import { buildWifiTakeoff } from '@/lib/wifiTakeoff';
 import { resolvePricingPolicy, applyPricingPolicy } from '@/lib/pricingPolicy';
 import { DEFAULT_LABOR_TASKS, normalizeLaborTasks } from '@/lib/laborTasks';
+import { buildQuoteSummary } from '@/lib/optionComparison';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
 import { calculateTechBOM } from '@/lib/calculateTechBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
@@ -113,6 +115,7 @@ function Calculator() {
   const canViewMargin = configured ? isAdmin : true;
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [savedSnapshot, setSavedSnapshot] = useState(null);
+  const [cloneOpen, setCloneOpen] = useState(false); // design option clone prompt (0068)
   const [modal, setModal] = useState({ open: false, product: null });
   const [busy, setBusy] = useState(false);
   const [currentCrmAccountId, setCurrentCrmAccountId] = useState(null);
@@ -140,7 +143,7 @@ function Calculator() {
     session,
     { teamFilter: catalogTeamId }
   );
-  const { projects, loadError: projectsLoadError, refresh: refreshProjects, loadProject, saveProject, setQuoteStatus, deleteProject } = useProjects(session, company, user);
+  const { projects, loadError: projectsLoadError, refresh: refreshProjects, loadProject, saveProject, setQuoteStatus, deleteProject, cloneAsOption } = useProjects(session, company, user);
   const { projects: psaProjects, createProject: createPSAProject } = usePSAProjects(session, company, user);
   const { allTemplates } = useTemplates(session, company, user);
 
@@ -586,6 +589,22 @@ function Calculator() {
     );
   }, [inputs, cameraInputs, priceOverrides, customLineItems, laborRoles, currentCrmAccountId, currentPropertyId, savedSnapshot]);
 
+  // Loads a quote row into the Builder's state — from the projects list, or
+  // a row just returned by the hook (a freshly cloned design option, before
+  // the list has re-fetched).
+  const applyLoadedProject = (project) => {
+    const loaded = loadProject(project);
+    setCurrentCrmAccountId(loaded.crmAccountId ?? null);
+    setCurrentPropertyId(loaded.propertyId ?? null);
+    setInputs(loaded.inputs);
+    setCameraInputs(loaded.cameraInputs);
+    setPriceOverrides(loaded.priceOverrides);
+    setCustomLineItems(loaded.customLineItems);
+    setLaborRoles(loaded.laborRoles);
+    setCurrentProjectId(project.id);
+    setSavedSnapshot(loaded);
+  };
+
   const selectProject = (id) => {
     setNewPsaProjectId(null);
     if (!id) {
@@ -603,16 +622,7 @@ function Calculator() {
     }
     const project = projects.find((p) => p.id === id);
     if (!project) return;
-    const loaded = loadProject(project);
-    setCurrentCrmAccountId(loaded.crmAccountId ?? null);
-    setCurrentPropertyId(loaded.propertyId ?? null);
-    setInputs(loaded.inputs);
-    setCameraInputs(loaded.cameraInputs);
-    setPriceOverrides(loaded.priceOverrides);
-    setCustomLineItems(loaded.customLineItems);
-    setLaborRoles(loaded.laborRoles);
-    setCurrentProjectId(project.id);
-    setSavedSnapshot(loaded);
+    applyLoadedProject(project);
   };
 
   // ── URL params — the deep-link contract other pages rely on ────────────
@@ -740,6 +750,19 @@ function Calculator() {
       propertyId: currentPropertyId,
       totalPrice: totals.price,
       totalCost: totals.cost,
+      // Design options (0068): keep the option identity on saves and
+      // revisions, and write the summary the options comparison reads.
+      ...(currentQuote?.option_group_id
+        ? { optionGroupId: currentQuote.option_group_id, optionLabel: currentQuote.option_label ?? null }
+        : {}),
+      summary: buildQuoteSummary({
+        sections: exportSections(),
+        labor,
+        bom,
+        inputs,
+        pricingMode: pricingPolicy.mode,
+        unitsHint: inputs.numberOfRooms,
+      }),
     };
   };
 
@@ -861,6 +884,39 @@ function Calculator() {
       setToast({ type: 'success', message: `Revision v${saved.version ?? (currentQuote.version ?? 1) + 1} created — you are now editing the new draft.` });
     } catch (e) {
       setToast({ type: 'error', message: `Could not create revision: ${e.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Design options (0068): save the current design, fork it into a labeled
+  // sibling on the same property, and switch to editing the clone.
+  const optionLetter = (n) => String.fromCharCode(65 + Math.min(25, Math.max(0, n)));
+  const suggestedOptionLabel = () => {
+    const gid = currentQuote?.option_group_id;
+    const count = gid
+      ? new Set(projects.filter((p) => p.option_group_id === gid).map((p) => p.parent_quote_id ?? p.id)).size
+      : 1;
+    return `Option ${optionLetter(count)}`;
+  };
+  const handleCloneAsOption = async (label) => {
+    if (!currentQuote) return;
+    setBusy(true);
+    try {
+      const propertyId = (await resolvePropertyId()) ?? currentPropertyId;
+      setCurrentPropertyId(propertyId);
+      // A locked quote is cloned as it stands; a draft is saved first so the
+      // clone carries the latest design.
+      const source = quoteLocked
+        ? currentQuote
+        : await saveProject({ id: currentProjectId, ...buildStatePayload(), propertyId });
+      const clone = await cloneAsOption(source, { label });
+      setCloneOpen(false);
+      applyLoadedProject(clone);
+      setActiveTab('overview');
+      setToast({ type: 'success', message: `Option “${label}” created — you are editing it now. Compare the options on the Proposals page.` });
+    } catch (e) {
+      setToast({ type: 'error', message: `Could not clone this proposal: ${e.message}` });
     } finally {
       setBusy(false);
     }
@@ -1148,7 +1204,17 @@ function Calculator() {
                   quote={currentQuote}
                   onTransition={handleQuoteStatus}
                   onRevision={handleCreateRevision}
+                  onCloneOption={() => setCloneOpen(true)}
                 />
+              )}
+              {currentQuote?.option_label && (
+                <a
+                  href="/proposals"
+                  title="Design option — compare the options on the Proposals page"
+                  className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
+                >
+                  {currentQuote.option_label}
+                </a>
               )}
             </div>
           </div>
@@ -1559,6 +1625,14 @@ function Calculator() {
           </div>
         </div>
       )}
+      <CloneOptionModal
+        open={cloneOpen}
+        sourceLabel={currentQuote?.option_label ?? ''}
+        suggested={suggestedOptionLabel()}
+        busy={busy}
+        onConfirm={handleCloneAsOption}
+        onCancel={() => setCloneOpen(false)}
+      />
       <ConfirmModal
         open={!!confirmState}
         title={confirmState?.title}

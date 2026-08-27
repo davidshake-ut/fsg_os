@@ -2,11 +2,15 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { FileCheck, Search, FolderKanban, ExternalLink, CheckCircle2, ChevronRight, FileDown, History } from 'lucide-react';
+import { FileCheck, Search, FolderKanban, ExternalLink, CheckCircle2, ChevronRight, FileDown, History, Layers } from 'lucide-react';
 import AuthGuard from '@/components/AuthGuard';
 import OSShell from '@/components/OSShell';
 import { useSession } from '@/components/SessionProvider';
-import { getSupabase } from '@/lib/supabase/client';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { useBranding } from '@/hooks/useBranding';
+import OptionsComparison from '@/components/OptionsComparison';
+import { buildOptionComparison, optionHeads, DEFAULT_TERM_MONTHS } from '@/lib/optionComparison';
+import { exportOptionsPDF } from '@/lib/exportOptionsPDF';
 import { useProjects } from '@/hooks/useProjects';
 import { useCRMAccounts } from '@/hooks/useCRMAccounts';
 import { useProperties } from '@/hooks/useProperties';
@@ -49,8 +53,11 @@ function PdfChip({ path, className }) {
 }
 
 function ProposalsContent() {
-  const { session, company, user, canWrite } = useSession();
-  const { projects: proposals, loading, loadError, refresh, setQuoteStatus } = useProjects(session, company, user);
+  const { session, company, user, canWrite, isAdmin } = useSession();
+  const { projects: proposals, loading, loadError, refresh, setQuoteStatus, setOptionMeta } = useProjects(session, company, user);
+  const { branding } = useBranding({ configured: isSupabaseConfigured, company });
+  // Cost and margin are admin-only in team mode, like the Builder.
+  const canViewMargin = !isSupabaseConfigured || !!isAdmin;
   const { accounts } = useCRMAccounts(session, company, user);
   const { properties } = useProperties(session, company);
   const { projects: psaProjects } = usePSAProjects(session, company, user);
@@ -60,6 +67,11 @@ function ProposalsContent() {
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
+  // Design options (0068): which group's comparison is open, the per-unit
+  // term, and the recommendation printed on the customer options PDF.
+  const [compareGroup, setCompareGroup] = useState(null);
+  const [termMonths, setTermMonths] = useState(DEFAULT_TERM_MONTHS);
+  const [recommendation, setRecommendation] = useState('');
 
   const accountName = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
   const propertyName = useMemo(() => new Map(properties.map((p) => [p.id, p.name])), [properties]);
@@ -87,6 +99,16 @@ function ProposalsContent() {
         return { head: sorted[0], archived: sorted.slice(1) };
       })
       .sort((a, b) => ((a.head.created_at ?? '') < (b.head.created_at ?? '') ? 1 : -1));
+  }, [proposals]);
+
+  // Design options: sibling quotes sharing an option_group_id, one latest
+  // version each, compared side by side above the list.
+  const optionGroups = useMemo(() => {
+    const ids = [...new Set(proposals.map((p) => p.option_group_id).filter(Boolean))];
+    return ids
+      .map((gid) => ({ id: gid, options: optionHeads(proposals, gid) }))
+      .filter((g) => g.options.length > 0)
+      .sort((a, b) => ((a.options[0].created_at ?? '') < (b.options[0].created_at ?? '') ? 1 : -1));
   }, [proposals]);
 
   const filteredGroups = groups.filter(({ head, archived }) => {
@@ -171,6 +193,77 @@ function ProposalsContent() {
         </div>
       </div>
 
+      {/* Design options — a property quoted several ways */}
+      {optionGroups.length > 0 && (
+        <div className="space-y-2">
+          {optionGroups.map((g) => {
+            const head = g.options[0];
+            const title = propertyName.get(head.property_id) ?? head.project_name ?? 'Property';
+            const comparison = buildOptionComparison(g.options.map((q) => ({ id: q.id, quote: q })), { termMonths });
+            const open = compareGroup === g.id;
+            return (
+              <Card key={g.id} className="px-5 py-3.5">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="min-w-0 flex-1 basis-64">
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                      <Layers size={14} className="text-slate-400" /> {title}
+                      <span className="text-xs font-normal text-slate-400">· {g.options.length} design option{g.options.length === 1 ? '' : 's'}</span>
+                    </p>
+                    <p className="mt-1 flex flex-wrap gap-1.5 text-xs text-slate-500">
+                      {g.options.map((q) => (
+                        <Link key={q.id} href={`/builder?project=${q.id}`} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 hover:border-slate-300 hover:bg-white">
+                          {q.option_label || q.project_name} · {fmtMoney(q.total_price)}
+                        </Link>
+                      ))}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setCompareGroup(open ? null : g.id)}>
+                      {open ? 'Hide comparison' : 'Compare'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        exportOptionsPDF({
+                          comparison,
+                          propertyName: title,
+                          accountName: accountName.get(head.crm_account_id) ?? '',
+                          recommendation,
+                          branding,
+                        })
+                      }
+                    >
+                      <FileDown size={13} /> Customer PDF
+                    </Button>
+                  </div>
+                </div>
+                {open && (
+                  <div className="mt-3">
+                    <OptionsComparison
+                      comparison={comparison}
+                      canViewMargin={canViewMargin}
+                      canWrite={canWrite}
+                      termMonths={termMonths}
+                      onTermChange={setTermMonths}
+                      recommendation={recommendation}
+                      onRecommendationChange={setRecommendation}
+                      onUpdateOption={async (id, patch) => {
+                        try {
+                          await setOptionMeta(id, patch);
+                        } catch (e) {
+                          setToast({ type: 'error', message: e.message });
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* List */}
       {filteredGroups.length === 0 && !loading ? (
         <EmptyState
@@ -194,6 +287,11 @@ function ProposalsContent() {
                         {p.project_name || 'Untitled proposal'}
                       </Link>
                       <QuoteLifecycleMenu quote={p} onTransition={(status) => handleTransition(p, status)} />
+                      {p.option_label && (
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700" title="Design option">
+                          {p.option_label}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 truncate text-xs text-slate-400">
                       {accountName.get(p.crm_account_id) ?? 'No account'}

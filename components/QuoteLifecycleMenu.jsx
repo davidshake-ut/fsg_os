@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, CheckCircle2, Ban, Undo2, GitBranch, ChevronDown } from 'lucide-react';
+import { Send, CheckCircle2, Ban, Undo2, GitBranch, ChevronDown, Copy } from 'lucide-react';
 import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import { cn } from '@/lib/utils';
 
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 // optional — surfaces that can't build a revision payload (the Proposals
 // list) simply don't offer it; revisions are made in the Builder, where the
 // full quote state lives.
-export default function QuoteLifecycleMenu({ quote, onTransition, onRevision = null }) {
+export default function QuoteLifecycleMenu({ quote, onTransition, onRevision = null, onCloneOption = null }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -39,6 +39,12 @@ export default function QuoteLifecycleMenu({ quote, onTransition, onRevision = n
   }
   if (status !== 'draft' && onRevision) {
     items.push({ label: `New Revision (v${nextVersion})`, Icon: GitBranch, run: onRevision });
+  }
+  // Design options (0068): fork this quote into a sibling on the same
+  // property to price the design another way. Builder only — it holds the
+  // full quote state.
+  if (onCloneOption) {
+    items.push({ label: 'Clone as design option…', Icon: Copy, run: onCloneOption });
   }
 
   if (items.length === 0) return <QuoteStatusBadge status={status} version={quote.version} />;

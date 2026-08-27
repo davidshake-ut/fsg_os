@@ -131,6 +131,12 @@ export function useProjects(session, company, user) {
       totalCost = null,
       version,
       parentQuoteId,
+      // Design options (0068) + the per-save summary the comparison reads —
+      // only sent when provided, like the lifecycle fields.
+      optionGroupId,
+      optionLabel,
+      optionNotes,
+      summary,
     }) => {
       // Lifecycle fields only sent when provided so plain saves never clobber
       // an existing status/version.
@@ -139,6 +145,10 @@ export function useProjects(session, company, user) {
         ...(totalCost != null ? { total_cost: totalCost } : {}),
         ...(version != null ? { version } : {}),
         ...(parentQuoteId !== undefined ? { parent_quote_id: parentQuoteId } : {}),
+        ...(optionGroupId !== undefined ? { option_group_id: optionGroupId } : {}),
+        ...(optionLabel !== undefined ? { option_label: optionLabel } : {}),
+        ...(optionNotes !== undefined ? { option_notes: optionNotes } : {}),
+        ...(summary !== undefined ? { summary } : {}),
       };
       if (!supabase) {
         const now = new Date().toISOString();
@@ -262,6 +272,82 @@ export function useProjects(session, company, user) {
     [supabase, refresh, projects, company, user]
   );
 
+  // Design options (0068): fork a quote into a labeled sibling on the same
+  // property. The source joins the group ("Option A" unless it already has
+  // a label); the clone starts as a fresh draft with the same design.
+  const cloneAsOption = useCallback(
+    async (source, { label }) => {
+      const groupId =
+        source.option_group_id ??
+        (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `grp_${Date.now().toString(16)}`);
+      const sourceLabel = source.option_label || 'Option A';
+      const now = new Date().toISOString();
+      const copy = {
+        project_name: source.project_name,
+        inputs: source.inputs ?? {},
+        camera_inputs: source.camera_inputs ?? {},
+        price_overrides: source.price_overrides ?? {},
+        custom_line_items: source.custom_line_items ?? [],
+        labor_roles: source.labor_roles ?? [],
+        crm_account_id: source.crm_account_id ?? null,
+        property_id: source.property_id ?? null,
+        total_price: source.total_price ?? null,
+        total_cost: source.total_cost ?? null,
+        summary: source.summary ?? null,
+        status: 'draft',
+        version: 1,
+        parent_quote_id: null,
+        option_group_id: groupId,
+        option_label: label,
+        option_notes: null,
+      };
+      if (!supabase) {
+        const list = readLocalArray().map((p) =>
+          p.id === source.id && !p.option_group_id ? { ...p, option_group_id: groupId, option_label: sourceLabel } : p
+        );
+        const saved = { id: newLocalId(), ...copy, created_at: now, updated_at: now };
+        list.push(saved);
+        list.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+        writeLocal(list);
+        return saved;
+      }
+      if (!source.option_group_id) {
+        const { error } = await supabase
+          .from('saved_projects')
+          .update({ option_group_id: groupId, option_label: sourceLabel })
+          .eq('id', source.id);
+        if (error) throw error;
+      }
+      const { data, error } = await supabase
+        .from('saved_projects')
+        .insert({ ...copy, company_id: company?.id ?? null, created_by: user?.id ?? null, updated_at: now })
+        .select()
+        .single();
+      if (error) throw error;
+      await refresh();
+      return data;
+    },
+    [supabase, company, user, refresh]
+  );
+
+  // The label / customer note on one option.
+  const setOptionMeta = useCallback(
+    async (id, { optionLabel, optionNotes }) => {
+      const patch = {
+        ...(optionLabel !== undefined ? { option_label: optionLabel } : {}),
+        ...(optionNotes !== undefined ? { option_notes: optionNotes } : {}),
+      };
+      if (!supabase) {
+        writeLocal(readLocalArray().map((p) => (p.id === id ? { ...p, ...patch } : p)));
+        return;
+      }
+      const { error } = await supabase.from('saved_projects').update(patch).eq('id', id);
+      if (error) throw error;
+      await refresh();
+    },
+    [supabase, refresh]
+  );
+
   const deleteProject = useCallback(
     async (id) => {
       if (!supabase) {
@@ -274,5 +360,5 @@ export function useProjects(session, company, user) {
     [supabase, refresh]
   );
 
-  return { projects, loading, loadError, refresh, loadProject, saveProject, setQuoteStatus, deleteProject };
+  return { projects, loading, loadError, refresh, loadProject, saveProject, setQuoteStatus, deleteProject, cloneAsOption, setOptionMeta };
 }
