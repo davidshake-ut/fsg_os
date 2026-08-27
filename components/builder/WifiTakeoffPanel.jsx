@@ -87,7 +87,12 @@ export default function WifiTakeoffPanel({ inputs, setInputs, products = [] }) {
             onChange={(v) => setTakeoff({ inUnitSwitchForMultiAp: v })}
             label="In-unit switch for units with 2+ APs"
           />
-          {settings.inUnitSwitchForMultiAp && (
+          <Toggle
+            checked={!!settings.inUnitSwitchEveryUnit}
+            onChange={(v) => setTakeoff({ inUnitSwitchEveryUnit: v })}
+            label="In-unit switch in every unit (private LAN behind each ONT)"
+          />
+          {(settings.inUnitSwitchForMultiAp || settings.inUnitSwitchEveryUnit) && (
             <Select value={settings.inUnitSwitchSku} onChange={(e) => setTakeoff({ inUnitSwitchSku: e.target.value })}>
               <option value="">In-unit switch: count only (no product yet)</option>
               {switchProducts.map((p) => (

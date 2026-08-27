@@ -477,7 +477,8 @@ function Calculator() {
       const calc = getCalculator(t.id);
       if (!calc?.laborHours || calc.legacy) continue;
       const value = { ...(calc.defaults ?? {}), ...(inputs.techCalc?.[t.id] ?? {}) };
-      list.push(calc.laborHours(value, techBoms[t.id]));
+      // Phase 8: PON provisioning hours read the coverage rules from inputs.
+      list.push(calc.laborHours(value, techBoms[t.id], { inputs }));
     }
     return list;
   }, [techTabs, inputs, techBoms]);

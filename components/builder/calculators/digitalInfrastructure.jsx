@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, Plus, Trash2, Upload, MapPin, Sun, Cable, Server, Boxes } from 'lucide-react';
-import { Card, Button, Field, NumberInput, Select, Toggle } from '@/components/ui/primitives';
+import { Building2, Plus, Trash2, Upload, MapPin, Sun, Cable, Server, Boxes, Network } from 'lucide-react';
+import { Card, Button, Field, NumberInput, Select, Toggle, Segmented } from '@/components/ui/primitives';
 import {
   PROPERTY_MODEL_DEFAULTS,
   normalizePropertyModel,
@@ -20,6 +20,9 @@ import { currency } from '@/lib/format';
 import UnitScheduleCard from '@/components/builder/UnitScheduleCard';
 import PropertyImportModal from '@/components/builder/PropertyImportModal';
 import CablingCard from '@/components/builder/CablingCard';
+import PonCard from '@/components/builder/PonCard';
+import { ARCHITECTURES, ARCHITECTURE_LABELS } from '@/lib/ponModel';
+import { effectiveKitSkus } from '@/lib/ponTakeoff';
 import { cn } from '@/lib/utils';
 
 // Digital Infrastructure calculator — Phase 1 of the complex-project
@@ -143,14 +146,18 @@ function KitsSection({ model, onChange, products }) {
   );
   const setKits = (patch) => onChange({ kits: { ...kits, ...patch } });
   const setHours = (key, v) => setKits({ installHours: { ...kits.installHours, [key]: v } });
+  const eff = effectiveKitSkus(model); // the FTTU variants under XGS-PON (Phase 8)
   const lines = computeKitLines(model, products);
   const cost = lines.reduce((s, l) => s + l.qty * l.cost, 0);
   const hours = infrastructureLaborHours(model)['install-tech'];
 
   return (
     <Section title="Kits" icon={Boxes} action={<span className="text-xs tabular-nums text-slate-500">{currency(cost)} cost</span>}>
-      <KitSelect label="MDF room kit" value={kits.mdfSku} onChange={(v) => setKits({ mdfSku: v })} options={options} />
-      <KitSelect label="IDF room kit" value={kits.idfSku} onChange={(v) => setKits({ idfSku: v })} options={options} />
+      <KitSelect label="MDF room kit" value={eff.mdfSku} onChange={(v) => setKits({ mdfSku: v })} options={options} />
+      <KitSelect label="IDF room kit" value={eff.idfSku} onChange={(v) => setKits({ idfSku: v })} options={options} />
+      {model.architecture === 'xgs_pon' && (eff.mdfSku !== kits.mdfSku || eff.idfSku !== kits.idfSku) && (
+        <p className="text-[11px] text-violet-700">FTTU kit variants follow the XGS-PON architecture; pick a kit to override.</p>
+      )}
       <Toggle checked={kits.mediaPanelPerUnit} onChange={(v) => setKits({ mediaPanelPerUnit: v })} label="Media panel in every unit" />
       {kits.mediaPanelPerUnit && (
         <KitSelect label="Media panel kit" value={kits.mediaPanelSku} onChange={(v) => setKits({ mediaPanelSku: v })} options={options} />
@@ -198,6 +205,19 @@ function InputPanel({ value, onChange, products = [] }) {
             ))}
           </div>
         )}
+      </Section>
+
+      <Section title="Architecture" icon={Network}>
+        <Segmented
+          value={model.architecture}
+          onChange={(v) => onChange({ architecture: v })}
+          options={ARCHITECTURES.map((a) => ({ value: a, label: ARCHITECTURE_LABELS[a] }))}
+        />
+        <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+          {model.architecture === 'xgs_pon'
+            ? 'Lit fiber to every unit: an ONT at each in-unit AP with a PoE injector, splitters in the FTTU IDF kits, an OLT at the MDF. Size it on the XGS-PON card; the closets carry no PoE switches for unit APs.'
+            : 'PoE switches in every closet feed the unit APs over Cat6; dark fiber to the units stays available for later.'}
+        </p>
       </Section>
 
       {model.rooms.length > 0 && <KitsSection model={model} onChange={onChange} products={products} />}
@@ -474,6 +494,9 @@ function Surface({ value, onChange, products = [], ctx = null }) {
     <div className="space-y-4">
       <PropertyLayoutCard model={model} totals={totals} onChange={onChange} onImport={() => setImportOpen(true)} products={products} />
       <UnitScheduleCard model={model} totals={totals} onChange={onChange} onImport={() => setImportOpen(true)} />
+      {model.rooms.length > 0 && model.architecture === 'xgs_pon' && (
+        <PonCard model={model} onChange={onChange} products={products} inputs={ctx?.inputs ?? null} canViewMargin={ctx?.canViewMargin ?? true} />
+      )}
       {model.rooms.length > 0 && (
         <CablingCard model={model} onChange={onChange} products={products} inputs={ctx?.inputs ?? null} canViewMargin={ctx?.canViewMargin ?? true} />
       )}
@@ -499,5 +522,7 @@ export const digitalInfrastructureCalculator = {
   // per kit, with the install hours they carry. Phase 4: structured-cabling
   // runs as service lines (in-unit drops follow inputs.wifiTakeoff).
   compute: (value, { products, inputs = null }) => computeInfrastructureLines(value, products, { inputs }),
-  laborHours: (value) => infrastructureLaborHours(value),
+  // Phase 8: the PON provisioning hours need the coverage rules (inputs)
+  // for the ONT count — the Builder passes { inputs } as the third argument.
+  laborHours: (value, _bom, ctx = {}) => infrastructureLaborHours(value, ctx),
 };

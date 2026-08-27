@@ -88,7 +88,7 @@ export default function CablingCard({ model, onChange, products = [], inputs = n
                 </td>
                 <td className="px-3 py-1.5">
                   <div className={cn('font-medium', run.enabled ? 'text-slate-700' : 'text-slate-400')}>{type.label}</div>
-                  <div className="text-[11px] text-slate-400">{type.hint}</div>
+                  <div className="text-[11px] text-slate-400">{run.hint ?? type.hint}</div>
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{run.derived}</td>
                 <td className="px-2 py-1.5 text-right">

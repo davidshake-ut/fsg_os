@@ -22,6 +22,7 @@ import { normalizePricingPolicy, applyPricingPolicy, priceWithMarkup } from '../
 import { buildOptionComparison, customerRows, buildQuoteSummary } from '../lib/optionComparison';
 import { DEFAULT_CARRIER_CIRCUITS, circuitItem, supportFeeItem, licenseItem, computeRecurring } from '../lib/recurring';
 import { computeFinancing, monthlyPayment } from '../lib/financing';
+import { derivePon, computePonLines } from '../lib/ponTakeoff';
 import { MULTIFAMILY_TAKEOFF_TASKS } from '../lib/laborTasks';
 import { estimateLaborHours } from '../lib/estimateLaborHours';
 import { calculateLabor } from '../lib/calculateLabor';
@@ -60,6 +61,22 @@ function importMuzeProperty({ amenityRooms = null } = {}) {
     })),
   };
 }
+
+// OPT 4's Cambium Wi-Fi 7 gear, tagged for the takeoff engine. The
+// workbook lists each cnMaestro X subscription as its own row; here they
+// link to their device as 5-year licenses (SKUs kept clear of the base
+// catalog's Cambium entries so nothing double-resolves).
+const MUZE_CAMBIUM_OPT4 = [
+  { sku: 'CNM-EX3024-5', desc: 'cnMaestro X 5-year — EX3024', category: 'Subscription', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 118.8, price: 172.85 },
+  { sku: 'CNM-X7-5', desc: 'cnMaestro X 5-year — X7-35X', category: 'Subscription', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 66, price: 96.03 },
+  { sku: 'CNM-XV2-2T-5', desc: 'cnMaestro X 5-year — XV2-2T', category: 'Subscription', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 49.5, price: 72.02 },
+  { sku: 'CNM-EX2016-5', desc: 'cnMaestro X 5-year — EX20xx', category: 'Subscription', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 59.4, price: 86.43 },
+  { sku: 'NSE4000-GW', desc: 'Cambium NSE 4000 gateway', category: 'Gateway', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 1180, price: 1695, quality_tier: 'better' },
+  { sku: 'EX3024-CORE', desc: 'Cambium EX3024F core switch', category: 'Aggregate Switch', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 1495.52, price: 2175.98, quality_tier: 'better', license_sku_5yr: 'CNM-EX3024-5' },
+  { sku: 'X7-35X-0A00-US', desc: 'Cambium X7-35X Wi-Fi 7 AP', category: 'Access Point', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 330.72, price: 481.2, mount_type: 'ceiling', quality_tier: 'better', poe_watts: 21, license_sku_5yr: 'CNM-X7-5' },
+  { sku: 'XV2-23T0A00-US', desc: 'Cambium XV2-23T outdoor AP', category: 'Access Point', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 255, price: 371.03, mount_type: 'outdoor', quality_tier: 'better', poe_watts: 15, license_sku_5yr: 'CNM-XV2-2T-5' },
+  { sku: 'EX2028-P', desc: 'Cambium EX2028-P 24-port PoE switch', category: 'Switch', technology: 'managed_wifi', vendor: 'Cambium Networks', cost: 684.32, price: 1645, quality_tier: 'better', port_count: 28, poe_budget_watts: 400, license_sku_5yr: 'CNM-EX2016-5' },
+];
 
 // The Ruckus gear the workbook prices, tagged the way the catalog (0061)
 // expects: AP draw 22 W; 8 / 24 / 48-port PoE budgets 124 / 370 / 740 W.
@@ -766,5 +783,118 @@ describe('Builder engine parity with the Muze workbook (one todo per phase)', ()
       expect(c.financing.upliftNeeded).toBeCloseTo(0.12 * 36 * c.financing.monthly36, -1);
     });
   });
-  it.todo('Phase 8: XGS-PON reproduces OPT 4 hardware 404,860.26 → 578,929.23 and wiring 196,528 → 330,951.20');
+  it('Phase 8: XGS-PON reproduces OPT 4 — the PON gear, the FTTU racks, the amenity switch, and wiring 196,528 → 330,951.20', () => {
+    const o4 = MUZE.options[3];
+    const rows = o4.hardware[0].rows;
+    const row = (role) => rows.find((r) => r.role === role);
+    const wrow = (run) => o4.wiring.rows.find((r) => r.run === run);
+    const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+
+    // The property under XGS-PON: the workbook's typed 13 amenity rooms, its
+    // 4 townhome racks (ONUs), and its judgment count of 18 IDF links.
+    const property = normalizePropertyModel({
+      ...importMuzeProperty({ amenityRooms: 13 }),
+      architecture: 'xgs_pon',
+      pon: { onuCount: 4 },
+      cabling: { enabled: true, runs: { idfLinks: { qty: 18 } } },
+    });
+    const wifiSettings = { enabled: true, apsPerClass: { 3: 2, th: 2 }, redundantGateway: true, itemizeAccessories: false };
+    const inputs = { ...DEFAULT_INPUTS, includeWifi: true, wifiQuality: 'better', deploymentType: 'ceiling', licenseTerm: 5, miscHwPercent: 5, includeShipping: false, wifiTakeoff: wifiSettings };
+    // OPT 4 prices with its own markups: 60% gateway; 40% AP, switch, core,
+    // racks; 50% PON gear and its uplink optics; 25% misc.
+    const policy = normalizePricingPolicy({
+      mode: 'costPlus',
+      markupByCategory: { Gateway: 60, 'Aggregate Switch': 40, 'Access Point': 40, Switch: 40, Subscription: 40, Rack: 40, Enclosure: 40, OLT: 50, ONT: 50, 'PON Optic': 50, 'PoE Injector': 50, 'Fiber Module': 50, Miscellaneous: 25 },
+    });
+    const priced = applyPricingPolicy(rollUpAssemblies(mergeProducts([])).concat(MUZE_CAMBIUM_OPT4), policy);
+
+    // ── PON sizing: 438 ONTs (one per in-unit AP), 14 × 1:32 splitters, one 16-port OLT.
+    const pon = derivePon(property, { inputs });
+    expect(pon).toMatchObject({ onts: 438, splitters: 14, olts: 1, oltPsus: 2, ponOptics: 14, uplinkOptics: 2, injectors: 438, onus: 4 });
+    expect(pon.onts).toBe(row('XGS-PON indoor ONT').qty);
+    expect(pon.ponOptics).toBe(row('XGS-PON SC/APC').qty);
+    expect(pon.onus).toBe(row('XGS-PON ONU').qty);
+
+    // ── PON gear row for row: cost exact; price exact except the ONU, which
+    // the workbook marks up 40% where its ONT category carries 50%.
+    const ponLines = computePonLines(property, priced, { inputs });
+    const ponSheet = rows.slice(11, 21);
+    expect(ponSheet.map((r) => r.role)).toEqual(['16-port XGS-PON', 'OLT AC PWR', 'XGS-PON SC/APC', 'OLT 5-YEAR', '10G SFP+ LR  uplinks', 'XGS-PON indoor ONT', 'cnM 5-Year Sub', 'PoE 60W injector', 'AC CORD FOR POE', 'XGS-PON ONU']);
+    expect(ponLines.map((l) => l.qty)).toEqual(ponSheet.map((r) => r.qty));
+    expect(ponLines.map((l) => l.cost)).toEqual(ponSheet.map((r) => r.eaCost));
+    expect(sum(ponLines, (l) => l.qty * l.cost)).toBeCloseTo(sum(ponSheet, (r) => r.qty * r.eaCost), 2); // 100,167.26
+    expect(sum(ponLines.filter((l) => l.role !== 'onu'), (l) => l.qty * l.price)).toBeCloseTo(
+      sum(ponSheet.filter((r) => r.role !== 'XGS-PON ONU'), (r) => r.qty * r.eaCost * (1 + r.markup)),
+      2
+    ); // 149,350.89
+
+    // ── FTTU racks: the architecture swaps the default kits for their FTTU variants.
+    const kits = computeKitLines(property, priced).filter((l) => l.category === 'Rack');
+    expect(kits.map((l) => [l.sku, l.qty])).toEqual([['KIT-MDF-22U-FTTU', 1], ['KIT-IDF-12U-FTTU', 18]]);
+    const rackCost = row('MDF FTTU RACK').eaCost + 18 * row('IDF FTTU RACK').eaCost;
+    expect(sum(kits, (l) => l.qty * l.cost)).toBeCloseTo(rackCost, 2); // 76,220.98
+    expect(sum(kits, (l) => l.qty * l.price)).toBeCloseTo(rackCost * 1.4, 2); // 106,709.37
+
+    // ── Wi-Fi engine under PON: gateway pair, core switch, 438 / 13 / 9 APs
+    // with their subscriptions, ONE switch for the amenity + outdoor APs, no
+    // townhome switches, no fiber links. The 22 switch-fed APs exceed a
+    // 24-port's PoE budget under the takeoff's rules; the workbook still typed
+    // one 24-port "for amenity use" — a room override, like OPT 1's closets.
+    const mdfRoom = buildWifiTakeoff(property, wifiSettings, { kitsQuoted: true }).rooms.find((r) => r.isMdf);
+    const takeoff = buildWifiTakeoff(property, { ...wifiSettings, roomOverrides: { [mdfRoom.id]: { s8: 0, s24: 1, s48: 0 } } }, { kitsQuoted: true });
+    expect(takeoff.architecture).toBe('xgs_pon');
+    expect(takeoff.unitAPs).toBe(438);
+    const bom = calculateBOM(inputs, {}, {}, priced, [], null, takeoff);
+    expect(bom.ponMode).toBe(true);
+    expect(bom.totalAPs).toBe(438 + 13 + 9);
+    expect({ s8: bom.idfSwitches8, s24: bom.idfSwitches24, s48: bom.idfSwitches48 }).toEqual({ s8: 0, s24: 1, s48: 0 });
+    expect(bom.idfPlan.filter((p) => !p.isMdf).every((p) => p.aps === 0 && p.s8 + p.s24 + p.s48 === 0)).toBe(true);
+    expect(bom.items.some((i) => i.sku === 'SFP-10G-SR')).toBe(false);
+    expect(bom.inUnitSwitches).toBe(38); // the coverage rule; the workbook typed 428 (drift)
+    const line = (sku, noteRe = null) => bom.items.filter((i) => i.sku === sku && (!noteRe || noteRe.test(i.note)));
+    expect(line('NSE4000-GW')[0]).toMatchObject({ qty: 2 });
+    expect(line('NSE4000-GW')[0].totalPrice).toBeCloseTo(row('NSE4000').qty * row('NSE4000').eaCost * 1.6, 6); // 3,776
+    expect(line('X7-35X-0A00-US', /Guest/)[0].qty).toBe(438);
+    expect(line('X7-35X-0A00-US', /Amenity/)[0].qty).toBe(13);
+    expect(line('XV2-23T0A00-US')[0].qty).toBe(9); // the list; the workbook typed 8 (drift)
+    expect(line('EX2028-P')[0].qty).toBe(1);
+    // Row for row against the sheet's Wi-Fi block with its two typed drifts
+    // normalized: outdoor 8 → the list's 9 (rows 7–8) and the amenity
+    // switch's 4 subscriptions → 1 (row 10).
+    const core = bom.items.filter((i) => i.category !== 'Miscellaneous');
+    const sheetCore = rows.slice(0, 11).map((r, i) => (i === 7 || i === 8 ? { ...r, qty: 9 } : i === 10 ? { ...r, qty: 1 } : r));
+    expect(sum(core, (i) => i.totalCost)).toBeCloseTo(sum(sheetCore, (r) => r.qty * r.eaCost), 2);
+    expect(sum(core, (i) => i.totalPrice)).toBeCloseTo(sum(sheetCore, (r) => r.qty * r.eaCost * (1 + r.markup)), 2);
+
+    // ── Wiring: the derived runs match the FTTU option — Cat6 to the unit
+    // drops to zero, fiber stays, in-unit Cat6 follows the 438 APs, townhome
+    // 16, backbone 5 — with the workbook's 18 IDF links entered; with the
+    // media-panel kit the block reproduces to the cent.
+    const cabling = computeCablingLines(property, priced, { inputs });
+    const byKey = Object.fromEntries(cabling.map((l) => [l.runKey, l]));
+    expect(byKey.unitCat6).toBeUndefined();
+    expect(byKey.unitFiber.qty).toBe(wrow('IDF TO UNIT (FIBER)').qty); // 400
+    expect(byKey.inUnitCat6.qty).toBe(wrow('IN UNIT (CAT6)').qty); // 438
+    expect(byKey.backbone.qty).toBe(wrow('MDF TO IDFs').qty); // 5
+    expect(byKey.townhomeDrops.qty).toBe(wrow('TOWNHOME').qty); // 16
+    expect(byKey.commonDrops.qty).toBe(22);
+    const panel = computeKitLines(property, priced).find((l) => l.sku === 'KIT-MEDIA-PANEL');
+    const wt = cablingTotals(cabling);
+    expect(wt.cost + panel.qty * panel.cost).toBeCloseTo(o4.wiring.expected.cost, 2); // 196,528
+    expect(wt.price + panel.qty * panel.price).toBeCloseTo(o4.wiring.expected.price, 2); // 330,951.20
+
+    // ── Labor: the PON adds provisioning per ONT and activation per splitter
+    // to Digital Infrastructure's hours (the workbook types 400 ONT
+    // provisionings against its 438 ONTs — drift).
+    expect(infrastructureLaborHours(property, { inputs })['install-tech']).toBe(16 + 18 * 8 + 400 + 438 * 0.5 + 14 * 0.5); // 786
+    expect(o4.labor.rows.find((r) => r.task === 'PON Activation').qty).toBe(pon.splitters);
+
+    // ── The FTTU hardware table: engine (Wi-Fi + PON + racks) against the
+    // sheet with its typed-only rows set aside — 428 extra in-unit switches,
+    // 44 SFP modules, and the misc allowance (whose base differs).
+    const engineHw = sum(core, (i) => i.totalCost) + sum(ponLines, (l) => l.qty * l.cost) + sum(kits, (l) => l.qty * l.cost);
+    const sheetHw = sum(sheetCore, (r) => r.qty * r.eaCost) + sum(ponSheet, (r) => r.qty * r.eaCost) + rackCost;
+    expect(engineHw).toBeCloseTo(sheetHw, 2);
+    expect(o4.hardware[0].expected.cost).toBeCloseTo(404860.26, 2);
+  });
 });
