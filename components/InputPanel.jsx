@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import QuoteStatusBadge from '@/components/QuoteStatusBadge';
 import { useModuleConfigs } from '@/hooks/useModuleConfigs';
+import WifiTakeoffPanel from '@/components/builder/WifiTakeoffPanel';
 
 function Section({ title, children }) {
   return (
@@ -293,8 +294,12 @@ export function CustomerPicker({ accounts = [], crmAccountId, onSelectAccount, o
 
 // The Wi-Fi calculator's design inputs. Property/customer/technology fields
 // live on the Property Overview page (components/builder/PropertyOverview.jsx).
-export default function InputPanel({ inputs, setInputs, term }) {
+export default function InputPanel({ inputs, setInputs, term, products = [] }) {
   const set = (field, value) => setInputs((prev) => ({ ...prev, [field]: value }));
+  // Takeoff mode (inputs.wifiTakeoff.enabled): unit / IDF counts come from
+  // the property model, so their typed fields step aside.
+  const takeoffOn = !!inputs.wifiTakeoff?.enabled;
+  const listsOn = takeoffOn && (inputs.wifiTakeoff?.useLocationLists ?? true);
 
   // Legacy saved quotes carry 'hallway' / 'inroom' — show them as their
   // modern equivalents (hallway APs were ceiling-mount, in-room were wall).
@@ -305,6 +310,7 @@ export default function InputPanel({ inputs, setInputs, term }) {
 
   return (
     <div className="space-y-3">
+      <WifiTakeoffPanel inputs={inputs} setInputs={setInputs} products={products} />
       <Section title="Network Design">
         <Field label="Wi-Fi Generation">
           <Segmented
@@ -353,39 +359,55 @@ export default function InputPanel({ inputs, setInputs, term }) {
             ]}
           />
         </Field>
-        <Field label={term.unitLabel}>
-          <NumberInput value={inputs.numberOfRooms} onChange={(v) => set('numberOfRooms', v)} min={0} />
-        </Field>
-        <Field label={term.apRatioLabel} sub={`1 AP per N ${term.apRatioSub.replace('per ', '')}`}>
-          <Select
-            value={inputs.apToRoomRatio}
-            onChange={(e) => set('apToRoomRatio', Number(e.target.value))}
-          >
-            {[1, 2, 3, 4].map((n) => (
-              <option key={n} value={n}>
-                1 : {n}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Number of IDFs">
-          <NumberInput value={inputs.numberOfIDFs} onChange={(v) => set('numberOfIDFs', v)} min={1} />
-        </Field>
+        {takeoffOn ? (
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            Units, APs per unit, and telecom rooms come from the property model (Design Source above).
+          </p>
+        ) : (
+          <>
+            <Field label={term.unitLabel}>
+              <NumberInput value={inputs.numberOfRooms} onChange={(v) => set('numberOfRooms', v)} min={0} />
+            </Field>
+            <Field label={term.apRatioLabel} sub={`1 AP per N ${term.apRatioSub.replace('per ', '')}`}>
+              <Select
+                value={inputs.apToRoomRatio}
+                onChange={(e) => set('apToRoomRatio', Number(e.target.value))}
+              >
+                {[1, 2, 3, 4].map((n) => (
+                  <option key={n} value={n}>
+                    1 : {n}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Number of IDFs">
+              <NumberInput value={inputs.numberOfIDFs} onChange={(v) => set('numberOfIDFs', v)} min={1} />
+            </Field>
+          </>
+        )}
       </Section>
 
       <Section title="Additional AP Locations">
         <Field label={term.commonAreaLabel}>
           <NumberInput value={inputs.meetingRooms} onChange={(v) => set('meetingRooms', v)} />
         </Field>
-        <Field label="Public Area APs">
-          <NumberInput value={inputs.publicAreaAPs} onChange={(v) => set('publicAreaAPs', v)} />
-        </Field>
+        {listsOn ? (
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            Public-area and outdoor APs come from the property&apos;s amenity and outdoor location lists.
+          </p>
+        ) : (
+          <Field label="Public Area APs">
+            <NumberInput value={inputs.publicAreaAPs} onChange={(v) => set('publicAreaAPs', v)} />
+          </Field>
+        )}
         <Field label="Back-of-House APs">
           <NumberInput value={inputs.bohAPs} onChange={(v) => set('bohAPs', v)} />
         </Field>
-        <Field label="Outdoor APs">
-          <NumberInput value={inputs.outdoorAPs} onChange={(v) => set('outdoorAPs', v)} />
-        </Field>
+        {!listsOn && (
+          <Field label="Outdoor APs">
+            <NumberInput value={inputs.outdoorAPs} onChange={(v) => set('outdoorAPs', v)} />
+          </Field>
+        )}
         <Field label={term.wiredLabel}>
           <NumberInput
             value={inputs.guestRoomWiredConnections}

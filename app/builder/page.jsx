@@ -26,6 +26,7 @@ import QuoteLifecycleMenu from '@/components/QuoteLifecycleMenu';
 import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { calculateBOM } from '@/lib/calculateBOM';
+import { buildWifiTakeoff } from '@/lib/wifiTakeoff';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
 import { calculateTechBOM } from '@/lib/calculateTechBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
@@ -171,6 +172,15 @@ function Calculator() {
     ? isSuperAdmin || (role === 'company_admin' && !!company)
     : true;
 
+  // Takeoff mode: the Wi-Fi design comes from the Digital Infrastructure
+  // property model plus this quote's coverage settings (inputs.wifiTakeoff).
+  const wifiTakeoff = useMemo(
+    () =>
+      inputs.wifiTakeoff?.enabled
+        ? buildWifiTakeoff(inputs.techCalc?.digital_infrastructure, inputs.wifiTakeoff)
+        : null,
+    [inputs.wifiTakeoff, inputs.techCalc]
+  );
   const bom = useMemo(
     () =>
       calculateBOM(
@@ -179,9 +189,10 @@ function Calculator() {
         {}, // legacy serviceOverrides slot — ignored by the engine
         allProducts,
         customLineItems.filter((c) => c.system === 'wifi'),
-        catalogSnapshot
+        catalogSnapshot,
+        wifiTakeoff
       ),
-    [inputs, priceOverrides, allProducts, customLineItems, catalogSnapshot]
+    [inputs, priceOverrides, allProducts, customLineItems, catalogSnapshot, wifiTakeoff]
   );
 
   // Per-technology enablement (registry ids). Legacy quotes derive it from
@@ -1074,6 +1085,7 @@ function Calculator() {
     addCustomLine, updateCustomLine, removeCustomLine,
     discardBomChanges,
     products: allProducts,
+    wifiTakeoff,
   };
 
   // --brand/--brand-text are set app-wide by components/BrandingVars.jsx —

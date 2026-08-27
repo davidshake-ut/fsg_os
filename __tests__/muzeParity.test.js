@@ -10,6 +10,36 @@ import {
   propertyTotals,
   orderedLevels,
 } from '../lib/propertyModel';
+import { buildWifiTakeoff } from '../lib/wifiTakeoff';
+import { calculateBOM } from '../lib/calculateBOM';
+import { DEFAULT_INPUTS } from '../lib/defaults';
+import { BASE_PRODUCTS } from '../lib/catalog';
+
+// The Muze property as the Builder would hold it after the Phase 1 import,
+// plus the takeoff's named lists (14 amenity rooms listed, 9 outdoor APs).
+function importMuzeProperty() {
+  const rows = parseDelimited(muzeUnitSchedulePaste());
+  const model = normalizePropertyModel(propertyFromImport(parseUnitSchedule(rows, guessUnitScheduleMapping(rows))));
+  return {
+    ...model,
+    amenityLocations: MUZE.takeoff.amenityLocations.map((name, i) => ({ id: `am${i}`, name, qty: 1 })),
+    outdoorLocations: MUZE.takeoff.outdoorLocations.map((name, i) => ({
+      id: `out${i}`,
+      name,
+      qty: Number((/X\s?(\d+)/i.exec(name) || [])[1] || 1),
+    })),
+  };
+}
+
+// The Ruckus gear the workbook prices, tagged the way the catalog (0061)
+// expects: AP draw 22 W; 8 / 24 / 48-port PoE budgets 124 / 370 / 740 W.
+const MUZE_RUCKUS = [
+  { sku: 'R650', desc: 'Ruckus R650 Wi-Fi 6 AP', category: 'Access Point', technology: 'managed_wifi', vendor: 'Ruckus', cost: 418.98, price: 1305, mount_type: 'ceiling', quality_tier: 'better', poe_watts: 22 },
+  { sku: 'ICX-8100-C08PF', desc: 'ICX 8100 8-port PoE', category: 'Switch', technology: 'managed_wifi', vendor: 'Ruckus', cost: 437.69, price: 1980, quality_tier: 'better', port_count: 8, poe_budget_watts: 124 },
+  { sku: 'ICX-8100-24P', desc: 'ICX 8100 24-port PoE', category: 'Switch', technology: 'managed_wifi', vendor: 'Ruckus', cost: 739.61, price: 4015, quality_tier: 'better', port_count: 24, poe_budget_watts: 370 },
+  { sku: 'ICX-8100-48PFX', desc: 'ICX 8100 48-port PoE', category: 'Switch', technology: 'managed_wifi', vendor: 'Ruckus', cost: 1458.95, price: 7700, quality_tier: 'better', port_count: 48, poe_budget_watts: 740 },
+  { sku: 'TPL-4PORT', desc: 'TP-Link 4-port unmanaged', category: 'Switch', technology: 'managed_wifi', vendor: 'TP-Link', cost: 100, price: 150 },
+];
 
 // Phase 0 of the complex-project Builder initiative (plan:
 // C:\Users\david\.claude\plans\muze-to-builder.md). These tests prove the
@@ -334,7 +364,56 @@ describe('Builder engine parity with the Muze workbook (one todo per phase)', ()
     expect(model.buildings.map((b) => b.name)).toEqual(['Building 1', 'Building 2', 'Building 3', 'Building 4', 'Townhomes']);
     expect(model.rooms).toHaveLength(20); // one telecom room per level; the takeoff's 18 IDF + MDF is a later merge
   });
-  it.todo('Phase 2: calculateBOM with an idfPlan reproduces 400 / 438 APs, 38 in-unit switches, 20×8 / 12×24 / 11×48');
+  it('Phase 2: coverage rules + per-room sizing reproduce 400 / 438 APs, 38 in-unit switches, and the 20×8 / 12×24 / 11×48 plan', () => {
+    const property = importMuzeProperty();
+    const levels = orderedLevels(property);
+    const roomOfFixtureLevel = Object.fromEntries(MUZE.levels.map((l, i) => [l.id, levels[i].roomId]));
+
+    // Coverage: baseline 1 AP per unit; extended doubles 3-bedroom + townhomes.
+    const baseline = buildWifiTakeoff(property, { enabled: true });
+    expect(baseline.unitAPs).toBe(MUZE.takeoff.coverage.baseline.totalAPs); // 400
+    const extended = buildWifiTakeoff(property, { enabled: true, apsPerClass: { 3: 2, th: 2 }, inUnitSwitchSku: 'TPL-4PORT' });
+    expect(extended.unitAPs).toBe(MUZE.takeoff.coverage.extended.totalAPs); // 438
+    expect(extended.multiApUnits).toBe(38);
+    expect(extended.townhomeUnits).toBe(16);
+    const apsByFixtureLevel = Object.fromEntries(MUZE.levels.map((l, i) => [l.id, extended.apsByLevel[levels[i].id]]));
+    expect(apsByFixtureLevel).toEqual(MUZE.takeoff.coverage.extended.apsByLevel);
+    expect(extended.amenityAPs).toBe(14); // the workbook types 13 — documented drift
+    expect(extended.outdoorAPs).toBe(9);
+
+    // Per-room switch sizing against the Ruckus PoE budgets.
+    const inputs = { ...DEFAULT_INPUTS, includeWifi: true, wifiQuality: 'better', deploymentType: 'ceiling', includeShipping: false };
+    const products = [...BASE_PRODUCTS, ...MUZE_RUCKUS];
+    const computed = calculateBOM(inputs, {}, {}, products, [], null, extended);
+    expect(computed.guestRoomAPs).toBe(438);
+    expect(computed.totalAPs).toBe(438 + 14 + 9);
+    expect(computed.inUnitSwitches).toBe(38);
+    expect(computed.items.find((i) => i.sku === 'TPL-4PORT').qty).toBe(38);
+    expect(computed.idfCount).toBe(18); // 19 telecom rooms less the MDF
+    expect(computed.needsAggSwitch).toBe(true);
+    // Computed: 12 × 24 and 11 × 48 exactly as the workbook, plus one 8-port per townhome.
+    expect({ s8: computed.idfSwitches8, s24: computed.idfSwitches24, s48: computed.idfSwitches48 }).toEqual({ s8: 16, s24: 12, s48: 11 });
+    // Every non-townhome room matches the workbook's hand-picked 24 / 48 mix …
+    for (const l of MUZE.levels.filter((x) => x.id !== 'th')) {
+      const room = computed.idfPlan.find((p) => p.roomId === roomOfFixtureLevel[l.id]);
+      const plan = MUZE.takeoff.switchPlan[l.id];
+      expect({ level: l.id, s24: room.s24, s48: room.s48 }).toEqual({ level: l.id, s24: plan.s24, s48: plan.s48 });
+    }
+    // … and the four Building 3 rooms carry a hand-added 8-port (a second
+    // closet for cable distance), which is exactly what room overrides are for.
+    const roomOverrides = {};
+    for (const l of MUZE.levels.filter((x) => x.building === 3 && x.level !== 'BSMT')) {
+      roomOverrides[roomOfFixtureLevel[l.id]] = MUZE.takeoff.switchPlan[l.id];
+    }
+    const overridden = calculateBOM(inputs, {}, {}, products, [], null, buildWifiTakeoff(property, { enabled: true, apsPerClass: { 3: 2, th: 2 }, roomOverrides }));
+    expect({ s8: overridden.idfSwitches8, s24: overridden.idfSwitches24, s48: overridden.idfSwitches48 }).toEqual(MUZE.takeoff.switchTotals.s8 !== undefined
+      ? { s8: MUZE.takeoff.switchTotals.s8, s24: MUZE.takeoff.switchTotals.s24, s48: MUZE.takeoff.switchTotals.s48 }
+      : { s8: 20, s24: 12, s48: 11 });
+    expect(overridden.idfPlan.reduce((s, p) => s + p.s8 * 8 + p.s24 * 24 + p.s48 * 48, 0)).toBe(MUZE.takeoff.switchTotals.ports); // 976
+    expect(overridden.items.find((i) => i.sku === 'ICX-8100-C08PF').qty).toBe(20);
+    expect(overridden.items.find((i) => i.sku === 'ICX-8100-24P').qty).toBe(12);
+    expect(overridden.items.find((i) => i.sku === 'ICX-8100-48PFX').qty).toBe(11);
+  });
   it.todo('Phase 3: assemblies roll up IDF 2,940.32 / MDF 3,623.98 / media panel 179.77 from catalog components');
   it.todo('Phase 4: the cabling takeoff reproduces OPT 1 wiring 243,433 → 437,006.20');
   it.todo('Phase 5: cost-plus pricing + labor tasks reproduce OPT 1 hardware 383,063.97 → 529,643.83 and labor 141,800 → 235,250');
