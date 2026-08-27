@@ -43,3 +43,6 @@ next-env.d.ts
 
 # generated/exported PDFs (the app downloads these client-side)
 *.pdf
+
+# python (scripts/fixtures fixture generator)
+__pycache__/
