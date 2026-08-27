@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { MUZE } from './fixtures/muze';
+import { muzeUnitSchedulePaste } from './fixtures/muzePaste';
+import { parseDelimited } from '../lib/csv';
+import {
+  guessUnitScheduleMapping,
+  parseUnitSchedule,
+  propertyFromImport,
+  normalizePropertyModel,
+  propertyTotals,
+  orderedLevels,
+} from '../lib/propertyModel';
 
 // Phase 0 of the complex-project Builder initiative (plan:
 // C:\Users\david\.claude\plans\muze-to-builder.md). These tests prove the
@@ -306,7 +316,24 @@ describe('Muze fixture — the comparison matrix ties back to the option tabs', 
 // Engine parity roadmap — each phase turns its todo into a real assertion
 // against the Builder's own engines (see plan §5).
 describe('Builder engine parity with the Muze workbook (one todo per phase)', () => {
-  it.todo('Phase 1: lib/propertyModel totals 400 units / 598 beds / row-60 per-level counts from the imported grid');
+  it('Phase 1: importing the architect\'s unit mix reproduces 400 units / 598 beds and the row-60 per-level counts', () => {
+    const rows = parseDelimited(muzeUnitSchedulePaste());
+    const mapping = guessUnitScheduleMapping(rows);
+    expect(mapping.headerRows).toBe(2);
+    expect(mapping.levelCols).toHaveLength(20);
+    const parsed = parseUnitSchedule(rows, mapping);
+    expect(parsed.unitTypes).toHaveLength(MUZE.unitTypes.length);
+
+    const model = normalizePropertyModel(propertyFromImport(parsed));
+    const totals = propertyTotals(model);
+    expect(totals.units).toBe(MUZE.takeoff.totalUnits);
+    expect(totals.beds).toBe(MUZE.takeoff.totalBeds);
+    const levels = orderedLevels(model);
+    const byLevel = Object.fromEntries(levels.map((l, i) => [MUZE.levels[i].id, totals.byLevel[l.id].units]));
+    expect(byLevel).toEqual(MUZE.takeoff.unitsByLevel);
+    expect(model.buildings.map((b) => b.name)).toEqual(['Building 1', 'Building 2', 'Building 3', 'Building 4', 'Townhomes']);
+    expect(model.rooms).toHaveLength(20); // one telecom room per level; the takeoff's 18 IDF + MDF is a later merge
+  });
   it.todo('Phase 2: calculateBOM with an idfPlan reproduces 400 / 438 APs, 38 in-unit switches, 20×8 / 12×24 / 11×48');
   it.todo('Phase 3: assemblies roll up IDF 2,940.32 / MDF 3,623.98 / media panel 179.77 from catalog components');
   it.todo('Phase 4: the cabling takeoff reproduces OPT 1 wiring 243,433 → 437,006.20');

@@ -24,6 +24,12 @@
 //                the proposal labor estimate (lib/estimateLaborHours.js).
 //                Include the tech's own PM/admin allocation — the flat
 //                baselines in that file belong to the Wi-Fi/Camera designs.
+//   Surface      optional React component <Surface value onChange products ctx />
+//                rendered ABOVE the generic TechnologyPage in the main
+//                column on the tech's design tab (the primary vendor's tab
+//                when vendored) — for designs that need the full width
+//                (the Digital Infrastructure property model) while keeping
+//                the catalog picker and custom lines underneath.
 //   Body         optional React component <Body ctx /> replacing the whole
 //                design surface (otherwise: generic TechnologyPage with the
 //                System Design table on top). The two legacy engines use it.
@@ -38,8 +44,10 @@
 import { wifiCalculator } from './wifi';
 import { cameraCalculator } from './camera';
 import { smartApartmentCalculator } from './smartApartment';
+import { digitalInfrastructureCalculator } from './digitalInfrastructure';
 
 const CALCULATORS = {
+  digital_infrastructure: digitalInfrastructureCalculator,
   managed_wifi: wifiCalculator,
   video_surveillance: cameraCalculator,
   smart_apartment: smartApartmentCalculator,

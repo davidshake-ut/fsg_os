@@ -1291,6 +1291,14 @@ function Calculator() {
               busy={busy}
             />
           )}
+          {activeTech && showCalcRail && !activeCalc?.legacy && activeCalc?.Surface && (
+            <activeCalc.Surface
+              value={techCalcValue(activeTech.id)}
+              onChange={(patch) => setTechCalcInputs(activeTech.id, patch)}
+              products={allProducts}
+              ctx={calcCtx}
+            />
+          )}
           {activeTech && engineSurface && activeCalc?.Body && <activeCalc.Body ctx={calcCtx} />}
           {activeTech &&
             (vendored
