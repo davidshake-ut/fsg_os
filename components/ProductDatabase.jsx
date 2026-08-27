@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Card, Button, Badge, TextInput, Select, Field } from '@/components/ui/primitives';
 import { CORE_SKUS, CATEGORY_ORDER, PRODUCT_CATEGORIES } from '@/lib/catalog';
+import { isAssembly } from '@/lib/assemblies';
 import { guessLicenses } from '@/lib/licenseMatch';
 import { companyTechnologies, techLabel } from '@/lib/technologies';
 import { parseCatalogCSV } from '@/lib/csv';
@@ -676,7 +677,17 @@ export default function ProductDatabase({
                   )}
                 </td>
                 <td className="px-4 py-2">
-                  <div className="text-slate-700">{p.desc}</div>
+                  <div className="text-slate-700">
+                    {p.desc}
+                    {isAssembly(p) && (
+                      <span
+                        className="ml-1.5 inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 text-[10px] font-semibold text-violet-700"
+                        title={(p.componentsResolved ?? p.components).map((c) => `${c.qty} × ${c.sku}`).join(', ')}
+                      >
+                        Kit · {p.components.length} part{p.components.length === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-2">
                   <Badge className="border-indigo-200 bg-indigo-50 text-indigo-600">{labelOf(p)}</Badge>

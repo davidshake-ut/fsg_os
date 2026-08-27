@@ -14,6 +14,9 @@ import { buildWifiTakeoff } from '../lib/wifiTakeoff';
 import { calculateBOM } from '../lib/calculateBOM';
 import { DEFAULT_INPUTS } from '../lib/defaults';
 import { BASE_PRODUCTS } from '../lib/catalog';
+import { mergeProducts } from '../lib/mergeProducts';
+import { rollUpAssemblies } from '../lib/assemblies';
+import { computeInfrastructureLines, infrastructureLaborHours } from '../lib/infrastructureLines';
 
 // The Muze property as the Builder would hold it after the Phase 1 import,
 // plus the takeoff's named lists (14 amenity rooms listed, 9 outdoor APs).
@@ -414,7 +417,38 @@ describe('Builder engine parity with the Muze workbook (one todo per phase)', ()
     expect(overridden.items.find((i) => i.sku === 'ICX-8100-24P').qty).toBe(12);
     expect(overridden.items.find((i) => i.sku === 'ICX-8100-48PFX').qty).toBe(11);
   });
-  it.todo('Phase 3: assemblies roll up IDF 2,940.32 / MDF 3,623.98 / media panel 179.77 from catalog components');
+  it('Phase 3: the seeded kits roll up to the rack schedule and Digital Infrastructure quotes them per telecom room', () => {
+    const products = rollUpAssemblies(mergeProducts([]));
+    const kit = (sku) => products.find((p) => p.sku === sku);
+    const expected = (key) => MUZE.kits.find((k) => k.key === key).expectedCost;
+    expect(kit('KIT-IDF-12U').cost).toBeCloseTo(expected('idf-12u'), 2); // 2,940.32
+    expect(kit('KIT-MDF-22U').cost).toBeCloseTo(expected('mdf-22u'), 2); // 3,623.98
+    expect(kit('KIT-IDF-12U-FTTU').cost).toBeCloseTo(expected('idf-12u-fttu'), 2);
+    expect(kit('KIT-MDF-22U-FTTU').cost).toBeCloseTo(expected('mdf-22u-fttu'), 2);
+    expect(kit('KIT-MEDIA-PANEL').cost).toBeCloseTo(expected('media-panel'), 2); // 179.77
+
+    const property = importMuzeProperty();
+    const lines = computeInfrastructureLines(property, products);
+    const line = (sku) => lines.find((l) => l.sku === sku);
+    expect(line('KIT-MDF-22U').qty).toBe(1);
+    expect(line('KIT-IDF-12U').qty).toBe(18); // 19 telecom rooms less the MDF; the townhome room hosts no kit
+    expect(line('KIT-MEDIA-PANEL').qty).toBe(400);
+    expect(line('KIT-IDF-12U').parts).toHaveLength(13);
+    expect(lines.every((l) => !l.missing)).toBe(true);
+
+    // OPT 1's rack rows: 18 IDF racks and 1 MDF rack at the kit costs.
+    const opt1 = MUZE.options[0].hardware[0].rows;
+    expect(opt1.find((r) => r.role === 'IDF RACK')).toMatchObject({ qty: 18 });
+    expect(line('KIT-IDF-12U').cost).toBeCloseTo(opt1.find((r) => r.role === 'IDF RACK').eaCost, 2);
+    expect(line('KIT-MDF-22U').cost).toBeCloseTo(opt1.find((r) => r.role === 'MDF RACK').eaCost, 2);
+    expect(line('KIT-MEDIA-PANEL').cost).toBeCloseTo(MUZE.options[0].wiring.rows.find((r) => r.run === 'MEDIA PANEL').dropCost, 2);
+
+    // Install hours match the labor table: MDF 16 h, IDF 8 h × 18, media panel 1 h × 400.
+    const labor = MUZE.options[0].labor.rows;
+    const hoursFor = (task) => labor.find((r) => r.task === task);
+    const expectedHours = hoursFor('MDF RACK').qty * hoursFor('MDF RACK').hours + hoursFor('IDF RACK').qty * hoursFor('IDF RACK').hours + hoursFor('MEDIA PANEL').qty * hoursFor('MEDIA PANEL').hours;
+    expect(infrastructureLaborHours(property)['install-tech']).toBe(expectedHours); // 560
+  });
   it.todo('Phase 4: the cabling takeoff reproduces OPT 1 wiring 243,433 → 437,006.20');
   it.todo('Phase 5: cost-plus pricing + labor tasks reproduce OPT 1 hardware 383,063.97 → 529,643.83 and labor 141,800 → 235,250');
   it.todo('Phase 6: the options comparison matches the Comparison Matrix NRC block for all five columns');

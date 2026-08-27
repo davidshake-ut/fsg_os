@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Plus, Search, Trash2, Wrench, Package, Calculator } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
+import { Plus, Search, Trash2, Wrench, Package, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card, Button, TextInput } from '@/components/ui/primitives';
 import { productRidesWithVendor } from '@/lib/vendors';
 import { currency } from '@/lib/format';
@@ -101,6 +101,16 @@ function LinesTable({ title, icon: Icon, lines, canViewMargin, onUpdate, onRemov
 }
 
 function SystemDesignTable({ lines, canViewMargin }) {
+  // Kit lines (assemblies) expand into their parts — informational; the
+  // kit itself is the quoted line.
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (key) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
@@ -125,17 +135,49 @@ function SystemDesignTable({ lines, canViewMargin }) {
           <tbody>
             {lines.map((l, i) => {
               const qty = Number(l.qty) || 0;
+              const key = `${l.sku || 'line'}-${i}`;
+              const parts = Array.isArray(l.parts) && l.parts.length > 0 ? l.parts : null;
+              const expanded = !!parts && open.has(key);
               return (
-                <tr key={`${l.sku || 'line'}-${i}`} className="border-b border-slate-50 last:border-0">
-                  <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{l.sku || '—'}</td>
-                  <td className="px-3 py-1.5 text-sm text-slate-700">{l.description}</td>
-                  <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-700">{qty}</td>
-                  {canViewMargin && (
-                    <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-500">{currency(Number(l.cost) || 0)}</td>
-                  )}
-                  <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-700">{currency(Number(l.price) || 0)}</td>
-                  <td className="px-3 py-1.5 text-right text-sm font-medium tabular-nums text-slate-700">{currency(qty * (Number(l.price) || 0))}</td>
-                </tr>
+                <Fragment key={key}>
+                  <tr className="border-b border-slate-50 last:border-0">
+                    <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{l.sku || '—'}</td>
+                    <td className="px-3 py-1.5 text-sm text-slate-700">
+                      {l.description}
+                      {parts && (
+                        <button
+                          type="button"
+                          onClick={() => toggle(key)}
+                          className="ml-2 inline-flex items-center gap-0.5 rounded-full border border-violet-200 bg-violet-50 px-1.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
+                        >
+                          {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />} Kit · {parts.length} part{parts.length === 1 ? '' : 's'}
+                        </button>
+                      )}
+                      {l.missing && <span className="ml-2 text-[10px] font-semibold text-red-600">not in catalog</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-700">{qty}</td>
+                    {canViewMargin && (
+                      <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-500">{currency(Number(l.cost) || 0)}</td>
+                    )}
+                    <td className="px-3 py-1.5 text-right text-sm tabular-nums text-slate-700">{currency(Number(l.price) || 0)}</td>
+                    <td className="px-3 py-1.5 text-right text-sm font-medium tabular-nums text-slate-700">{currency(qty * (Number(l.price) || 0))}</td>
+                  </tr>
+                  {expanded &&
+                    parts.map((c) => (
+                      <tr key={`${key}-${c.sku}`} className="border-b border-slate-50 bg-slate-50/60 text-xs text-slate-500 last:border-0">
+                        <td className="py-1 pl-6 pr-3 font-mono text-[11px]">{c.sku}</td>
+                        <td className="px-3 py-1">
+                          {c.desc}
+                          {c.missing && <span className="ml-1 text-red-500">(not in catalog)</span>}
+                          {c.pinned && <span className="ml-1 text-amber-600" title={c.note || 'Unit price pinned for this kit'}>pinned</span>}
+                        </td>
+                        <td className="px-3 py-1 text-right tabular-nums">{c.qty} × {qty}</td>
+                        {canViewMargin && <td className="px-3 py-1 text-right tabular-nums">{currency(c.unitCost)}</td>}
+                        <td className="px-3 py-1 text-right tabular-nums">{currency(c.unitPrice)}</td>
+                        <td className="px-3 py-1 text-right tabular-nums">{currency(c.unitPrice * c.qty * qty)}</td>
+                      </tr>
+                    ))}
+                </Fragment>
               );
             })}
           </tbody>

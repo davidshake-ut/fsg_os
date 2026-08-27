@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, Plus, Trash2, Upload, MapPin, Sun, Cable, Server } from 'lucide-react';
-import { Card, Button } from '@/components/ui/primitives';
+import { Building2, Plus, Trash2, Upload, MapPin, Sun, Cable, Server, Boxes } from 'lucide-react';
+import { Card, Button, Field, NumberInput, Select, Toggle } from '@/components/ui/primitives';
 import {
   PROPERTY_MODEL_DEFAULTS,
   normalizePropertyModel,
@@ -14,6 +14,9 @@ import {
   unitClassLabel,
   sortUnitClasses,
 } from '@/lib/propertyModel';
+import { computeInfrastructureLines, infrastructureLaborHours } from '@/lib/infrastructureLines';
+import { isAssembly } from '@/lib/assemblies';
+import { currency } from '@/lib/format';
 import UnitScheduleCard from '@/components/builder/UnitScheduleCard';
 import PropertyImportModal from '@/components/builder/PropertyImportModal';
 import { cn } from '@/lib/utils';
@@ -114,7 +117,63 @@ function Stat({ label, value, sub }) {
   );
 }
 
-function InputPanel({ value, onChange }) {
+// ── Kits (Phase 3): which catalog kit each telecom room and each unit's
+//    media panel quote as, plus the install hours they carry ─────────────
+
+function KitSelect({ label, value, onChange, options }) {
+  return (
+    <Field label={label}>
+      <Select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">None</option>
+        {options.map((p) => (
+          <option key={p.sku} value={p.sku}>
+            {p.sku} — {currency(p.cost)}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+function KitsSection({ model, onChange, products }) {
+  const kits = model.kits;
+  const options = products.filter(
+    (p) => isAssembly(p) || (p.technology || '') === 'digital_infrastructure' && (p.category === 'Rack' || p.category === 'Enclosure')
+  );
+  const setKits = (patch) => onChange({ kits: { ...kits, ...patch } });
+  const setHours = (key, v) => setKits({ installHours: { ...kits.installHours, [key]: v } });
+  const lines = computeInfrastructureLines(model, products);
+  const cost = lines.reduce((s, l) => s + l.qty * l.cost, 0);
+  const hours = infrastructureLaborHours(model)['install-tech'];
+
+  return (
+    <Section title="Kits" icon={Boxes} action={<span className="text-xs tabular-nums text-slate-500">{currency(cost)} cost</span>}>
+      <KitSelect label="MDF room kit" value={kits.mdfSku} onChange={(v) => setKits({ mdfSku: v })} options={options} />
+      <KitSelect label="IDF room kit" value={kits.idfSku} onChange={(v) => setKits({ idfSku: v })} options={options} />
+      <Toggle checked={kits.mediaPanelPerUnit} onChange={(v) => setKits({ mediaPanelPerUnit: v })} label="Media panel in every unit" />
+      {kits.mediaPanelPerUnit && (
+        <KitSelect label="Media panel kit" value={kits.mediaPanelSku} onChange={(v) => setKits({ mediaPanelSku: v })} options={options} />
+      )}
+      <div className="grid grid-cols-3 gap-2">
+        <Field label="MDF hrs" sub="install">
+          <NumberInput value={kits.installHours.mdf} onChange={(v) => setHours('mdf', v)} />
+        </Field>
+        <Field label="IDF hrs" sub="install">
+          <NumberInput value={kits.installHours.idf} onChange={(v) => setHours('idf', v)} />
+        </Field>
+        <Field label="Panel hrs" sub="per unit">
+          <NumberInput value={kits.installHours.mediaPanel} onChange={(v) => setHours('mediaPanel', v)} />
+        </Field>
+      </div>
+      <p className="text-[11px] leading-relaxed text-slate-400">
+        {lines.length} kit line{lines.length === 1 ? '' : 's'} · {hours} install hr{hours === 1 ? '' : 's'}. Kits roll up live from their parts in the Product Database; give a room its own kit in the Telecom rooms list.
+      </p>
+      {lines.some((l) => l.missing) && <p className="text-[11px] text-red-600">A chosen kit is not in this catalog.</p>}
+    </Section>
+  );
+}
+
+function InputPanel({ value, onChange, products = [] }) {
   const model = normalizePropertyModel(value);
   const totals = propertyTotals(model);
   const mdf = model.rooms.find((r) => r.isMdf);
@@ -139,6 +198,8 @@ function InputPanel({ value, onChange }) {
           </div>
         )}
       </Section>
+
+      {model.rooms.length > 0 && <KitsSection model={model} onChange={onChange} products={products} />}
 
       <NamedListEditor
         title="Amenity AP locations"
@@ -184,10 +245,16 @@ function InputPanel({ value, onChange }) {
 
 // ── Surface: layout editor + unit schedule ─────────────────────────────
 
-function PropertyLayoutCard({ model, totals, onChange, onImport }) {
+function PropertyLayoutCard({ model, totals, onChange, onImport, products = [] }) {
   const levels = orderedLevels(model);
-  const roomById = Object.fromEntries(model.rooms.map((r) => [r.id, r]));
   const unassigned = model.levels.filter((l) => !l.roomId).length;
+  const kitOptions = products.filter(isAssembly);
+  const setRoomKit = (id, sku) => {
+    const roomKitSku = { ...model.kits.roomKitSku };
+    if (sku) roomKitSku[id] = sku;
+    else delete roomKitSku[id];
+    onChange({ kits: { ...model.kits, roomKitSku } });
+  };
 
   const setBuildings = (buildings) => onChange({ buildings });
   const addBuilding = () => {
@@ -365,6 +432,20 @@ function PropertyLayoutCard({ model, totals, onChange, onImport }) {
                         {r.isMdf ? 'MDF · ' : ''}
                         {served?.levelIds.length ?? 0} level{served?.levelIds.length === 1 ? '' : 's'} · {served?.units ?? 0} units
                       </p>
+                      {kitOptions.length > 0 && (
+                        <select
+                          className={cn(inlineInput, 'w-full text-[11px] text-slate-500')}
+                          value={model.kits.roomKitSku[r.id] ?? ''}
+                          onChange={(e) => setRoomKit(r.id, e.target.value)}
+                          title="Which kit this room quotes as"
+                        >
+                          <option value="">Kit: default ({(r.isMdf ? model.kits.mdfSku : model.kits.idfSku) || 'none'})</option>
+                          <option value="none">Kit: none</option>
+                          {kitOptions.map((p) => (
+                            <option key={p.sku} value={p.sku}>Kit: {p.sku}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     <button type="button" onClick={() => removeRoom(r.id)} title="Remove room" className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500">
                       <Trash2 size={12} />
@@ -383,14 +464,14 @@ function PropertyLayoutCard({ model, totals, onChange, onImport }) {
   );
 }
 
-function Surface({ value, onChange }) {
+function Surface({ value, onChange, products = [] }) {
   const model = normalizePropertyModel(value);
   const totals = propertyTotals(model);
   const [importOpen, setImportOpen] = useState(false);
 
   return (
     <div className="space-y-4">
-      <PropertyLayoutCard model={model} totals={totals} onChange={onChange} onImport={() => setImportOpen(true)} />
+      <PropertyLayoutCard model={model} totals={totals} onChange={onChange} onImport={() => setImportOpen(true)} products={products} />
       <UnitScheduleCard model={model} totals={totals} onChange={onChange} onImport={() => setImportOpen(true)} />
       <PropertyImportModal
         open={importOpen}
@@ -410,4 +491,8 @@ export const digitalInfrastructureCalculator = {
   defaults: PROPERTY_MODEL_DEFAULTS,
   InputPanel,
   Surface,
+  // Phase 3: telecom-room kits and in-unit media panels, one quoted line
+  // per kit, with the install hours they carry.
+  compute: (value, { products }) => computeInfrastructureLines(value, products),
+  laborHours: (value) => infrastructureLaborHours(value),
 };

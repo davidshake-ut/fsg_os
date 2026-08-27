@@ -1,18 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import { Card, Button, Field, TextInput, NumberInput, Select } from '@/components/ui/primitives';
 import { PRODUCT_CATEGORIES } from '@/lib/catalog';
 import { BUILTIN_TECHNOLOGIES, companyTechnologies } from '@/lib/technologies';
 import { companyTechVendors } from '@/lib/vendors';
 import { licenseCandidates, guessLicenses } from '@/lib/licenseMatch';
+import { isAssembly, assemblyRollUp, normalizeComponents, productsBySku } from '@/lib/assemblies';
+import { currency } from '@/lib/format';
 
 const EMPTY = {
   sku: '', description: '', category: 'Access Point', technology: 'managed_wifi',
   cost: 0, price: 0, vendor: '', preferred_vendor: '', product_line: '', discount_pct: '',
   mount_type: '', quality_tier: '', port_count: '', poe_watts: '', poe_budget_watts: '',
   license_sku_1yr: '', license_sku_3yr: '', license_sku_5yr: '',
+  components: [],
 };
 
 // Empty string in the form = "not set" → null in the database.
@@ -44,6 +47,7 @@ function initialForm(product, defaultTechnology, allProducts) {
     license_sku_1yr: product.license_sku_1yr ?? guesses.license_sku_1yr ?? '',
     license_sku_3yr: product.license_sku_3yr ?? guesses.license_sku_3yr ?? '',
     license_sku_5yr: product.license_sku_5yr ?? guesses.license_sku_5yr ?? '',
+    components: Array.isArray(product.components) ? product.components.map((c) => ({ ...c })) : [],
   };
 }
 
@@ -89,6 +93,16 @@ export default function ProductModal({ open, product, clone = false, onClose, on
   const title = clone ? 'Clone Product' : isEdit ? 'Edit Product' : 'Add Product';
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Kit mode (0067): with parts listed, cost and price are derived from
+  // them — the roll-up shown here is what every quote will see.
+  const kitComponents = normalizeComponents(form.components);
+  const kitRollUp = kitComponents ? assemblyRollUp(kitComponents, productsBySku(allProducts)) : null;
+  const partOptions = allProducts.filter((p) => !isAssembly(p) && p.sku !== form.sku);
+  const setComponent = (i, patch) =>
+    setForm((f) => ({ ...f, components: f.components.map((c, j) => (j === i ? { ...c, ...patch } : c)) }));
+  const removeComponent = (i) => setForm((f) => ({ ...f, components: f.components.filter((_, j) => j !== i) }));
+  const addComponent = () => setForm((f) => ({ ...f, components: [...f.components, { sku: '', qty: 1 }] }));
+
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
@@ -105,6 +119,8 @@ export default function ProductModal({ open, product, clone = false, onClose, on
         license_sku_1yr: strOrNull(form.license_sku_1yr.trim()),
         license_sku_3yr: strOrNull(form.license_sku_3yr.trim()),
         license_sku_5yr: strOrNull(form.license_sku_5yr.trim()),
+        components: kitComponents,
+        ...(kitRollUp ? { cost: kitRollUp.cost, price: kitRollUp.price } : {}),
       });
       onClose();
     } catch (e2) {
@@ -198,11 +214,11 @@ export default function ProductModal({ open, product, clone = false, onClose, on
             <TextInput value={form.product_line} onChange={(e) => set('product_line', e.target.value)} placeholder="e.g. cnWave, Switches, AP's Indoor…" />
           </Field>
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Cost">
-              <NumberInput step="0.01" value={form.cost} onChange={(v) => set('cost', v)} />
+            <Field label="Cost" sub={kitRollUp ? 'From parts' : undefined}>
+              <NumberInput step="0.01" value={kitRollUp ? kitRollUp.cost : form.cost} onChange={(v) => set('cost', v)} disabled={!!kitRollUp} />
             </Field>
-            <Field label="Price">
-              <NumberInput step="0.01" value={form.price} onChange={(v) => set('price', v)} />
+            <Field label="Price" sub={kitRollUp ? 'From parts' : undefined}>
+              <NumberInput step="0.01" value={kitRollUp ? kitRollUp.price : form.price} onChange={(v) => set('price', v)} disabled={!!kitRollUp} />
             </Field>
             <Field label="Discount %">
               <TextInput
@@ -215,6 +231,44 @@ export default function ProductModal({ open, product, clone = false, onClose, on
                 placeholder="—"
               />
             </Field>
+          </div>
+
+          <div className="border-t border-slate-100 pt-3">
+            <p className="mb-0.5 text-xs font-semibold text-slate-600">Kit parts</p>
+            <p className="mb-2 text-[11px] text-slate-400">
+              Optional — list the parts and this product becomes a kit: its cost and price roll up from them
+              (live, as part prices change) and it quotes as one line.
+            </p>
+            {form.components.length > 0 && (
+              <div className="mb-2 space-y-1.5">
+                {form.components.map((c, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <Select className="h-8 min-w-0 flex-1 text-xs" value={c.sku} onChange={(e) => setComponent(i, { sku: e.target.value })}>
+                      <option value="">Part…</option>
+                      {partOptions.map((p) => (
+                        <option key={p.sku} value={p.sku}>
+                          {p.sku} — {p.desc}
+                        </option>
+                      ))}
+                    </Select>
+                    <TextInput type="number" min="0" step="1" className="h-8 w-16 text-right text-xs" value={c.qty} onChange={(e) => setComponent(i, { qty: e.target.value })} />
+                    {(c.unitCost != null || c.unitPrice != null) && (
+                      <span className="text-[10px] text-amber-700" title={c.note || 'Unit price pinned for this kit'}>pinned</span>
+                    )}
+                    <button type="button" onClick={() => removeComponent(i)} title="Remove part" className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={addComponent}>+ Part</Button>
+            {kitRollUp && (
+              <p className="mt-2 text-xs text-slate-600">
+                Rolls up to cost {currency(kitRollUp.cost)} · price {currency(kitRollUp.price)}
+                {kitRollUp.missing.length > 0 && <span className="text-red-600"> · not in catalog: {kitRollUp.missing.join(', ')}</span>}
+              </p>
+            )}
           </div>
 
           <div className="border-t border-slate-100 pt-3">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { mergeProducts } from '@/lib/mergeProducts';
+import { rollUpAssemblies, normalizeComponents } from '@/lib/assemblies';
 import { BASE_PRODUCTS, CORE_SKUS } from '@/lib/catalog';
 
 const baseSkus = new Set(BASE_PRODUCTS.map((p) => p.sku));
@@ -139,7 +140,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     }
     writeLocal([
       ...rows.filter((r) => r.sku !== sku),
-      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, ...builderAttrs(p), is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, ...builderAttrs(p), ...('components' in p ? { components: normalizeComponents(p.components) } : {}), is_custom: !isBase, is_deleted: false },
     ]);
   };
 
@@ -150,7 +151,7 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
     const prev = readLocalArray().find((r) => r.sku === sku) ?? {};
     writeLocal([
       ...readLocalArray().filter((r) => r.sku !== sku),
-      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, ...builderAttrs(p, prev), is_custom: !isBase, is_deleted: false },
+      { sku, description, category, technology, cost: Number(cost), price: Number(price), vendor, preferred_vendor, product_line, discount_pct, ...builderAttrs(p, prev), components: 'components' in p ? normalizeComponents(p.components) : prev.components ?? null, is_custom: !isBase, is_deleted: false },
     ]);
   };
 
@@ -271,7 +272,9 @@ export function useProducts(session, { teamFilter = 'all' } = {}) {
   };
 
   return {
-    allProducts: mergeProducts(customRows),
+    // Kits (assemblies) price live from their parts — every consumer of the
+    // catalog sees the rolled-up cost / price.
+    allProducts: rollUpAssemblies(mergeProducts(customRows)),
     refresh,
     addProduct: async (p) => (supabase ? callApi('POST', p) : addLocal(p)),
     editProduct: async (p) => (supabase ? callApi('PATCH', p) : editLocal(p)),

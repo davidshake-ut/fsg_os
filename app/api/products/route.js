@@ -1,5 +1,6 @@
 import { getServiceClient, getCaller, canManageCatalog } from '@/lib/supabase/server';
 import { BASE_PRODUCTS, CORE_SKUS } from '@/lib/catalog';
+import { normalizeComponents } from '@/lib/assemblies';
 
 const baseSkus = new Set(BASE_PRODUCTS.map((p) => p.sku));
 const json = (body, status = 200) => Response.json(body, { status });
@@ -12,6 +13,9 @@ const BUILDER_ATTRS = [
 ];
 const pickBuilderAttrs = (body) =>
   Object.fromEntries(BUILDER_ATTRS.filter((k) => k in body).map((k) => [k, body[k]]));
+// Assembly components (0067): only written when sent (a plain re-import never
+// strips a kit); sanitized to [{sku, qty, unitCost?, unitPrice?, note?}] or null.
+const pickComponents = (body) => ('components' in body ? { components: normalizeComponents(body.components) } : {});
 
 // Catalog writes are scoped to the caller's team — except for the SUPER
 // ADMIN, who may pass target_company_id in the body to fix any team's
@@ -67,7 +71,7 @@ export async function POST(request) {
   const { data, error: dbErr } = await svc
     .from('custom_products')
     .upsert(
-      { company_id: companyId, sku, description, category, technology, cost, price, vendor, preferred_vendor, product_line, discount_pct, ...pickBuilderAttrs(body), is_custom: !isBase, is_deleted: false },
+      { company_id: companyId, sku, description, category, technology, cost, price, vendor, preferred_vendor, product_line, discount_pct, ...pickBuilderAttrs(body), ...pickComponents(body), is_custom: !isBase, is_deleted: false },
       { onConflict: 'company_id,sku' }
     )
     .select()
@@ -146,6 +150,7 @@ export async function PATCH(request) {
         ...('preferred_vendor' in body ? { preferred_vendor: body.preferred_vendor } : {}),
         ...('discount_pct' in body ? { discount_pct: body.discount_pct } : {}),
         ...pickBuilderAttrs(body),
+        ...pickComponents(body),
         ...('product_line' in body ? { product_line: body.product_line } : {}),
         ...('technology' in body ? { technology: body.technology } : {}),
       })
@@ -182,6 +187,7 @@ export async function PATCH(request) {
         ...('preferred_vendor' in body ? { preferred_vendor: body.preferred_vendor } : {}),
         ...('discount_pct' in body ? { discount_pct: body.discount_pct } : {}),
         ...pickBuilderAttrs(body),
+        ...pickComponents(body),
         ...('product_line' in body ? { product_line: body.product_line } : {}),
         // Same preserve-guard as product_line: only touch technology when the
         // caller sent it, so legacy CSV re-imports never blank it.
