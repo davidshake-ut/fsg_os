@@ -16,16 +16,20 @@ import { DEFAULT_INPUTS } from '../lib/defaults';
 import { BASE_PRODUCTS } from '../lib/catalog';
 import { mergeProducts } from '../lib/mergeProducts';
 import { rollUpAssemblies } from '../lib/assemblies';
-import { computeInfrastructureLines, infrastructureLaborHours } from '../lib/infrastructureLines';
+import { computeInfrastructureLines, computeKitLines, infrastructureLaborHours } from '../lib/infrastructureLines';
+import { deriveCablingRuns, computeCablingLines, cablingTotals } from '../lib/cablingTakeoff';
 
 // The Muze property as the Builder would hold it after the Phase 1 import,
 // plus the takeoff's named lists (14 amenity rooms listed, 9 outdoor APs).
-function importMuzeProperty() {
+// `amenityRooms` trims the list to the workbook's typed 13 when a check
+// needs the workbook's own count rather than the listed one.
+function importMuzeProperty({ amenityRooms = null } = {}) {
   const rows = parseDelimited(muzeUnitSchedulePaste());
   const model = normalizePropertyModel(propertyFromImport(parseUnitSchedule(rows, guessUnitScheduleMapping(rows))));
+  const amenity = amenityRooms === null ? MUZE.takeoff.amenityLocations : MUZE.takeoff.amenityLocations.slice(0, amenityRooms);
   return {
     ...model,
-    amenityLocations: MUZE.takeoff.amenityLocations.map((name, i) => ({ id: `am${i}`, name, qty: 1 })),
+    amenityLocations: amenity.map((name, i) => ({ id: `am${i}`, name, qty: 1 })),
     outdoorLocations: MUZE.takeoff.outdoorLocations.map((name, i) => ({
       id: `out${i}`,
       name,
@@ -449,7 +453,59 @@ describe('Builder engine parity with the Muze workbook (one todo per phase)', ()
     const expectedHours = hoursFor('MDF RACK').qty * hoursFor('MDF RACK').hours + hoursFor('IDF RACK').qty * hoursFor('IDF RACK').hours + hoursFor('MEDIA PANEL').qty * hoursFor('MEDIA PANEL').hours;
     expect(infrastructureLaborHours(property)['install-tech']).toBe(expectedHours); // 560
   });
-  it.todo('Phase 4: the cabling takeoff reproduces OPT 1 wiring 243,433 → 437,006.20');
+  it('Phase 4: the cabling takeoff derives the per-unit and per-location runs and reproduces OPT 1 wiring at cost', () => {
+    const property = importMuzeProperty({ amenityRooms: 13 }); // the workbook's typed amenity count
+    const products = rollUpAssemblies(mergeProducts([]));
+    const wiring = MUZE.options[0].wiring;
+    const row = (run) => wiring.rows.find((r) => r.run === run);
+
+    // What derives from the property on its own …
+    const derived = deriveCablingRuns(property, { unitAPs: 400 });
+    expect(derived.streetToMdf.derived).toBe(row('STREET TO MDF').qty); // 1
+    expect(derived.unitCat6.derived).toBe(row('IDF TO UNIT (CAT6)').qty); // 400
+    expect(derived.unitFiber.derived).toBe(row('IDF TO UNIT (FIBER)').qty); // 400
+    expect(derived.inUnitCat6.derived).toBe(row('IN UNIT (CAT6)').qty); // 400 = baseline APs
+    expect(derived.commonDrops.derived).toBe(row('AMENITY & COMMON').qty); // 22 = 13 + 9 + 0
+    expect(derived.townhomeDrops.derived).toBe(16); // one per townhome (OPT 4's count; OPT 1–3 typed 4)
+    // … and what the workbook entered by judgment: 6 risers where the property has 5
+    // buildings, 23 closet links where a chain per building gives 15.
+    expect(derived.backbone.derived).toBe(5);
+    expect(derived.idfLinks.derived).toBe(15);
+    // Extended coverage moves the in-unit drops to 438 (OPT 2's row).
+    const extended = { wifiTakeoff: { enabled: true, apsPerClass: { 3: 2, th: 2 } } };
+    expect(deriveCablingRuns(property, { inputs: extended }).inUnitCat6.derived).toBe(MUZE.options[1].wiring.rows.find((r) => r.run === 'IN UNIT (CAT6)').qty);
+
+    // Enter the judgment counts and price the runs.
+    const idfLinks = wiring.rows.filter((r) => r.run.startsWith('IDF TO IDF')).reduce((s, r) => s + r.qty, 0); // 23
+    const entered = {
+      ...property,
+      cabling: { enabled: true, runs: { backbone: { qty: row('MDF TO IDFs').qty }, idfLinks: { qty: idfLinks }, townhomeDrops: { qty: row('TOWNHOME').qty } } },
+    };
+    const lines = computeCablingLines(entered, products, { unitAPs: 400 });
+    expect(lines.every((l) => !l.missing && l.isService)).toBe(true);
+    const byKey = Object.fromEntries(lines.map((l) => [l.runKey, l]));
+    expect(byKey.streetToMdf).toMatchObject({ qty: 1, cost: row('STREET TO MDF').dropCost, price: row('STREET TO MDF').dropPrice });
+    expect(byKey.backbone).toMatchObject({ qty: 6, cost: 3000, price: 5000 });
+    expect(byKey.idfLinks).toMatchObject({ qty: 23, cost: 125, price: 275 });
+    expect(byKey.unitCat6).toMatchObject({ qty: 400, cost: 125, price: 275 });
+    expect(byKey.unitFiber).toMatchObject({ qty: 400, cost: 125, price: 275 });
+    expect(byKey.inUnitCat6).toMatchObject({ qty: 400, cost: 90, price: 150 });
+    expect(byKey.commonDrops).toMatchObject({ qty: 22, cost: 275, price: 385 });
+    expect(byKey.townhomeDrops).toMatchObject({ qty: 4, cost: 275, price: 385 });
+
+    // The workbook's wiring block = these runs + the media panel, which is
+    // the Phase 3 kit (a hardware line): cost reproduces to the cent.
+    const totals = cablingTotals(lines);
+    const panel = computeKitLines(entered, products).find((l) => l.sku === 'KIT-MEDIA-PANEL');
+    const panelRow = row('MEDIA PANEL');
+    expect(panel.qty).toBe(panelRow.qty);
+    expect(panel.cost).toBeCloseTo(panelRow.dropCost, 2);
+    expect(totals.cost + panel.qty * panel.cost).toBeCloseTo(wiring.expected.cost, 2); // 243,433
+    // Sell price: the runs match; the panel's price is the kit roll-up until
+    // Phase 5's pricing policy sets the Enclosure markup the workbook used (×1.4).
+    expect(totals.price).toBeCloseTo(wiring.expected.price - panelRow.qty * panelRow.dropPrice, 2); // 336,335
+    expect(totals.cost).toBe(171525);
+  });
   it.todo('Phase 5: cost-plus pricing + labor tasks reproduce OPT 1 hardware 383,063.97 → 529,643.83 and labor 141,800 → 235,250');
   it.todo('Phase 6: the options comparison matches the Comparison Matrix NRC block for all five columns');
   it.todo('Phase 7: recurring + financing shows $31.87 per unit per month for OPT 1');

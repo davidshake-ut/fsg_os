@@ -42,7 +42,7 @@ const small = () => ({
 describe('normalizePropertyModel', () => {
   it('fills defaults and coerces numbers', () => {
     const m = normalizePropertyModel(undefined);
-    expect(m).toEqual({ buildings: [], levels: [], rooms: [], unitTypes: [], amenityLocations: [], outdoorLocations: [], otherDrops: [], notes: '', kits: KIT_DEFAULTS });
+    expect(m).toEqual({ buildings: [], levels: [], rooms: [], unitTypes: [], amenityLocations: [], outdoorLocations: [], otherDrops: [], notes: '', kits: KIT_DEFAULTS, cabling: { enabled: true, runs: {} } });
     // Kit choices: unknown rooms drop out of the per-room map, hours coerce.
     const k = normalizePropertyModel({ rooms: [{ id: 'r1', name: 'A' }], kits: { idfSku: ' KIT-X ', roomKitSku: { r1: 'none', ghost: 'KIT-Y' }, installHours: { idf: '4' } } });
     expect(k.kits).toEqual({ ...KIT_DEFAULTS, idfSku: 'KIT-X', roomKitSku: { r1: 'none' }, installHours: { mdf: 16, idf: 4, mediaPanel: 1 } });

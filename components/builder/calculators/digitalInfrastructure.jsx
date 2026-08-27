@@ -14,11 +14,12 @@ import {
   unitClassLabel,
   sortUnitClasses,
 } from '@/lib/propertyModel';
-import { computeInfrastructureLines, infrastructureLaborHours } from '@/lib/infrastructureLines';
+import { computeInfrastructureLines, computeKitLines, infrastructureLaborHours } from '@/lib/infrastructureLines';
 import { isAssembly } from '@/lib/assemblies';
 import { currency } from '@/lib/format';
 import UnitScheduleCard from '@/components/builder/UnitScheduleCard';
 import PropertyImportModal from '@/components/builder/PropertyImportModal';
+import CablingCard from '@/components/builder/CablingCard';
 import { cn } from '@/lib/utils';
 
 // Digital Infrastructure calculator — Phase 1 of the complex-project
@@ -142,7 +143,7 @@ function KitsSection({ model, onChange, products }) {
   );
   const setKits = (patch) => onChange({ kits: { ...kits, ...patch } });
   const setHours = (key, v) => setKits({ installHours: { ...kits.installHours, [key]: v } });
-  const lines = computeInfrastructureLines(model, products);
+  const lines = computeKitLines(model, products);
   const cost = lines.reduce((s, l) => s + l.qty * l.cost, 0);
   const hours = infrastructureLaborHours(model)['install-tech'];
 
@@ -464,7 +465,7 @@ function PropertyLayoutCard({ model, totals, onChange, onImport, products = [] }
   );
 }
 
-function Surface({ value, onChange, products = [] }) {
+function Surface({ value, onChange, products = [], ctx = null }) {
   const model = normalizePropertyModel(value);
   const totals = propertyTotals(model);
   const [importOpen, setImportOpen] = useState(false);
@@ -473,6 +474,9 @@ function Surface({ value, onChange, products = [] }) {
     <div className="space-y-4">
       <PropertyLayoutCard model={model} totals={totals} onChange={onChange} onImport={() => setImportOpen(true)} products={products} />
       <UnitScheduleCard model={model} totals={totals} onChange={onChange} onImport={() => setImportOpen(true)} />
+      {model.rooms.length > 0 && (
+        <CablingCard model={model} onChange={onChange} products={products} inputs={ctx?.inputs ?? null} canViewMargin={ctx?.canViewMargin ?? true} />
+      )}
       <PropertyImportModal
         open={importOpen}
         hasExisting={model.unitTypes.length > 0 || model.levels.length > 0}
@@ -492,7 +496,8 @@ export const digitalInfrastructureCalculator = {
   InputPanel,
   Surface,
   // Phase 3: telecom-room kits and in-unit media panels, one quoted line
-  // per kit, with the install hours they carry.
-  compute: (value, { products }) => computeInfrastructureLines(value, products),
+  // per kit, with the install hours they carry. Phase 4: structured-cabling
+  // runs as service lines (in-unit drops follow inputs.wifiTakeoff).
+  compute: (value, { products, inputs = null }) => computeInfrastructureLines(value, products, { inputs }),
   laborHours: (value) => infrastructureLaborHours(value),
 };

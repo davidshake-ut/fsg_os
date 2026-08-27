@@ -372,7 +372,10 @@ function Calculator() {
       const calc = getCalculator(t.id);
       if (!calc?.compute) continue;
       const value = { ...(calc.defaults ?? {}), ...(inputs.techCalc?.[t.id] ?? {}) };
-      out[t.id] = (calc.compute(value, { products: allProducts }) ?? [])
+      // `inputs` rides along so a calculator can read cross-technology
+      // settings (Digital Infrastructure's in-unit drops follow the Wi-Fi
+      // coverage rules in inputs.wifiTakeoff).
+      out[t.id] = (calc.compute(value, { products: allProducts, inputs }) ?? [])
         .filter((l) => (Number(l.qty) || 0) > 0)
         .map((l) => ({ ...l, system: t.id, fromCalculator: true }));
     }

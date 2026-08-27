@@ -15,7 +15,7 @@
 //   InputPanel   React component <InputPanel value onChange products ctx />
 //                  value    — current design inputs (defaults ⊕ saved)
 //                  onChange — (patch) => merged into inputs.techCalc[techId]
-//   compute      optional (value, { products }) => line[] — the designed
+//   compute      optional (value, { products, inputs }) => line[] — the designed
 //                system as lines in the TechnologyPage custom-line shape:
 //                { sku, description, category, qty, cost, price, isService? }
 //                They render read-only in the tech page's System Design

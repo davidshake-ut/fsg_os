@@ -95,9 +95,14 @@ describe('Digital Infrastructure calculator (SSR smoke)', () => {
     expect(page).toContain('Kit · 7 parts');
     expect(page).toContain('>400<');
 
-    // The Telecom rooms list offers a per-room kit choice.
-    const surface = render(calc.Surface, { value, onChange: noop, products });
+    // The Telecom rooms list offers a per-room kit choice, and the cabling
+    // table derives its runs from the property.
+    const surface = render(calc.Surface, { value, onChange: noop, products, ctx: { inputs: {}, canViewMargin: true } });
     expect(surface).toContain('Kit: default (KIT-MDF-22U)');
     expect(surface).toContain('Kit: none');
+    expect(surface).toContain('Structured Cabling');
+    expect(surface).toContain('IDF to unit — Cat6');
+    expect(surface).toContain('CBL-UNIT-CAT6 — ');
+    expect(surface).toContain('Amenity &amp; common-area drops');
   });
 });
