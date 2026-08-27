@@ -4,6 +4,7 @@ import { Card, Badge } from '@/components/ui/primitives';
 import { currency, percent, marginColor, marginBg } from '@/lib/format';
 import { hasContent, isAlternate, optionTags, optionGroups } from '@/lib/vendorComparison';
 import VendorComparison from '@/components/builder/VendorComparison';
+import { laborLinesOf, nonLaborServicesOf } from '@/lib/laborSplit';
 
 function marginOf(cost, price) {
   return price > 0 ? ((price - cost) / price) * 100 : 0;
@@ -35,6 +36,30 @@ export default function CostSummary({ sections = [], scope = [], canViewMargin =
   const grandPrice = counted.reduce((s, x) => s + x.bom.grandTotalPrice, 0);
   const profit = grandPrice - grandCost;
   const colCount = canViewMargin ? 4 : 2;
+  const fmtHours = (h) => `${Number.isInteger(h) ? h : h.toFixed(1)} hr${h === 1 ? '' : 's'}`;
+  const sumOf = (lines, f) => lines.reduce((s, l) => s + (Number(f(l)) || 0), 0);
+
+  // Labor lives inside each system's section (lib/laborSplit.js); this
+  // recap lists it by system with a subtotal — a view of what the sections
+  // above already include, never added to the total again.
+  const laborRecap = [];
+  for (const s of counted) {
+    const lines = s.isLabor ? [] : laborLinesOf(s.bom);
+    if (!lines.length) continue;
+    const key = s.techId ?? s.title;
+    let r = laborRecap.find((x) => x.key === key);
+    if (!r) {
+      r = { key, label: s.techLabel ?? s.title, cost: 0, price: 0, hours: 0 };
+      laborRecap.push(r);
+    }
+    r.cost += sumOf(lines, (l) => l.totalCost);
+    r.price += sumOf(lines, (l) => l.totalPrice);
+    r.hours += sumOf(lines, (l) => l.qty);
+  }
+  const laborTotals = laborRecap.reduce(
+    (a, r) => ({ cost: a.cost + r.cost, price: a.price + r.price, hours: a.hours + r.hours }),
+    { cost: 0, price: 0, hours: 0 }
+  );
 
   return (
     <div className="space-y-4">
@@ -56,6 +81,15 @@ export default function CostSummary({ sections = [], scope = [], canViewMargin =
             const alternate = isAlternate(section);
             const body = alternate ? 'text-slate-500' : 'text-slate-700';
             const strong = alternate ? 'text-slate-600' : 'text-slate-800';
+            // The standalone labor section (no system quoted) is all labor;
+            // a system's section carries its labor lines among its services.
+            const laborLines = section.isLabor ? bom.serviceItems ?? [] : laborLinesOf(bom);
+            const otherServices = section.isLabor ? [] : nonLaborServicesOf(bom);
+            const laborCost = sumOf(laborLines, (l) => l.totalCost);
+            const laborPrice = sumOf(laborLines, (l) => l.totalPrice);
+            const laborHours = sumOf(laborLines, (l) => l.qty);
+            const svcCost = sumOf(otherServices, (l) => l.totalCost);
+            const svcPrice = sumOf(otherServices, (l) => l.totalPrice);
             return (
             <tbody key={title}>
               <tr className="bg-slate-50">
@@ -98,22 +132,42 @@ export default function CostSummary({ sections = [], scope = [], canViewMargin =
                 </tr>
               )}
 
-              {bom.totalServicesPrice > 0 && (
+              {laborPrice > 0 && (
                 <tr className="border-b border-slate-50">
                   <td className={`px-4 py-2.5 ${body}`}>
-                    {bom.items.length ? 'Professional Services' : 'Professional Labor'}
+                    Professional Labor
+                    <span className="ml-2 text-xs text-slate-400">{fmtHours(laborHours)}</span>
                   </td>
                   {canViewMargin && (
                     <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">
-                      {currency(bom.totalServicesCost)}
+                      {currency(laborCost)}
                     </td>
                   )}
                   <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${body}`}>
-                    {currency(bom.totalServicesPrice)}
+                    {currency(laborPrice)}
                   </td>
                   {canViewMargin && (
                     <td className="px-4 py-2.5 text-right">
-                      <MarginBadge cost={bom.totalServicesCost} price={bom.totalServicesPrice} />
+                      <MarginBadge cost={laborCost} price={laborPrice} />
+                    </td>
+                  )}
+                </tr>
+              )}
+
+              {svcPrice > 0 && (
+                <tr className="border-b border-slate-50">
+                  <td className={`px-4 py-2.5 ${body}`}>Services &amp; Cabling</td>
+                  {canViewMargin && (
+                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">
+                      {currency(svcCost)}
+                    </td>
+                  )}
+                  <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${body}`}>
+                    {currency(svcPrice)}
+                  </td>
+                  {canViewMargin && (
+                    <td className="px-4 py-2.5 text-right">
+                      <MarginBadge cost={svcCost} price={svcPrice} />
                     </td>
                   )}
                 </tr>
@@ -164,6 +218,49 @@ export default function CostSummary({ sections = [], scope = [], canViewMargin =
             </tbody>
             );
           })}
+
+          {laborRecap.length > 0 && (
+            <tbody>
+              <tr className="bg-slate-50">
+                <td colSpan={colCount} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Professional Labor
+                  <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">by system — already in the subtotals above</span>
+                </td>
+              </tr>
+              {laborRecap.map((r) => (
+                <tr key={r.key} className="border-b border-slate-50">
+                  <td className="px-4 py-2.5 text-slate-700">
+                    {r.label} labor
+                    <span className="ml-2 text-xs text-slate-400">{fmtHours(r.hours)}</span>
+                  </td>
+                  {canViewMargin && (
+                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{currency(r.cost)}</td>
+                  )}
+                  <td className="px-4 py-2.5 text-right font-medium tabular-nums text-slate-700">{currency(r.price)}</td>
+                  {canViewMargin && (
+                    <td className="px-4 py-2.5 text-right">
+                      <MarginBadge cost={r.cost} price={r.price} />
+                    </td>
+                  )}
+                </tr>
+              ))}
+              <tr className="border-t border-slate-200 font-semibold">
+                <td className="px-4 py-2.5 text-slate-800">
+                  Professional Labor Subtotal
+                  <span className="ml-2 text-xs font-normal text-slate-400">{fmtHours(laborTotals.hours)}</span>
+                </td>
+                {canViewMargin && (
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{currency(laborTotals.cost)}</td>
+                )}
+                <td className="px-4 py-2.5 text-right tabular-nums text-slate-800">{currency(laborTotals.price)}</td>
+                {canViewMargin && (
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-700">
+                    {percent(marginOf(laborTotals.cost, laborTotals.price), 0)}
+                  </td>
+                )}
+              </tr>
+            </tbody>
+          )}
 
           <tfoot>
             <tr className="border-t-2 border-slate-300 text-base font-bold">

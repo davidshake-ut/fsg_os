@@ -31,12 +31,12 @@ import { buildWifiTakeoff } from '@/lib/wifiTakeoff';
 import { resolvePricingPolicy, applyPricingPolicy } from '@/lib/pricingPolicy';
 import { DEFAULT_LABOR_TASKS, normalizeLaborTasks } from '@/lib/laborTasks';
 import { buildQuoteSummary } from '@/lib/optionComparison';
+import { estimateLaborHoursByTech, splitLaborHours, laborLinesFor, attachLabor } from '@/lib/laborSplit';
 import { computeRecurring, normalizeCarrierCircuits } from '@/lib/recurring';
 import { resolveFinancing } from '@/lib/financing';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
 import { calculateTechBOM } from '@/lib/calculateTechBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
-import { estimateLaborHours } from '@/lib/estimateLaborHours';
 import { companyTechnologies, resolveEnabledTechnologies } from '@/lib/technologies';
 import { useProducts } from '@/hooks/useProducts';
 import { useProjects } from '@/hooks/useProjects';
@@ -478,15 +478,18 @@ function Calculator() {
       if (!calc?.laborHours || calc.legacy) continue;
       const value = { ...(calc.defaults ?? {}), ...(inputs.techCalc?.[t.id] ?? {}) };
       // Phase 8: PON provisioning hours read the coverage rules from inputs.
-      list.push(calc.laborHours(value, techBoms[t.id], { inputs }));
+      list.push({ techId: t.id, hours: calc.laborHours(value, techBoms[t.id], { inputs }) });
     }
     return list;
   }, [techTabs, inputs, techBoms]);
 
-  const estimatedHours = useMemo(
-    () => estimateLaborHours({ wifiBom: bom, cameraBom, inputs, cameraInputs, techContributions: techLaborContributions, tasks: laborTasks }),
+  // Hours per role, attributed to the technology that drives them
+  // (lib/laborSplit.js); `total` is what the rate card shows and prices.
+  const laborEstimate = useMemo(
+    () => estimateLaborHoursByTech({ wifiBom: bom, cameraBom, inputs, cameraInputs, techContributions: techLaborContributions, tasks: laborTasks }),
     [bom, cameraBom, inputs, cameraInputs, techLaborContributions, laborTasks]
   );
+  const estimatedHours = laborEstimate.total;
   const labor = useMemo(
     () => calculateLabor(laborRoles, estimatedHours),
     [laborRoles, estimatedHours]
@@ -726,8 +729,19 @@ function Calculator() {
   // exportProposal / exportCSV render Option-B alternates badged with a
   // comparison table (lib/vendorComparison.js) and keep them out of totals.
   // Anything that PERSISTS money or parts goes through primarySections().
+  // Labor rides inside each technology's section (David, 2026-08-27): the
+  // rate card's hours are split across the quoted technologies and folded
+  // in as labor lines, so every system shows hardware / labor / shipping /
+  // subtotal and the subtotals add up to the total. A quote with labor but
+  // no quoted system keeps the standalone Professional Labor section.
   const exportSections = () => {
     const list = techTabs.flatMap(sectionsForTech);
+    const techIds = [...new Set(primarySections(list).map((s) => s.techId).filter(Boolean))];
+    if (techIds.length > 0) {
+      const split = splitLaborHours({ ...laborEstimate, techIds, roles: laborRoles });
+      const linesByTech = new Map(techIds.map((id) => [id, laborLinesFor(laborRoles, split[id])]));
+      return list.map((s) => attachLabor(s, linesByTech.get(s.techId) ?? []));
+    }
     if (labor.serviceItems.length > 0) {
       list.push({ title: 'Professional Labor', label: 'Labor', isLabor: true, bom: labor });
     }
@@ -746,16 +760,20 @@ function Calculator() {
   };
   // The summary the comparison / proposal read — from the live sections,
   // this quote's recurring items, and the resolved financing policy.
-  const liveSummary = () =>
-    buildQuoteSummary({
-      sections: exportSections(),
-      labor,
+  const liveSummary = () => {
+    const sections = exportSections();
+    return buildQuoteSummary({
+      sections,
+      // Labor is inside the sections now; the standalone section only exists
+      // when no system is quoted.
+      labor: sections.some((s) => s.isLabor) ? labor : null,
       bom,
       inputs,
       pricingMode: pricingPolicy.mode,
       unitsHint: inputs.numberOfRooms,
       financing: financingPolicy,
     });
+  };
   const buildStatePayload = () => {
     const totals = primaryTotals();
     return {
