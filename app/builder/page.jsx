@@ -17,6 +17,7 @@ import TechnologyPage from '@/components/builder/TechnologyPage';
 import TechVendorsCard from '@/components/builder/TechVendorsCard';
 import { getCalculator } from '@/components/builder/calculators';
 import { companyTechVendors, resolveQuoteVendors, linesForVendor, newVendorId, primaryVendorCandidates } from '@/lib/vendors';
+import { primarySections } from '@/lib/vendorComparison';
 import CostSummary from '@/components/CostSummary';
 import { publishBuilderTechs, publishBuilderActiveTab } from '@/lib/builderNavStore';
 import { Button } from '@/components/ui/primitives';
@@ -667,18 +668,18 @@ function Calculator() {
       if (!s) continue;
       out.push(
         multi
-          ? { ...s, optionGroup: t.id, isPrimary: v.isPrimary, vendorId: v.id, vendorName: v.name }
+          ? { ...s, optionGroup: t.id, techLabel: t.label, isPrimary: v.isPrimary, vendorId: v.id, vendorName: v.name }
           : s
       );
     }
     return out;
   };
-  // TEMP (multi-vendor commit B): documents and totals carry primary options
-  // only. Commit C teaches CostSummary/exportPDF/exportProposal/exportCSV to
-  // render alternates as badged Option B + comparison tables, then lifts
-  // this filter.
+  // Every section, alternates included — CostSummary / exportPDF /
+  // exportProposal / exportCSV render Option-B alternates badged with a
+  // comparison table (lib/vendorComparison.js) and keep them out of totals.
+  // Anything that PERSISTS money or parts goes through primarySections().
   const exportSections = () => {
-    const list = techTabs.flatMap(sectionsForTech).filter((s) => !s.optionGroup || s.isPrimary);
+    const list = techTabs.flatMap(sectionsForTech);
     if (labor.serviceItems.length > 0) {
       list.push({ title: 'Professional Labor', label: 'Labor', isLabor: true, bom: labor });
     }
@@ -689,7 +690,7 @@ function Calculator() {
   // Saved quote totals = the primary sections only — an Option-B alternate
   // is the same system quoted twice and must never inflate total_price.
   const primaryTotals = () => {
-    const secs = exportSections().filter((s) => !s.isLabor);
+    const secs = primarySections(exportSections()).filter((s) => !s.isLabor);
     return {
       price: round2(secs.reduce((sum, s) => sum + (s.bom.grandTotalPrice ?? 0), 0)),
       cost: round2(secs.reduce((sum, s) => sum + (s.bom.grandTotalCost ?? 0), 0)),
@@ -843,7 +844,7 @@ function Calculator() {
     // installed equipment or asset generation. vendor + source ride along
     // as the future purchase-order grouping keys.
     const catalogBySku = new Map(allProducts.map((p) => [p.sku, p]));
-    return exportSections()
+    return primarySections(exportSections())
       .filter((s) => !s.isLabor)
       .flatMap((s) =>
         s.bom.items.map((i) => ({ ...i, system: s.techId, vendorName: s.vendorName ?? null }))
@@ -915,7 +916,7 @@ function Calculator() {
   // Overview summary, exportPDF, exportProposal, and exportCSV. The Wi-Fi
   // and Camera labels are kept for the proposal PDF's scope grouping.
 
-  const presentTitles = exportSections().filter((s) => !s.isLabor).map((s) => s.title);
+  const presentTitles = primarySections(exportSections()).filter((s) => !s.isLabor).map((s) => s.title);
   const systemsTitle = presentTitles.length > 2
     ? `${presentTitles[0]} + ${presentTitles.length - 1} more systems`
     : presentTitles.join(' & ') || 'System';
@@ -934,8 +935,7 @@ function Calculator() {
   // Per-technology documents from a tech page's sub-overview — just that
   // system's section (labor stays on the whole-proposal exports).
   const techFileSuffix = (t) => `${t.label.replace(/[^a-zA-Z0-9]/g, '')}_Quote`;
-  // TEMP filter mirrors exportSections until commit C renders alternates.
-  const techDocSections = (t) => sectionsForTech(t).filter((s) => !s.optionGroup || s.isPrimary);
+  const techDocSections = (t) => sectionsForTech(t);
   const handleExportTechCSV = (t) => {
     const secs = techDocSections(t);
     if (secs.length === 0) { setToast({ type: 'error', message: `Nothing on the ${t.label} quote yet.` }); return; }
