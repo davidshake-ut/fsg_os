@@ -126,10 +126,12 @@ describe('calculateBOM in takeoff mode', () => {
     expect(qtyOf(bom, 'SW-8')).toBe(4);
     expect(qtyOf(bom, 'SW-24')).toBe(1);
     expect(qtyOf(bom, 'SW-48')).toBe(3);
-    expect(qtyOf(bom, 'AP-22W')).toBe(119);
-    // Amenity / outdoor from the lists (legacy indoor / outdoor SKUs carry them).
+    // Amenity APs use the same tagged AP as the units; outdoor falls back to
+    // the legacy outdoor SKU when no AP is tagged mount_type 'outdoor'.
+    expect(qtyOf(bom, 'AP-22W')).toBe(119 + 3);
+    expect(bom.items.find((i) => i.sku === 'AP-22W' && /Amenity/.test(i.note)).qty).toBe(3);
     expect(bom.totalAPs).toBe(119 + 3 + 2);
-    expect(qtyOf(bom, 'XV2-2X')).toBe(3);
+    expect(qtyOf(bom, 'XV2-2X')).toBe(0);
     expect(qtyOf(bom, 'XV2-23T')).toBe(2);
     // No in-unit SKU chosen → counted, no line.
     expect(qtyOf(bom, 'TL-SG105')).toBe(0);

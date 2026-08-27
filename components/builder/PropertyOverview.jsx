@@ -261,6 +261,22 @@ export default function PropertyOverview({
               </div>
             )}
           </div>
+          <div className="border-t border-slate-100 pt-3">
+            <Field
+              label="Pricing"
+              sub="Cost-plus prices every line at cost × (1 + markup by subcategory) — markups in Settings → Pricing"
+            >
+              <Segmented
+                value={inputs.pricingPolicy?.mode ?? 'team'}
+                onChange={(v) => set('pricingPolicy', v === 'team' ? null : { mode: v })}
+                options={[
+                  { value: 'team', label: 'Team default' },
+                  { value: 'catalog', label: 'List prices' },
+                  { value: 'costPlus', label: 'Cost-plus' },
+                ]}
+              />
+            </Field>
+          </div>
         </PanelCard>
 
         <Card className="space-y-2 p-4">

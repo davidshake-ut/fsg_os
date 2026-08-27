@@ -103,6 +103,21 @@ export default function WifiTakeoffPanel({ inputs, setInputs, products = [] }) {
             onChange={(v) => setTakeoff({ useLocationLists: v })}
             label="Amenity & outdoor APs from the property's lists"
           />
+          <Toggle
+            checked={settings.redundantGateway}
+            onChange={(v) => setTakeoff({ redundantGateway: v })}
+            label="Redundant gateway pair (×2)"
+          />
+          <Toggle
+            checked={settings.itemizeAccessories}
+            onChange={(v) => setTakeoff({ itemizeAccessories: v })}
+            label="Itemize patch cables & gateway UPS / optics"
+          />
+          {!settings.itemizeAccessories && (
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              Small accessories ride in the misc-hardware allowance (Options → Misc hardware %). Racks come from Digital Infrastructure&apos;s kits.
+            </p>
+          )}
 
           <Card className="space-y-1 p-3 text-sm">
             {[

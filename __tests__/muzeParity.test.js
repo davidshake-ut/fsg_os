@@ -18,6 +18,26 @@ import { mergeProducts } from '../lib/mergeProducts';
 import { rollUpAssemblies } from '../lib/assemblies';
 import { computeInfrastructureLines, computeKitLines, infrastructureLaborHours } from '../lib/infrastructureLines';
 import { deriveCablingRuns, computeCablingLines, cablingTotals } from '../lib/cablingTakeoff';
+import { normalizePricingPolicy, applyPricingPolicy, priceWithMarkup } from '../lib/pricingPolicy';
+import { MULTIFAMILY_TAKEOFF_TASKS } from '../lib/laborTasks';
+import { estimateLaborHours } from '../lib/estimateLaborHours';
+import { calculateLabor } from '../lib/calculateLabor';
+import { DEFAULT_LABOR_ROLES } from '../lib/defaults';
+
+// The full OPT 1 gear list, tagged for the takeoff engine: licenses linked
+// per device (the workbook folds the $179.06 Ruckus One term into each
+// device's cost) and the $7.50 the workbook adds to every switch's cost
+// carried in the switch cost itself.
+const MUZE_RUCKUS_OPT1 = [
+  { sku: 'RUCKUS-ONE-5', desc: 'Ruckus One 5-year term', category: 'Subscription', technology: 'managed_wifi', vendor: 'Ruckus', cost: 179.06, price: 250 },
+  { sku: 'CCR2216', desc: 'MikroTik CCR2216-1G-12XS-2XQ router', category: 'Gateway', technology: 'managed_wifi', vendor: 'MikroTik', cost: 1500, price: 2795, quality_tier: 'better' },
+  { sku: 'ICX7550-48F', desc: 'Ruckus ICX7550-48F core switch', category: 'Aggregate Switch', technology: 'managed_wifi', vendor: 'Ruckus', cost: 3000, price: 5086.5, quality_tier: 'better', license_sku_5yr: 'RUCKUS-ONE-5' },
+  { sku: 'R650', desc: 'Ruckus R650 Wi-Fi 6 AP', category: 'Access Point', technology: 'managed_wifi', vendor: 'Ruckus', cost: 418.98, price: 1305, mount_type: 'ceiling', quality_tier: 'better', poe_watts: 22, license_sku_5yr: 'RUCKUS-ONE-5' },
+  { sku: 'T350', desc: 'Ruckus T350 outdoor AP', category: 'Access Point', technology: 'managed_wifi', vendor: 'Ruckus', cost: 571.48, price: 1780, mount_type: 'outdoor', quality_tier: 'better', poe_watts: 22, license_sku_5yr: 'RUCKUS-ONE-5' },
+  { sku: 'ICX-8100-C08PF', desc: 'ICX 8100 8-port PoE', category: 'Switch', technology: 'managed_wifi', vendor: 'Ruckus', cost: 437.69 + 7.5, price: 1980, quality_tier: 'better', port_count: 8, poe_budget_watts: 124, license_sku_5yr: 'RUCKUS-ONE-5' },
+  { sku: 'ICX-8100-24P', desc: 'ICX 8100 24-port PoE', category: 'Switch', technology: 'managed_wifi', vendor: 'Ruckus', cost: 739.61 + 7.5, price: 4015, quality_tier: 'better', port_count: 24, poe_budget_watts: 370, license_sku_5yr: 'RUCKUS-ONE-5' },
+  { sku: 'ICX-8100-48PFX', desc: 'ICX 8100 48-port PoE', category: 'Switch', technology: 'managed_wifi', vendor: 'Ruckus', cost: 1458.95 + 7.5, price: 7700, quality_tier: 'better', port_count: 48, poe_budget_watts: 740, license_sku_5yr: 'RUCKUS-ONE-5' },
+];
 
 // The Muze property as the Builder would hold it after the Phase 1 import,
 // plus the takeoff's named lists (14 amenity rooms listed, 9 outdoor APs).
@@ -506,7 +526,120 @@ describe('Builder engine parity with the Muze workbook (one todo per phase)', ()
     expect(totals.price).toBeCloseTo(wiring.expected.price - panelRow.qty * panelRow.dropPrice, 2); // 336,335
     expect(totals.cost).toBe(171525);
   });
-  it.todo('Phase 5: cost-plus pricing + labor tasks reproduce OPT 1 hardware 383,063.97 → 529,643.83 and labor 141,800 → 235,250');
+  it('Phase 5a: the cost-plus policy IS the workbook\'s pricing rule — OPT 1 hardware 383,063.97 → 529,643.83', () => {
+    // Every OPT 1 hardware row as a catalog product in the subcategory the
+    // policy keys on, priced by the policy; the 5% misc allowance sells at
+    // the Miscellaneous markup like the sheet.
+    const opt1 = MUZE.options[0].hardware[0];
+    const category = (role) =>
+      /ROUTER|GATEWAY/.test(role) ? 'Gateway'
+        : /CORE/.test(role) ? 'Aggregate Switch'
+        : /AP$/.test(role) ? 'Access Point'
+        : /SW$/.test(role) ? 'Switch'
+        : /RACK/.test(role) ? 'Rack'
+        : /SFP/.test(role) ? 'Fiber Module'
+        : 'Miscellaneous';
+    const products = opt1.rows.map((r) => ({ sku: r.role, category: category(r.role), cost: r.eaCost, price: 0 }));
+    const policy = normalizePricingPolicy({ mode: 'costPlus' });
+    const priced = applyPricingPolicy(products, policy);
+    // The policy's markups equal the workbook's per-row markups.
+    for (const r of opt1.rows) expect(priced.find((p) => p.sku === r.role).policyMarkupPct / 100).toBeCloseTo(r.markup, 9);
+    const extCost = opt1.rows.reduce((s, r) => s + r.qty * r.eaCost, 0);
+    const extPrice = opt1.rows.reduce((s, r) => s + r.qty * priced.find((p) => p.sku === r.role).price, 0);
+    const miscCost = extCost * opt1.misc.pct;
+    const miscPrice = priceWithMarkup(miscCost, 25);
+    expect(extCost + miscCost).toBeCloseTo(opt1.expected.cost, 2); // 383,063.97
+    expect(extPrice + miscPrice).toBeCloseTo(opt1.expected.price, 2); // 529,643.83
+  });
+
+  // OPT 1 quotes baseline APs (400) but keeps the switch layout the
+  // workbook sized on the EXTENDED plan (its switch rows point at rows
+  // 87–89): Building 3's rooms carry a hand-added 8-port, and B2-L2 keeps a
+  // 48-port where 16 baseline APs would fit a 24. Both are room overrides.
+  function opt1RoomOverrides(property) {
+    const levels = orderedLevels(property);
+    const roomOfFixtureLevel = Object.fromEntries(MUZE.levels.map((l, i) => [l.id, levels[i].roomId]));
+    const overrides = {};
+    for (const l of MUZE.levels.filter((x) => (x.building === 3 && x.level !== 'BSMT') || x.id === 'b2-l2')) {
+      overrides[roomOfFixtureLevel[l.id]] = MUZE.takeoff.switchPlan[l.id];
+    }
+    return overrides;
+  }
+
+  it('Phase 5b: the takeoff engine under cost-plus prices OPT 1\'s Ruckus gear row for row', () => {
+    const property = importMuzeProperty({ amenityRooms: 13 });
+    const takeoff = buildWifiTakeoff(property, { enabled: true, redundantGateway: true, itemizeAccessories: false, roomOverrides: opt1RoomOverrides(property) });
+    expect(takeoff.racksFromKits).toBe(true);
+
+    const policy = normalizePricingPolicy({ mode: 'costPlus' });
+    const priced = applyPricingPolicy(rollUpAssemblies(mergeProducts([])).concat(MUZE_RUCKUS_OPT1), policy);
+    const inputs = { ...DEFAULT_INPUTS, includeWifi: true, wifiQuality: 'better', deploymentType: 'ceiling', licenseTerm: 5, miscHwPercent: 5, includeShipping: false };
+    const bom = calculateBOM(inputs, {}, {}, priced, [], null, takeoff);
+    const line = (sku, noteRe = null) => bom.items.filter((i) => i.sku === sku && (!noteRe || noteRe.test(i.note)));
+    const row = (role) => MUZE.options[0].hardware[0].rows.find((r) => r.role === role);
+    const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+
+    // Gateway pair, core switch, APs (units / amenity / outdoor), switches — cost and price per role.
+    const roleCost = (skus) => sum(bom.items.filter((i) => skus.includes(i.sku)), (i) => i.totalCost);
+    const rolePrice = (skus) => sum(bom.items.filter((i) => skus.includes(i.sku)), (i) => i.totalPrice);
+    expect(line('CCR2216')[0]).toMatchObject({ qty: 2 });
+    expect(roleCost(['CCR2216'])).toBeCloseTo(row('MIKROTIK ROUTER').qty * row('MIKROTIK ROUTER').eaCost, 6);
+    expect(rolePrice(['CCR2216'])).toBeCloseTo(row('MIKROTIK ROUTER').qty * row('MIKROTIK ROUTER').eaCost * 1.25, 6);
+    // Licenses ride with their device at the device's markup, so device + license = the workbook's folded row.
+    const apLicense = line('RUCKUS-ONE-5', /license/).filter((i) => i.qty === 400)[0];
+    expect(apLicense).toBeTruthy();
+    const apCost = line('R650', /Guest/)[0].totalCost + apLicense.totalCost;
+    expect(apCost).toBeCloseTo(row('AP').qty * row('AP').eaCost, 6); // 239,216
+    expect(line('R650', /Guest/)[0].totalPrice + apLicense.totalPrice).toBeCloseTo(row('AP').qty * row('AP').eaCost * 1.4, 6); // 334,902.40
+    expect(line('R650', /Amenity/)[0].qty).toBe(13);
+    expect(line('T350')[0].qty).toBe(9);
+    expect({ s8: bom.idfSwitches8, s24: bom.idfSwitches24, s48: bom.idfSwitches48 }).toEqual({ s8: 20, s24: 12, s48: 11 });
+    // No legacy racks, patch cables, or gateway accessories in takeoff mode with kits quoted.
+    for (const sku of ['RR1907-BK1', 'RS-1215', 'CAT6-5ft-BLUE', 'CAT6-15ft-BLACK', 'PSI5-1500RT120', 'SFP-1G-SX']) expect(line(sku)).toHaveLength(0);
+
+    // Everything the engine derives (device + license lines) matches the
+    // workbook's corresponding rows; the racks are Digital Infrastructure's
+    // kits at the Rack markup.
+    const engineCore = bom.items.filter((i) => !['Fiber Module', 'Cable', 'Miscellaneous'].includes(i.category));
+    const kits = computeKitLines(property, priced).filter((l) => l.category === 'Rack');
+    const sheetRows = MUZE.options[0].hardware[0].rows.filter((r) => !/SFP/.test(r.role));
+    const sheetCost = sum(sheetRows, (r) => r.qty * r.eaCost);
+    const sheetPrice = sum(sheetRows, (r) => r.qty * r.eaCost * (1 + r.markup));
+    expect(sum(engineCore, (i) => i.totalCost) + sum(kits, (l) => l.qty * l.cost)).toBeCloseTo(sheetCost, 2); // 358,173.83
+    expect(sum(engineCore, (i) => i.totalPrice) + sum(kits, (l) => l.qty * l.price)).toBeCloseTo(sheetPrice, 2); // 496,204.01
+    // The misc allowance sells at cost × 1.25 like the sheet (its base differs:
+    // racks live in Digital Infrastructure and the workbook types 61 optics).
+    const misc = bom.items.find((i) => i.category === 'Miscellaneous');
+    expect(misc.totalPrice).toBeCloseTo(misc.totalCost * 1.25, 6);
+  });
+
+  it('Phase 5c: the multifamily task table + the kits\' hours reproduce OPT 1 labor 141,800 → 235,250', () => {
+    const property = importMuzeProperty({ amenityRooms: 13 });
+    const takeoff = buildWifiTakeoff(property, { enabled: true, redundantGateway: true, roomOverrides: opt1RoomOverrides(property) });
+    const inputs = { ...DEFAULT_INPUTS, includeWifi: true, wifiQuality: 'better', includeShipping: false };
+    const bom = calculateBOM(inputs, {}, {}, [...BASE_PRODUCTS, ...MUZE_RUCKUS_OPT1], [], null, takeoff);
+    expect(bom.totalAPs).toBe(422); // 400 + 13 amenity + 9 outdoor — the labor table's AP row
+
+    // The workbook's task rows: AP 0.5 h, switches 2 / 4 / 8 h by class,
+    // townhome rack 12 h × 4, PM 400 h, config 90 h, design 40 h; the
+    // MDF / IDF / media-panel rows come from Digital Infrastructure.
+    const tasks = MULTIFAMILY_TAKEOFF_TASKS.map((t) => (t.key === 'mf-th-rack' ? { ...t, qty: 4 } : t));
+    const hours = estimateLaborHours({ wifiBom: bom, inputs, tasks, techContributions: [infrastructureLaborHours(property)] });
+    expect(hours['install-tech']).toBe(422 * 0.5 + 20 * 2 + 12 * 4 + 11 * 8 + 4 * 12 + 560); // 995
+    expect(hours['project-manager']).toBe(400);
+    expect(hours['network-engineer']).toBe(130);
+
+    // The workbook's rates: $90 / $150 for technicians and PM, $125 / $200 for engineering.
+    const roles = DEFAULT_LABOR_ROLES.map((r) => ({
+      ...r,
+      costRate: r.key === 'network-engineer' ? 125 : 90,
+      billRate: r.key === 'network-engineer' ? 200 : 150,
+      hours: null,
+    }));
+    const labor = calculateLabor(roles, hours);
+    expect(labor.totalServicesCost).toBeCloseTo(MUZE.options[0].labor.expected.cost, 2); // 141,800
+    expect(labor.totalServicesPrice).toBeCloseTo(MUZE.options[0].labor.expected.price, 2); // 235,250
+  });
   it.todo('Phase 6: the options comparison matches the Comparison Matrix NRC block for all five columns');
   it.todo('Phase 7: recurring + financing shows $31.87 per unit per month for OPT 1');
   it.todo('Phase 8: XGS-PON reproduces OPT 4 hardware 404,860.26 → 578,929.23 and wiring 196,528 → 330,951.20');

@@ -285,6 +285,7 @@ export default function ProductModal({ open, product, clone = false, onClose, on
                     <option value="ceiling">On Ceiling</option>
                     <option value="wall">On Wall</option>
                     <option value="rack">Rack Mount</option>
+                    <option value="outdoor">Outdoor</option>
                   </Select>
                 </Field>
                 <Field label="Quality">

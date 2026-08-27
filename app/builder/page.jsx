@@ -27,6 +27,8 @@ import AppToast from '@/components/ui/AppToast';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { calculateBOM } from '@/lib/calculateBOM';
 import { buildWifiTakeoff } from '@/lib/wifiTakeoff';
+import { resolvePricingPolicy, applyPricingPolicy } from '@/lib/pricingPolicy';
+import { DEFAULT_LABOR_TASKS, normalizeLaborTasks } from '@/lib/laborTasks';
 import { calculateCameraBOM } from '@/lib/calculateCameraBOM';
 import { calculateTechBOM } from '@/lib/calculateTechBOM';
 import { calculateLabor } from '@/lib/calculateLabor';
@@ -174,12 +176,27 @@ function Calculator() {
 
   // Takeoff mode: the Wi-Fi design comes from the Digital Infrastructure
   // property model plus this quote's coverage settings (inputs.wifiTakeoff).
+  // Pricing policy (Phase 5): the team's cost-plus markups with this
+  // quote's mode choice. Every path that PRICES reads the priced catalog;
+  // the Product Database keeps list prices (it is also the catalog editor).
+  const pricingPolicy = useMemo(
+    () => resolvePricingPolicy(company?.settings, inputs.pricingPolicy),
+    [company?.settings, inputs.pricingPolicy]
+  );
+  const pricedProducts = useMemo(() => applyPricingPolicy(allProducts, pricingPolicy), [allProducts, pricingPolicy]);
+  // Labor task table (Phase 5): the team's, else the built-in defaults.
+  const laborTasks = useMemo(
+    () => normalizeLaborTasks(company?.settings?.laborTasks) ?? DEFAULT_LABOR_TASKS,
+    [company?.settings?.laborTasks]
+  );
   const wifiTakeoff = useMemo(
     () =>
       inputs.wifiTakeoff?.enabled
-        ? buildWifiTakeoff(inputs.techCalc?.digital_infrastructure, inputs.wifiTakeoff)
+        ? buildWifiTakeoff(inputs.techCalc?.digital_infrastructure, inputs.wifiTakeoff, {
+            kitsQuoted: resolveEnabledTechnologies(inputs).digital_infrastructure === true,
+          })
         : null,
-    [inputs.wifiTakeoff, inputs.techCalc]
+    [inputs]
   );
   const bom = useMemo(
     () =>
@@ -187,12 +204,12 @@ function Calculator() {
         inputs,
         priceOverrides,
         {}, // legacy serviceOverrides slot — ignored by the engine
-        allProducts,
+        pricedProducts,
         customLineItems.filter((c) => c.system === 'wifi'),
         catalogSnapshot,
         wifiTakeoff
       ),
-    [inputs, priceOverrides, allProducts, customLineItems, catalogSnapshot, wifiTakeoff]
+    [inputs, priceOverrides, pricedProducts, customLineItems, catalogSnapshot, wifiTakeoff]
   );
 
   // Per-technology enablement (registry ids). Legacy quotes derive it from
@@ -375,12 +392,12 @@ function Calculator() {
       // `inputs` rides along so a calculator can read cross-technology
       // settings (Digital Infrastructure's in-unit drops follow the Wi-Fi
       // coverage rules in inputs.wifiTakeoff).
-      out[t.id] = (calc.compute(value, { products: allProducts, inputs }) ?? [])
+      out[t.id] = (calc.compute(value, { products: pricedProducts, inputs }) ?? [])
         .filter((l) => (Number(l.qty) || 0) > 0)
         .map((l) => ({ ...l, system: t.id, fromCalculator: true }));
     }
     return out;
-  }, [techTabs, inputs, allProducts]);
+  }, [techTabs, inputs, pricedProducts]);
 
   // BOM-shaped sections for every non-legacy, NON-vendored technology tab:
   // the tech's calculator-derived lines (if any) plus the quote's own line
@@ -428,7 +445,7 @@ function Calculator() {
         camerasEnabled ? cameraInputs : {},
         priceOverrides,
         {}, // legacy serviceOverrides slot — ignored by the engine
-        allProducts,
+        pricedProducts,
         camerasEnabled ? customLineItems.filter((c) => c.system === 'camera') : [],
         { includeShipping, shippingPercent, catalogSnapshot }
       ),
@@ -436,7 +453,7 @@ function Calculator() {
       camerasEnabled,
       cameraInputs,
       priceOverrides,
-      allProducts,
+      pricedProducts,
       customLineItems,
       includeShipping,
       shippingPercent,
@@ -457,8 +474,8 @@ function Calculator() {
   }, [techTabs, inputs, techBoms]);
 
   const estimatedHours = useMemo(
-    () => estimateLaborHours({ wifiBom: bom, cameraBom, inputs, cameraInputs, techContributions: techLaborContributions }),
-    [bom, cameraBom, inputs, cameraInputs, techLaborContributions]
+    () => estimateLaborHours({ wifiBom: bom, cameraBom, inputs, cameraInputs, techContributions: techLaborContributions, tasks: laborTasks }),
+    [bom, cameraBom, inputs, cameraInputs, techLaborContributions, laborTasks]
   );
   const labor = useMemo(
     () => calculateLabor(laborRoles, estimatedHours),
@@ -798,7 +815,7 @@ function Calculator() {
     const skus = new Set([...bom.items, ...cameraBom.items].map((i) => i.baseSku ?? i.sku).filter(Boolean));
     const snapshot = {};
     for (const sku of skus) {
-      const p = allProducts.find((prod) => prod.sku === sku || prod.baseSku === sku);
+      const p = pricedProducts.find((prod) => prod.sku === sku || prod.baseSku === sku);
       if (p) {
         snapshot[sku] = {
           sku: p.sku,
@@ -1087,7 +1104,8 @@ function Calculator() {
     canViewMargin,
     addCustomLine, updateCustomLine, removeCustomLine,
     discardBomChanges,
-    products: allProducts,
+    products: pricedProducts,
+    pricingPolicy,
     wifiTakeoff,
   };
 
@@ -1168,7 +1186,7 @@ function Calculator() {
             <activeCalc.InputPanel
               value={techCalcValue(activeTech.id)}
               onChange={(patch) => setTechCalcInputs(activeTech.id, patch)}
-              products={allProducts}
+              products={pricedProducts}
               ctx={calcCtx}
             />
           </aside>
@@ -1310,7 +1328,7 @@ function Calculator() {
             <activeCalc.Surface
               value={techCalcValue(activeTech.id)}
               onChange={(patch) => setTechCalcInputs(activeTech.id, patch)}
-              products={allProducts}
+              products={pricedProducts}
               ctx={calcCtx}
             />
           )}
@@ -1324,7 +1342,7 @@ function Calculator() {
                 label={activeTech.label}
                 vendorName={activeVendor?.name ?? ''}
                 primaryNames={companyTechVendors(company, activeTech.id).map((v) => v.name)}
-                products={allProducts}
+                products={pricedProducts}
                 computedLines={!vendored || activeVendor?.isPrimary ? techCalcLines[activeTech.id] ?? [] : []}
                 lines={
                   vendored

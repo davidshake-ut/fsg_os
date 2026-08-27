@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, DollarSign, Pencil, Send } from 'lucide-react';
+import { Trash2, UserPlus, Building2, Puzzle, Palette, Users, Upload, X, DollarSign, Pencil, Send, Wrench } from 'lucide-react';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useSession } from '@/components/SessionProvider';
 import { useBranding } from '@/hooks/useBranding';
@@ -10,6 +10,8 @@ import { Card, Button, Field, TextInput, Select, Badge, Segmented } from '@/comp
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ModulesPanel from '@/components/ModulesPanel';
 import CustomModulesPanel from '@/components/CustomModulesPanel';
+import PricingPolicyForm from '@/components/PricingPolicyForm';
+import LaborTasksForm from '@/components/LaborTasksForm';
 import { costFromDiscount, DEFAULT_PRODUCT_LINE_DISCOUNTS } from '@/lib/pricing';
 import { cn } from '@/lib/utils';
 import { fmtDate as fmtDateShared } from '@/lib/format';
@@ -21,6 +23,7 @@ const SA_TABS = [
   { key: 'modules',  label: 'Module Settings', Icon: Puzzle             },
   { key: 'branding', label: 'Team Branding',   Icon: Palette            },
   { key: 'pricing',  label: 'Pricing',         Icon: DollarSign         },
+  { key: 'labor',    label: 'Labor',           Icon: Wrench             },
   { key: 'members',  label: 'Members',         Icon: Users              },
 ];
 
@@ -31,6 +34,7 @@ const SA_TABS = [
 const CA_TABS = [
   { key: 'branding', label: 'Branding', Icon: Palette           },
   { key: 'pricing',  label: 'Pricing',  Icon: DollarSign        },
+  { key: 'labor',    label: 'Labor',    Icon: Wrench            },
   { key: 'members',  label: 'Members',  Icon: Users             },
 ];
 
@@ -1357,8 +1361,14 @@ export default function AdminPanel() {
 
           {/* ── PRICING ────────────────────────────────────────────── */}
           {activeTab === 'pricing' && (
-            <PricingDiscountsForm />
+            <>
+              <PricingDiscountsForm />
+              <PricingPolicyForm />
+            </>
           )}
+
+          {/* LABOR: the task table behind every proposal's labor estimate */}
+          {activeTab === 'labor' && <LaborTasksForm />}
 
           {tabs.length === 0 && (
             <p className="py-8 text-center text-sm text-slate-400">
