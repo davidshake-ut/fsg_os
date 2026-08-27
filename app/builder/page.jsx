@@ -1306,24 +1306,9 @@ function Calculator() {
                 </button>
               ))}
             </div>
-          ) : (
-            <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm shadow-slate-900/[0.03]">
-              {visibleTabs.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTab(t.id)}
-                  className={cn(
-                    'whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all',
-                    tab === t.id
-                      ? 'bg-[var(--brand,#2563eb)] text-[var(--brand-text,#fff)] shadow-sm'
-                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-                  )}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          )}
+          ) : null /* Overview / Product Database: no tab strip — the sidebar's
+                     System Builder sub-links are the one set of level-1 tabs
+                     (David, 2026-08-27); they navigate by ?tab= */}
 
           {activeTech && (
             <BuilderContextBar
