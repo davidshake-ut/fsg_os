@@ -13,6 +13,7 @@ import ProductDatabase from '@/components/ProductDatabase';
 import ProductModal from '@/components/ProductModal';
 import SkuRenameProposalsModal from '@/components/SkuRenameProposalsModal';
 import PropertyOverview from '@/components/builder/PropertyOverview';
+import { PlanReaderCard } from '@/components/builder/PlanReaderCard';
 import TechnologyPage from '@/components/builder/TechnologyPage';
 import TechVendorsCard from '@/components/builder/TechVendorsCard';
 import { getCalculator } from '@/components/builder/calculators';
@@ -1417,6 +1418,9 @@ function Calculator() {
               onExportPDF={handleExportPDF}
               busy={busy}
             />
+          )}
+          {tab === 'overview' && currentProjectId && (
+            <PlanReaderCard savedProjectId={currentProjectId} session={session} />
           )}
           {activeTech && showCalcRail && !activeCalc?.legacy && activeCalc?.Surface && (
             <activeCalc.Surface
